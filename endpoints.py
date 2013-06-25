@@ -41,6 +41,9 @@ class Request(object):
     # the http method (GET, POST)
     method = None
 
+    # the module prefix that will be used to append to the controller to decide where to route the request
+    prefix = ""
+
 class Mongrel2Request(Request):
 
     def __init__(self, req):
@@ -74,6 +77,21 @@ class Mongrel2Request(Request):
                 self.query_kwargs[k] = kv[0]
 
 
+def handle(req):
+    '''
+    handle the request, return the headers and json that should be sent back to the client
+
+    req -- Request() -- a Request instance to be used to translate the request to a controller
+
+    return -- tuple -- (headers, json)
+    '''
+
+#    /foo -> prefix.version.foo.Default.method
+#    /foo/bar -> prefix.version.foo.Bar.method
+#    /foo/bar/che -> prefix.version.foo.Bar.method(che)
+#    /foo/bar/che?baz=foo -> prefix.version.foo.Bar.method(che, baz=foo)
+#
+#    basically, we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs=v
 
 
 
