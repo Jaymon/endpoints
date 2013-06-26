@@ -1,7 +1,8 @@
-import unittest
+#import unittest
+from unittest import TestCase
 import endpoints
 
-class RequestTest(unittest.TestCase):
+class RequestTest(TestCase):
 
     def test_instantiation(self):
 
@@ -47,4 +48,77 @@ class RequestTest(unittest.TestCase):
 
 
         #pout.v(rm.query, rm.query_kwargs)
+
+
+class CallTest(TestCase):
+    def test_controller(self):
+        c = endpoints.Call()
+        controller = c.controller
+        pout.v(controller)
+
+    def test_controller_info(self):
+        class MockRequest(object): pass
+        r = MockRequest()
+        r.path_args = [u"foo", u"bar"]
+        r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
+        r.method = u"GET"
+
+        out_d = {
+            'class_name': u"Bar",
+            'args': [],
+            'method': u"get",
+            'module': u"foo",
+            'kwargs':
+                {
+                    'foo': u"bar",
+                    'che': u"baz"
+                }
+        }
+
+        c = endpoints.Call()
+        c.request = r
+
+        d = c.controller_info
+        self.assertEqual(d, out_d)
+
+        r.path_args.append(u"che")
+        out_d['args'].append(u"che")
+
+        d = c.controller_info
+        self.assertEqual(d, out_d)
+
+        r.path_args = []
+        out_d['args'] = []
+        out_d['module'] = u'default'
+        out_d['class_name'] = u'Default'
+
+        d = c.controller_info
+        self.assertEqual(d, out_d)
+
+    def test_callback_info(self):
+        class MockRequest(object): pass
+        r = MockRequest()
+        r.path = u"/foo/bar"
+        r.path_args = [u"foo", u"bar"]
+        r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
+        r.method = u"GET"
+        c = endpoints.Call()
+        c.request = r
+
+        with self.assertRaises(endpoints.CallError):
+            d = c.callback_info
+
+
+
+
+
+
+
+
+
+
+
+
+
+
 
