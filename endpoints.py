@@ -66,18 +66,6 @@ class Request(object):
     # the module prefix that will be used to append to the controller to decide where to route the request
     prefix = ""
 
-    @property
-    def controller(self):
-        return None
-
-    @property
-    def controller_args(self):
-        return self.path_args
-
-    @property
-    def controller_kwargs(self):
-        return self.query_kwargs
-
 class Mongrel2Request(Request):
 
     def __init__(self, req):
@@ -123,7 +111,7 @@ class Call(object):
 
     @property
     def request(self):
-        if not self._request:
+        if not hasattr(self, "_request"):
             self._request = Request()
 
         return self._request
@@ -134,7 +122,7 @@ class Call(object):
 
     @property
     def response(self):
-        if not self._response:
+        if not hasattr(self, "_response"):
             self._response = Response()
 
         return self._response
@@ -148,8 +136,7 @@ class Call(object):
         self.args = args
         self.kwargs = kwargs
 
-    @property
-    def controller_info(self):
+    def get_controller_info(self):
         d = {}
         req = self.request
         path_args = list(req.path_args)
@@ -177,9 +164,8 @@ class Call(object):
 
         return d
 
-    @property
-    def callback_info(self):
-        d = self.controller_info
+    def get_callback_info(self):
+        d = self.get_controller_info()
 
         # import module
         try:
@@ -193,9 +179,9 @@ class Call(object):
 
             callback = getattr(module_instance, d['method'])
 
-        except (ImportError, AttributeError):
+        except (ImportError, AttributeError), e:
             r = self.request
-            raise CallError(404, "{} not found".format(r.path))
+            raise CallError(404, "{} not found because {}".format(r.path, e.message))
 
         return callback, d['args'], d['kwargs']
 
@@ -217,7 +203,7 @@ class Call(object):
     #
     #    basically, we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs=v
 
-        callback, callback_args, callback_kwargs = self.callback_info
+        callback, callback_args, callback_kwargs = self.get_callback_info()
         try:
             body = callback(*callback_args, **callback_kwargs)
             self.response.body = body
@@ -227,26 +213,4 @@ class Call(object):
             self.body = e.message
 
         return self.response
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 

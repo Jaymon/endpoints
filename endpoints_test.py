@@ -1,13 +1,14 @@
 #import unittest
 from unittest import TestCase
 import endpoints
+import testdata
+import os
 
 class RequestTest(TestCase):
 
     def test_instantiation(self):
 
         r = endpoints.Request()
-        pout.v(r.path)
 
         # we need to mimic the request object that comes from the mongrel2 python module
         class Mongrel2MockRequest(object): pass
@@ -46,16 +47,7 @@ class RequestTest(TestCase):
         self.assertEqual(rm.query, rm_query)
         self.assertEqual(rm.query_kwargs, {u'foo': [u'bar', u'che'], u'che': u'baz'})
 
-
-        #pout.v(rm.query, rm.query_kwargs)
-
-
 class CallTest(TestCase):
-    def test_controller(self):
-        c = endpoints.Call()
-        controller = c.controller
-        pout.v(controller)
-
     def test_controller_info(self):
         class MockRequest(object): pass
         r = MockRequest()
@@ -78,13 +70,13 @@ class CallTest(TestCase):
         c = endpoints.Call()
         c.request = r
 
-        d = c.controller_info
+        d = c.get_controller_info()
         self.assertEqual(d, out_d)
 
         r.path_args.append(u"che")
         out_d['args'].append(u"che")
 
-        d = c.controller_info
+        d = c.get_controller_info()
         self.assertEqual(d, out_d)
 
         r.path_args = []
@@ -92,7 +84,7 @@ class CallTest(TestCase):
         out_d['module'] = u'default'
         out_d['class_name'] = u'Default'
 
-        d = c.controller_info
+        d = c.get_controller_info()
         self.assertEqual(d, out_d)
 
     def test_callback_info(self):
@@ -106,9 +98,19 @@ class CallTest(TestCase):
         c.request = r
 
         with self.assertRaises(endpoints.CallError):
-            d = c.callback_info
+            d = c.get_callback_info()
 
+        contents = os.linesep.join([
+            "class Bar(object):",
+            "    request = None",
+            "    response = None",
+            "    def get(*args, **kwargs): pass"
+        ])
 
+        testdata.create_module("foo", contents=contents)
+
+        # if it succeeds, then it passed the test :)
+        d = c.get_callback_info()
 
 
 
