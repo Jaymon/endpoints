@@ -3,10 +3,40 @@ from unittest import TestCase
 import endpoints
 import testdata
 import os
+import urlparse
 
 class RequestTest(TestCase):
 
+    def test_properties(self):
+
+        path = u'/foo/bar'
+        path_args = [u'foo', u'bar']
+
+        r = endpoints.Request()
+        r.path = path
+        self.assertEqual(r.path, path)
+        self.assertEqual(r.path_args, path_args)
+
+        r = endpoints.Request()
+        r.path_args = path_args
+        self.assertEqual(r.path, path)
+        self.assertEqual(r.path_args, path_args)
+
+        query = u"foo=bar&che=baz&foo=che"
+        query_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+
+        r = endpoints.Request()
+        r.query = query
+        self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
+        self.assertEqual(r.query_kwargs, query_kwargs)
+
+        r = endpoints.Request()
+        r.query_kwargs = query_kwargs
+        self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
+        self.assertEqual(r.query_kwargs, query_kwargs)
+
     def test_instantiation(self):
+        return
 
         r = endpoints.Request()
 
