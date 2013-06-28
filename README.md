@@ -6,14 +6,14 @@ Trying to make creating an API as simple as possible
 
 `endpoints` translates requests to python modules without any configuration. It uses the convention:
 
-    METHOD /module/class/args?kwargs=v
+    METHOD /module/class/args?kwargs
 
 To find the modules, you can assign a module prefix, to make it easier to bundle your controllers to something like a `controllers` module. Some examples of how http requests would be interpretted:
 
     GET /foo -> prefix.foo.Default.get()
     POST /foo/bar -> prefix.foo.Bar.post()
     GET /foo/bar/che -> prefix.foo.Bar.get(che)
-    POST /foo/bar/che?baz=foo -> prefix.foo.Bar.get(che, baz=foo)
+    POST /foo/bar/che?baz=foo -> prefix.foo.Bar.post(che, baz=foo)
 
 **todo, add better examples and examples of glue code to use endpoints in your project**
 
