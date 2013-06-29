@@ -2,10 +2,13 @@
 import urlparse
 import urllib
 import importlib
+import json
 
 # 3rd party modules
 
 # first party modules
+
+__version__ = '0.3'
 
 def unicodify(s):
     '''
@@ -62,23 +65,20 @@ class Request(object):
     common interface that endpoints uses to decide what to do with the incoming request
 
     an instance of this class is used by the endpoints Call instance to decide where endpoints
-    should route requests, so many times, you need to write a glue function that takes however
+    should route requests, so, many times, you'll need to write a glue function that takes however
     your request data is passed to Python and convert it into a Request instance that endpoints can
     understand
     '''
-    headers = {}
-    """all the http request headers in header: val format"""
 
-    #path = u"" # /foo/bar
-
-    #path_args = []
-    """the path converted to list (eg /foo/bar becomes [foo, bar])"""
-
-    #query = u"" # foo=bar&baz=che
-    """query_string part of a url (eg, http://host.com/path?query=string)"""
-
-    #query_kwargs = {}
-    """{foo: bar, baz: che}"""
+    @property
+    def headers(self):
+        """all the http request headers in header: val format"""
+        if not getattr(self, '_headers', None): self._headers = {}
+        return self._headers
+    
+    @headers.setter
+    def headers(self, v):
+        self._headers = v
 
     method = None
     """the http method (GET, POST)"""
@@ -144,39 +144,6 @@ class Request(object):
     def query_kwargs(self, v):
         self._query_kwargs = v
 
-#class Mongrel2Request(Request):
-#
-#    def __init__(self, req):
-#        h = req.headers
-#        self.path = h[u'PATH']
-#        self.query = h[u'QUERY']
-#        self.method = h[u'METHOD']
-#
-#    @property
-#    def path(self):
-#        return self._path
-#
-#    @path.setter
-#    def path(self, v):
-#        self._path = unicodify(v)
-#        self.path_args = filter(None, v.split(u'/'))
-#
-#    @property
-#    def query(self):
-#        return self._query
-#
-#    @query.setter
-#    def query(self, v):
-#        self._query = unicodify(v)
-#        self.query_kwargs = {}
-#        # we only want true array query args to be arrays
-#        for k, kv in urlparse.parse_qs(v, True).iteritems():
-#            if len(kv) > 1:
-#                self.query_kwargs[k] = kv
-#            else:
-#                self.query_kwargs[k] = kv[0]
-#
-
 class Response(object):
     """
     an instance of this class is used to create the text response that will be sent 
@@ -185,27 +152,133 @@ class Response(object):
 
     code = 200
     """the http status code to return to the client"""
-    
-    body = None
-    """the body to return to the client"""
 
-    # TODO: make body return appropriate stuff, so if body is a dict, and out header is json, then
-    # resp.body should return json formatted body
+    statuses = {
+        100: 'Continue',
+        101: 'Switching Protocols',
+        102: 'Processing', # RFC2518
+        200: 'OK',
+        201: 'Created',
+        202: 'Accepted',
+        203: 'Non-Authoritative Information',
+        204: 'No Content',
+        205: 'Reset Content',
+        206: 'Partial Content',
+        207: 'Multi-Status', # RFC4918
+        208: 'Already Reported', # RFC5842
+        226: 'IM Used', # RFC3229
+        300: 'Multiple Choices',
+        301: 'Moved Permanently',
+        302: 'Found',
+        303: 'See Other',
+        304: 'Not Modified',
+        305: 'Use Proxy',
+        306: 'Reserved',
+        307: 'Temporary Redirect',
+        308: 'Permanent Redirect', # RFC-reschke-http-status-308-07
+        400: 'Bad Request',
+        401: 'Unauthorized',
+        402: 'Payment Required',
+        403: 'Forbidden',
+        404: 'Not Found',
+        405: 'Method Not Allowed',
+        406: 'Not Acceptable',
+        407: 'Proxy Authentication Required',
+        408: 'Request Timeout',
+        409: 'Conflict',
+        410: 'Gone',
+        411: 'Length Required',
+        412: 'Precondition Failed',
+        413: 'Request Entity Too Large',
+        414: 'Request-URI Too Long',
+        415: 'Unsupported Media Type',
+        416: 'Requested Range Not Satisfiable',
+        417: 'Expectation Failed',
+        418: 'I\'m a teapot', # RFC2324
+        422: 'Unprocessable Entity', # RFC4918
+        423: 'Locked', # RFC4918
+        424: 'Failed Dependency', # RFC4918
+        425: 'Reserved for WebDAV advanced collections expired proposal', # RFC2817
+        426: 'Upgrade Required', # RFC2817
+        428: 'Precondition Required', # RFC6585
+        429: 'Too Many Requests', # RFC6585
+        431: 'Request Header Fields Too Large', # RFC6585
+        500: 'Internal Server Error',
+        501: 'Not Implemented',
+        502: 'Bad Gateway',
+        503: 'Service Unavailable',
+        504: 'Gateway Timeout',
+        505: 'HTTP Version Not Supported',
+        506: 'Variant Also Negotiates (Experimental)', # RFC2295
+        507: 'Insufficient Storage', # RFC4918
+        508: 'Loop Detected', # RFC5842
+        510: 'Not Extended', # RFC2774
+        511: 'Network Authentication Required', # RFC6585
+    }
+    """default status code messages
+
+    shamefully ripped from Symfony HttpFoundation Response (shoulders of giants)
+    https://github.com/symfony/HttpFoundation/blob/master/Response.php
+    """
+
+    @property
+    def headers(self):
+        """response headers in header: value format"""
+        if not getattr(self, '_headers', None): self._headers = {}
+        return self._headers
+    
+    @headers.setter
+    def headers(self, v):
+        self._headers = v
+
+    @property
+    def status(self):
+        if not getattr(self, '_status', None):
+            c = self.code
+            msg = self.statuses.get(self.code, "UNKNOWN")
+            self._status = msg
+
+        return self._status
+    
+    @status.setter
+    def status(self, v):
+        self._status = v
+
+    @property
+    def body(self):
+        """return the body, formatted to the appropriate content type"""
+        if not getattr(self, '_body', None): return None
+
+        b = self._body
+        ct = self.headers.get('Content-Type', None)
+        if ct:
+            ct = ct.lower()
+            if ct.rfind(u"json") >= 0: # fuzzy, not sure I like that
+                b = json.dumps(b)
+
+        return b
+    
+    @body.setter
+    def body(self, v):
+        self._body = v
 
 class Call(object):
     """
     Where all the routing magic happens
 
-    /foo -> prefix.version.foo.Default.method
-    /foo/bar -> prefix.version.foo.Bar.method
-    /foo/bar/che -> prefix.version.foo.Bar.method(che)
-    /foo/bar/che?baz=foo -> prefix.version.foo.Bar.method(che, baz=foo)
+    we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
 
-    basically, we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs=v
+    GET /foo -> controller_prefix.version.foo.Default.get
+    POST /foo/bar -> controller_prefix.version.foo.Bar.post
+    GET /foo/bar/che -> controller_prefix.version.foo.Bar.get(che)
+    POST /foo/bar/che?baz=foo -> controller_prefix.version.foo.Bar.post(che, baz=foo)
     """
 
     controller_prefix = u""
     """since endpoints interprets requests as /module/class, you can use this to do: controller_prefix.module.class"""
+
+    content_type = "application/json"
+    """the content type this call is going to represent"""
 
     @property
     def request(self):
@@ -272,7 +345,7 @@ class Call(object):
 
         controller_prefix = self.controller_prefix
         if controller_prefix:
-            d['module'] = u".".join([controller_prefix, request_module])
+            d['module'] = u".".join([controller_prefix, d['module']])
 
         # the second arg is the Class
         if len(path_args) > 0:
@@ -299,7 +372,7 @@ class Call(object):
 
         except (ImportError, AttributeError), e:
             r = self.request
-            raise CallError(404, "{} not found because {}".format(r.path, e.message))
+            raise CallError(404, "{} not found because of error: {}".format(r.path, e.message))
 
         try:
             module_instance = module_class()
@@ -316,12 +389,13 @@ class Call(object):
 
     def handle(self):
         '''
-        handle the request, return the headers and json that should be sent back to the client
+        handle the request
 
         return -- Response() -- the response object, populated with info from running the controller
         '''
-        callback, callback_args, callback_kwargs = self.get_callback_info()
         try:
+            callback, callback_args, callback_kwargs = self.get_callback_info()
+            self.response.headers['Content-Type'] = self.content_type
             body = callback(*callback_args, **callback_kwargs)
             self.response.body = body
 
@@ -331,7 +405,7 @@ class Call(object):
 
         except Exception, e:
             self.response.code = 500
-            self.body = e.message
+            self.response.body = e.message
 
         return self.response
 
@@ -342,9 +416,6 @@ class VersionCall(Call):
 
     default_version = None
     """set this to the default version if you want a fallback version, if this is None then version check is enforced"""
-
-    version_media_type = u""
-    """the media type that should be versioned, usually something like application/json"""
 
     @property
     def controller_prefix(self):
@@ -364,24 +435,24 @@ class VersionCall(Call):
         self._controller_prefix = v
 
     def get_version(self):
-        if not self.version_media_type:
-            raise ValueError("You are versioning a call with no version_media_type")
+        if not self.content_type:
+            raise ValueError("You are versioning a call with no content_type")
 
         v = None
         h = self.request.headers
         accept_header = h.get('accept', u"")
         if not accept_header:
-            raise CallError(406, "Expected accept header with {} media type".format(self.version_media_type))
+            raise CallError(406, "Expected accept header with {} media type".format(self.content_type))
 
         a = AcceptHeader(accept_header)
-        for mt in a.filter(self.version_media_type):
+        for mt in a.filter(self.content_type):
             v = mt[2].get(u"version", None)
             if v: break
 
         if not v:
             v = self.default_version
             if not v:
-                raise CallError(406, "Expected accept header with {};version=N media type".format(self.version_media_type))
+                raise CallError(406, "Expected accept header with {};version=vN media type".format(self.content_type))
 
         return v
 

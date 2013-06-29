@@ -4,6 +4,51 @@ import endpoints
 import testdata
 import os
 import urlparse
+import json
+
+class ResponseTest(TestCase):
+    def test_headers(self):
+        """make sure headers don't persist between class instantiations"""
+        r = endpoints.Response()
+        r.headers["foo"] = "bar"
+        self.assertEqual("bar", r.headers["foo"])
+        self.assertEqual(1, len(r.headers))
+
+        r = endpoints.Response()
+        self.assertFalse("foo" in r.headers)
+        self.assertEqual(0, len(r.headers))
+
+    def test_status(self):
+        r = endpoints.Response()
+        statuses = r.statuses
+        for code, status in statuses.iteritems():
+            r.code = code
+            self.assertEqual(status, r.status)
+            r.code = None
+            r.status = None
+
+        r = endpoints.Response()
+        r.code = 1000
+        self.assertEqual("UNKNOWN", r.status)
+
+    def test_body(self):
+        b = {'foo': 'bar'}
+
+        r = endpoints.Response()
+        self.assertEqual(None, r.body)
+        r.body = b
+        self.assertEqual(b, r.body)
+
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = b
+        self.assertEqual(json.dumps(b), r.body)
+
+        r = endpoints.Response()
+        self.assertEqual(None, r.body)
+        self.assertEqual(None, r.body) # Make sure it doesn't change
+        r.body = b
+        self.assertEqual(b, r.body)
 
 class RequestTest(TestCase):
 
