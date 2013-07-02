@@ -1,10 +1,11 @@
-#import unittest
 from unittest import TestCase
-import endpoints
-import testdata
 import os
 import urlparse
 import json
+
+import testdata
+
+import endpoints
 
 class ResponseTest(TestCase):
     def test_headers(self):
@@ -123,6 +124,50 @@ class RequestTest(TestCase):
 #        self.assertEqual(rm.query_kwargs, {u'foo': [u'bar', u'che'], u'che': u'baz'})
 
 class CallTest(TestCase):
+
+    def test_reflect(self):
+        # putting the C back in CRUD
+        tmpdir = testdata.create_dir("test_reflect")
+        contents = os.linesep.join([
+            "import endpoints",
+            "class Bar(endpoints.Controller):",
+            "    request = None",
+            "    response = None",
+            "    def get(*args, **kwargs): pass",
+            ""
+        ])
+        testdata.create_module("controller.foo", contents=contents, tmpdir=tmpdir)
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Baz(Controller):",
+            "    request = None",
+            "    response = None",
+            "    def post(*args, **kwargs): pass",
+            ""
+        ])
+        testdata.create_module("controller.che", contents=contents, tmpdir=tmpdir)
+        contents = os.linesep.join([
+            "from endpoints import Controller as Con",
+            "class Boo(Con):",
+            "    request = None",
+            "    response = None",
+            "    def delete(*args, **kwargs): pass",
+            "    def post(*args, **kwargs): pass",
+            ""
+            "class Bah(Con):",
+            "    '''this is the doc string'''",
+            "    request = None",
+            "    response = None",
+            "    def get(*args, **kwargs): pass",
+            ""
+        ])
+        testdata.create_module("controller.bam", contents=contents, tmpdir=tmpdir)
+
+        c = endpoints.Call()
+        c.controller_prefix = "controller"
+        r = c.reflect()
+        # TODO: add some checks to make sure this worked
+
     def test_controller_info(self):
         class MockRequest(object): pass
         r = MockRequest()
@@ -224,6 +269,33 @@ class VersionCallTest(TestCase):
         cp = c.controller_prefix
         self.assertEqual(u"foo.bar.v1", cp)
 
+    def test_reflect(self):
+        # putting the C back in CRUD
+        tmpdir = testdata.create_dir("version_test_reflect")
+        contents = os.linesep.join([
+            "import endpoints",
+            "class Bar(endpoints.Controller):",
+            "    request = None",
+            "    response = None",
+            "    def get(*args, **kwargs): pass",
+            ""
+        ])
+        testdata.create_module("controller.v1.foo", contents=contents, tmpdir=tmpdir)
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Baz(Controller):",
+            "    request = None",
+            "    response = None",
+            "    def get(*args, **kwargs): pass",
+            ""
+        ])
+        testdata.create_module("controller.v2.che", contents=contents, tmpdir=tmpdir)
+
+        c = endpoints.VersionCall()
+        c.controller_prefix = "controller"
+        r = c.reflect()
+        # TODO: add some checks to make sure this worked
+
 
 class AcceptHeaderTest(TestCase):
 
@@ -292,11 +364,5 @@ class AcceptHeaderTest(TestCase):
                 count += 1
 
             self.assertEqual(t[2], count)
-
-
-
-
-
-
 
 

@@ -3,6 +3,10 @@ import urlparse
 import urllib
 import importlib
 import json
+import sys
+import os
+#import re
+import ast
 
 # 3rd party modules
 
@@ -51,6 +55,9 @@ class Controller(object):
     
     response = None
     """holds a Response() instance"""
+
+    call = None
+    """holds the call() instance that invoked this Controller"""
 
     def get(self, *args, **kwargs):
         '''handle GET requests for this Controller endpoint'''
@@ -378,6 +385,7 @@ class Call(object):
             module_instance = module_class()
             module_instance.request = self.request
             module_instance.response = self.response
+            module_instance.call = self
 
             callback = getattr(module_instance, d['method'])
 
@@ -408,6 +416,90 @@ class Call(object):
             self.response.body = e.message
 
         return self.response
+
+    def reflect_controller(self, root, f):
+        """
+        get all the endpoints in this controller
+
+        root -- string -- the root directory
+        f -- string -- the controller file name
+
+        return -- list -- a list of dicts with information about each endpoint in the controller
+        """
+        fname, fext = os.path.splitext(f)
+        if fext.lower() != u".py": return {}
+
+        pout.v(f)
+
+        l = []
+        fuzzy_method = set(['get', 'head', 'post', 'put', 'delete', 'trace', 'options', 'connect', 'patch'])
+        fuzzy_property = set(['request', 'response'])
+
+        module_filename = os.path.join(root, f)
+        module_src = open(module_filename, 'rU').read()
+        module_tree = ast.parse(module_src, module_filename)
+        if hasattr(module_tree, 'body'):
+            for module_node in module_tree.body:
+                d = {}
+                methods = set()
+                if isinstance(module_node, ast.ClassDef):
+                    fuzzy_method_count = 0
+                    fuzzy_property_count = 0
+                    if hasattr(module_node, 'body'):
+                        for b in module_node.body:
+                            if isinstance(b, ast.Assign):
+                                if hasattr(b, 'targets'):
+                                    for t in b.targets:
+                                        if t.id in fuzzy_property:
+                                            fuzzy_property_count += 1
+                            if isinstance(b, ast.FunctionDef):
+                                if b.name in fuzzy_method:
+                                    fuzzy_method_count += 1
+                                    methods.add(b.name)
+
+                    if fuzzy_method_count > 0: # and fuzzy_property_count > 0:
+                        doc = ast.get_docstring(module_node, clean=True)
+                        d = {
+                            'endpoint': u"/".join([u"", fname, module_node.name.lower()]),
+                            'methods': list(methods),
+                            'doc': doc if doc else u""
+                        }
+                        l.append(d)
+
+        return l
+
+    def reflect_controller_prefix(self, controller_prefix):
+        """
+        find the base controller path using this class's set controller_prefix
+
+        return -- string -- the controller base directory
+        """
+        #controller_prefix = self._controller_prefix if hasattr(self, "_controller_prefix") else self.controller_prefix
+        if not controller_prefix:
+            raise ValueError("reflect only works when you use a controller_prefix")
+
+        controller_path = u""
+        controller_dirs = controller_prefix.split(u".")
+        for p in sys.path:
+            fullp = os.path.join(p, *controller_dirs)
+            if os.path.isdir(fullp):
+                controller_path = fullp
+                break
+
+        if not controller_path:
+            raise IOError("could not find a valid path for modules with prefix: {}".format(controller_prefix))
+
+        return controller_path
+
+    def reflect(self):
+        controller_path = self.reflect_controller_prefix(self.controller_prefix)
+        l = []
+        for root, dirs, files in os.walk(controller_path, topdown=True):
+            for f in files:
+                l.extend(self.reflect_controller(root, f))
+            break
+
+        return l
 
 class VersionCall(Call):
     """
@@ -455,6 +547,23 @@ class VersionCall(Call):
                 raise CallError(406, "Expected accept header with {};version=vN media type".format(self.content_type))
 
         return v
+
+    def reflect(self):
+        l = []
+        controller_path = self.reflect_controller_prefix(self._controller_prefix)
+        for root, dirs, _ in os.walk(controller_path, topdown=True):
+            for d in dirs:
+                for root,  _, files in os.walk(os.path.join(controller_path, d), topdown=True):
+                    for f in files:
+                        lv = self.reflect_controller(root, f)
+                        if lv:
+                            for x in xrange(len(lv)):
+                                lv[x]['header'] = "{};version={}".format(self.content_type, d)
+                            l.extend(lv)
+                    break
+            break
+
+        return l
 
 class AcceptHeader(object):
     """
