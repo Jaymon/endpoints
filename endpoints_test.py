@@ -137,16 +137,34 @@ class CallTest(TestCase):
 
         contents = os.linesep.join([
             "class Bar(object):",
-            "    request = None",
-            "    response = None",
             "    endpoint_public = True",
             "    def get(*args, **kwargs): pass"
         ])
-
         testdata.create_module("foo", contents=contents)
 
         # if it succeeds, then it passed the test :)
         d = c.get_callback_info()
+
+    def test_public_controller(self):
+        class MockRequest(object): pass
+        r = MockRequest()
+        r.path = u"/foo2/bar"
+        r.path_args = [u"foo2", u"bar"]
+        r.query_kwargs = {u'foo2': u'bar', u'che': u'baz'}
+        r.method = u"GET"
+        c = endpoints.Call()
+        c.request = r
+
+        contents = os.linesep.join([
+            "class Bar(object):",
+            "    endpoint_public = False",
+            "    def get(*args, **kwargs): pass"
+        ])
+        testdata.create_module("foo2", contents=contents)
+
+        # if it succeeds, then it passed the test :)
+        with self.assertRaises(endpoints.CallError):
+            d = c.get_callback_info()
 
 class VersionCallTest(TestCase):
 
