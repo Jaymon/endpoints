@@ -5,29 +5,10 @@ import importlib
 import json
 import sys
 import os
-#import re
-import ast
+import inspect
+import types
 
-# 3rd party modules
-
-# first party modules
-
-__version__ = '0.3'
-
-def unicodify(s):
-    '''
-    make sure a string is a unicode string
-
-    s -- string|unicode
-
-    return -- unicode
-    '''
-    if not isinstance(s, unicode):
-        s = s.decode('utf-8')
-
-    # TODO: support lists and dicts of strings?
-
-    return s
+__version__ = '0.5'
 
 class CallError(RuntimeError):
     """
@@ -58,6 +39,13 @@ class Controller(object):
 
     call = None
     """holds the call() instance that invoked this Controller"""
+
+    endpoint_public = False
+    """set this to True if the controller should be made publicly available, this is
+    handy for when you want to make base controllers that can't be accessed, like endpoints.Controller"""
+
+    endpoint_options = None
+    """the list of supported http method options the controller has"""
 
     def get(self, *args, **kwargs):
         '''handle GET requests for this Controller endpoint'''
@@ -350,7 +338,7 @@ class Call(object):
         if len(path_args) > 0:
             d['module'] = path_args.pop(0)
 
-        controller_prefix = self.controller_prefix
+        controller_prefix = self.get_normalized_prefix()
         if controller_prefix:
             d['module'] = u".".join([controller_prefix, d['module']])
 
@@ -377,6 +365,10 @@ class Call(object):
             module = importlib.import_module(d['module'])
             module_class = getattr(module, d['class_name'])
 
+            if not getattr(module_class, 'endpoint_public'):
+                r = self.request
+                raise ImportError('{} is not public'.format(r.path))
+
         except (ImportError, AttributeError), e:
             r = self.request
             raise CallError(404, "{} not found because of error: {}".format(r.path, e.message))
@@ -394,6 +386,14 @@ class Call(object):
             raise CallError(405, "{} {} not supported".format(r.method, r.path))
 
         return callback, d['args'], d['kwargs']
+
+    def get_normalized_prefix(self):
+        """
+        do any normalization of the controller prefix and return it
+
+        return -- string -- the full controller module prefix
+        """
+        return self.controller_prefix
 
     def handle(self):
         '''
@@ -417,90 +417,6 @@ class Call(object):
 
         return self.response
 
-    def reflect_controller(self, root, f):
-        """
-        get all the endpoints in this controller
-
-        root -- string -- the root directory
-        f -- string -- the controller file name
-
-        return -- list -- a list of dicts with information about each endpoint in the controller
-        """
-        fname, fext = os.path.splitext(f)
-        if fext.lower() != u".py": return {}
-
-        pout.v(f)
-
-        l = []
-        fuzzy_method = set(['get', 'head', 'post', 'put', 'delete', 'trace', 'options', 'connect', 'patch'])
-        fuzzy_property = set(['request', 'response'])
-
-        module_filename = os.path.join(root, f)
-        module_src = open(module_filename, 'rU').read()
-        module_tree = ast.parse(module_src, module_filename)
-        if hasattr(module_tree, 'body'):
-            for module_node in module_tree.body:
-                d = {}
-                methods = set()
-                if isinstance(module_node, ast.ClassDef):
-                    fuzzy_method_count = 0
-                    fuzzy_property_count = 0
-                    if hasattr(module_node, 'body'):
-                        for b in module_node.body:
-                            if isinstance(b, ast.Assign):
-                                if hasattr(b, 'targets'):
-                                    for t in b.targets:
-                                        if t.id in fuzzy_property:
-                                            fuzzy_property_count += 1
-                            if isinstance(b, ast.FunctionDef):
-                                if b.name in fuzzy_method:
-                                    fuzzy_method_count += 1
-                                    methods.add(b.name)
-
-                    if fuzzy_method_count > 0: # and fuzzy_property_count > 0:
-                        doc = ast.get_docstring(module_node, clean=True)
-                        d = {
-                            'endpoint': u"/".join([u"", fname, module_node.name.lower()]),
-                            'methods': list(methods),
-                            'doc': doc if doc else u""
-                        }
-                        l.append(d)
-
-        return l
-
-    def reflect_controller_prefix(self, controller_prefix):
-        """
-        find the base controller path using this class's set controller_prefix
-
-        return -- string -- the controller base directory
-        """
-        #controller_prefix = self._controller_prefix if hasattr(self, "_controller_prefix") else self.controller_prefix
-        if not controller_prefix:
-            raise ValueError("reflect only works when you use a controller_prefix")
-
-        controller_path = u""
-        controller_dirs = controller_prefix.split(u".")
-        for p in sys.path:
-            fullp = os.path.join(p, *controller_dirs)
-            if os.path.isdir(fullp):
-                controller_path = fullp
-                break
-
-        if not controller_path:
-            raise IOError("could not find a valid path for modules with prefix: {}".format(controller_prefix))
-
-        return controller_path
-
-    def reflect(self):
-        controller_path = self.reflect_controller_prefix(self.controller_prefix)
-        l = []
-        for root, dirs, files in os.walk(controller_path, topdown=True):
-            for f in files:
-                l.extend(self.reflect_controller(root, f))
-            break
-
-        return l
-
 class VersionCall(Call):
     """
     versioning is based off of this post: http://urthen.github.io/2013/05/09/ways-to-version-your-api/
@@ -509,11 +425,10 @@ class VersionCall(Call):
     default_version = None
     """set this to the default version if you want a fallback version, if this is None then version check is enforced"""
 
-    @property
-    def controller_prefix(self):
+    def get_normalized_prefix(self):
         cp = u""
-        if hasattr(self, "_controller_prefix"):
-            cp = self._controller_prefix
+        if hasattr(self, "controller_prefix"):
+            cp = self.controller_prefix
         v = self.get_version()
         if cp:
             cp += u".{}".format(v)
@@ -521,10 +436,6 @@ class VersionCall(Call):
             cp = v
 
         return cp
-
-    @controller_prefix.setter
-    def controller_prefix(self, v):
-        self._controller_prefix = v
 
     def get_version(self):
         if not self.content_type:
@@ -547,23 +458,6 @@ class VersionCall(Call):
                 raise CallError(406, "Expected accept header with {};version=vN media type".format(self.content_type))
 
         return v
-
-    def reflect(self):
-        l = []
-        controller_path = self.reflect_controller_prefix(self._controller_prefix)
-        for root, dirs, _ in os.walk(controller_path, topdown=True):
-            for d in dirs:
-                for root,  _, files in os.walk(os.path.join(controller_path, d), topdown=True):
-                    for f in files:
-                        lv = self.reflect_controller(root, f)
-                        if lv:
-                            for x in xrange(len(lv)):
-                                lv[x]['header'] = "{};version={}".format(self.content_type, d)
-                            l.extend(lv)
-                    break
-            break
-
-        return l
 
 class AcceptHeader(object):
     """
@@ -643,6 +537,14 @@ class AcceptHeader(object):
             yield x
 
     def filter(self, media_type, **params):
+        """
+        iterate all the accept media types that match media_type
+
+        media_type -- string -- the media type to filter by
+        **params -- dict -- further filter by key: val
+
+        return -- generator -- yields all matching media type info things
+        """
         mtype, msubtype = self._split_media_type(media_type)
         for x in self.__iter__():
 
@@ -666,16 +568,162 @@ class AcceptHeader(object):
                     elif x[0][1] == msubtype:
                         yield x
 
+class Reflect(object):
+    """
+    Reflect the controllers to reveal information about what endpoints are live
+    """
+    def __init__(self, controller_prefix, content_type=None):
+        self.controller_prefix = controller_prefix
+        self.content_type = content_type
 
+    def normalize_endpoint(self, endpoint, *args, **kwargs):
+        """
+        handy for adding any args, or kwargs accumulated through all the calls to the endpoint
 
+        endpoint -- dict -- the endpoint information dict
+        """
+        return endpoint
 
+    def normalize_controller_module(self, controller_prefix, fname, *args, **kwargs):
+        """
+        normalize controller bits to a python module
 
+        example -- controller_prefix="foo", fname="bar" --> return "foo.bar"
 
+        return -- string -- the full.python.module that can be imported
+        """
+        return u".".join([controller_prefix, fname])
 
+    def walk_files(self, controller_path):
+        """
+        walk all the controllers that are submodules of controller_path
 
+        controller_path -- string -- the path to where the controllers are
 
+        return -- generator -- (file, args, kwargs) it yields each file and any extra info
+        """
+        for root, dirs, files in os.walk(controller_path, topdown=True):
+            for f in files:
+                yield f, [], {}
+            break
 
+    def get_controller_modules(self):
+        """
+        get all the controller modules
 
+        this will find any valid controller modules and yield all the endpoints in them
 
+        return -- generator -- endpoint info found in each controller module file
+        """
+        controller_path = self.find_controller_path()
+        controller_prefix = self.controller_prefix
+        for f, args, kwargs in self.walk_files(controller_path):
+                fname, fext = os.path.splitext(f)
+                if fext.lower() != u".py": continue
+                if fname == u"__init__": continue
+
+                controller_module = self.normalize_controller_module(controller_prefix, fname, *args, **kwargs)
+
+                for endpoint, args, kwargs in self.get_endpoints_in_controller(controller_module, *args, **kwargs):
+                    yield endpoint, args, kwargs
+
+    def get_endpoints(self):
+        """
+        go through all the controllers in controller prefix and return them
+
+        return -- list -- a list of endpoints found
+        """
+        pre_module_names = set(sys.modules.keys())
+
+        l = []
+
+        for endpoint, args, kwargs in self.get_controller_modules():
+            l.append(self.normalize_endpoint(endpoint, *args, **kwargs))
+
+        new_module_names = set(sys.modules.keys()) - pre_module_names
+
+        # remove any new modules that were added when this was run
+        for n in new_module_names: sys.modules.pop(n, None)
+
+        return l
+
+    def find_controller_path(self):
+        """
+        find the base controller path using this class's set controller_prefix
+
+        return -- string -- the controller base directory
+        """
+        controller_prefix = self.controller_prefix
+        if not controller_prefix:
+            raise ValueError("reflect only works when you use a controller_prefix")
+
+        controller_path = u""
+        controller_dirs = controller_prefix.split(u".")
+        for p in sys.path:
+            fullp = os.path.join(p, *controller_dirs)
+            if os.path.isdir(fullp):
+                controller_path = fullp
+                break
+
+        if not controller_path:
+            raise IOError("could not find a valid path for controllers in module: {}".format(controller_prefix))
+
+        return controller_path
+
+    def get_endpoints_in_controller(self, controller, *args, **kwargs):
+        """
+        get all the endpoints in this controller
+
+        return -- list -- a list of dicts with information about each endpoint in the controller
+        """
+        module = importlib.import_module(controller)
+        classes = inspect.getmembers(module, inspect.isclass)
+        options = set(['get', 'head', 'post', 'put', 'delete', 'trace', 'options', 'connect', 'patch'])
+        for k, v in classes:
+            k = k.lower()
+            public = getattr(v, 'endpoint_public', False)
+            if public:
+                v_options = getattr(v, 'endpoint_options', [])
+                if not v_options:
+                    v_options = []
+                    for option in options:
+                        if hasattr(v, option):
+                            v_options.append(option)
+
+                doc = inspect.getdoc(v)
+                name = controller.rpartition(".")[2].lower()
+                endpoint = [u""]
+                for n in [name, k]:
+                    if n != 'default': endpoint.append(n)
+                if len(endpoint) == 1:
+                    endpoint = u"/"
+                else:
+                    endpoint = u"/".join(endpoint)
+
+                d = {
+                    'endpoint': endpoint,
+                    'options': v_options,
+                    'doc': doc if doc else u""
+                }
+                yield d, args, kwargs
+
+class VersionReflect(Reflect):
+    """
+    same as Reflect, but for VersionCall
+    """
+    def normalize_controller_module(self, controller_prefix, fname, version, *args, **kwargs):
+        return u".".join([controller_prefix, version, fname])
+
+    def normalize_endpoint(self, endpoint, version, *args, **kwargs):
+        endpoint['headers'] = {}
+        endpoint['headers']['Accept'] = "{};version={}".format(self.content_type, version)
+        return endpoint
+
+    def walk_files(self, controller_path):
+        for root, versions, _ in os.walk(controller_path, topdown=True):
+            for version in versions:
+                for root,  _, files in os.walk(os.path.join(controller_path, version), topdown=True):
+                    for f in files:
+                        yield f, [], {'version': version}
 
 
