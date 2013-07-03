@@ -25,14 +25,9 @@ Endpoints has support for `accept` [header](http://www.w3.org/Protocols/rfc2616/
 
 ## Install
 
-Just clone the repo right now
-
-**NOTE, this does not work because I haven't added the setup.py script yet, natch**
-
 Use PIP
 
     pip install git+https://github.com/firstopinion/endpoints#egg=endpoints
-
 
 ### To run tests
 

@@ -45,7 +45,10 @@ class Controller(object):
     ---------------------------------------------------------------------------
 
     as you support more methods, like POST and PUT, you can just add post() and put()
-    methods to your Bar class and Bar will support those methods also
+    methods to your Bar class and Bar will support those methods. Although you can
+    request any method, here is a list of rfc approved methods:
+
+    http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
     """
 
     request = None
