@@ -29,11 +29,28 @@ class Controller(object):
     this is the interface for a Controller sub class
 
     I would suggest all your controllers extend this base class :)
+
+    to activate a new endpoint, just add a module on your PYTHONPATH that has a class
+    that extends this class, and then defines at least a get method, so if you wanted to create
+    the endpoint /foo/bar, you would just need to:
+
+    ---------------------------------------------------------------------------
+    # foo.py
+    import endpoints
+
+    class Bar(endpoints.Controller):
+        endpoint_public = True
+        def get(self, *args, **kwargs):
+            return "you just made a GET request"
+    ---------------------------------------------------------------------------
+
+    as you support more methods, like POST and PUT, you can just add post() and put()
+    methods to your Bar class and Bar will support those methods also
     """
 
     request = None
     """holds a Request() instance"""
-    
+
     response = None
     """holds a Response() instance"""
 
@@ -46,14 +63,6 @@ class Controller(object):
 
     endpoint_options = None
     """the list of supported http method options the controller has"""
-
-    def get(self, *args, **kwargs):
-        '''handle GET requests for this Controller endpoint'''
-        raise CallError(405, "GET not supported")
-
-    def post(self, *args, **kwargs):
-        '''handle POST requests for this Controller endpoint'''
-        raise CallError(405, "POST not supported")
 
 class Request(object):
     '''
