@@ -44,9 +44,9 @@ class Controller(object):
             return "you just made a GET request"
     ---------------------------------------------------------------------------
 
-    as you support more methods, like POST and PUT, you can just add post() and put()
+    as you support more methods, like POST and PUT, you can just add post(self) and put(self)
     methods to your Bar class and Bar will support those methods. Although you can
-    request any method, here is a list of rfc approved methods:
+    request any method, here is a list of rfc approved http request methods:
 
     http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
     """
@@ -254,7 +254,7 @@ class Response(object):
     @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
-        if not getattr(self, '_body', None): return None
+        if not hasattr(self, '_body'): return None
 
         b = self._body
         ct = self.headers.get('Content-Type', None)
@@ -700,7 +700,7 @@ class Reflect(object):
                     v_options = []
                     for option in options:
                         if hasattr(v, option):
-                            v_options.append(option)
+                            v_options.append(option.upper())
 
                 doc = inspect.getdoc(v)
                 name = controller.rpartition(".")[2].lower()

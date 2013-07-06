@@ -51,6 +51,13 @@ class ResponseTest(TestCase):
         r.body = b
         self.assertEqual(b, r.body)
 
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = {}
+        self.assertEqual(r.body, "{}")
+
+        # TODO: this really needs to be tested with unicode data
+
 class RequestTest(TestCase):
 
     def test_properties(self):
