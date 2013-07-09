@@ -8,7 +8,7 @@ import os
 import inspect
 import types
 
-__version__ = '0.5'
+__version__ = '0.5.1'
 
 class CallError(RuntimeError):
     """
@@ -729,6 +729,7 @@ class VersionReflect(Reflect):
     def normalize_endpoint(self, endpoint, version, *args, **kwargs):
         endpoint['headers'] = {}
         endpoint['headers']['Accept'] = "{};version={}".format(self.content_type, version)
+        endpoint['version'] = version
         return endpoint
 
     def walk_files(self, controller_path):

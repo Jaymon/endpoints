@@ -375,5 +375,6 @@ class VersionReflectTest(TestCase):
         self.assertEqual(2, len(l))
         for d in l:
             self.assertTrue('headers' in d)
+            self.assertTrue("version" in d)
 
 
