@@ -88,10 +88,84 @@ class RequestTest(TestCase):
         self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
         self.assertEqual(r.query_kwargs, query_kwargs)
 
+    def test_body(self):
+        r = endpoints.Request()
+        r.headers = {
+            'content-type': u"application/x-www-form-urlencoded",
+        }
+
+        r.body = u"foo=bar&che=baz&foo=che"
+        body_r = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        self.assertEqual(body_r, r.body)
+
+        r.body = u""
+        body_r = {}
+        self.assertEqual(body_r, r.body)
+
+        r.headers = {
+            'content-type': u"application/json",
+        }
+
+        r.body = '{"person":{"name":"bob"}}'
+        body_r = {u'person': {"name":"bob"}}
+        self.assertEqual(body_r, r.body)
+
+        r.body = u""
+        body_r = None
+        self.assertEqual(body_r, r.body)
+
+    def test_get_header(self):
+        r = endpoints.Request()
+
+        r.headers = {
+            'foo': 'bar',
+            'Content-Type': 'application/json',
+            'Happy-days': 'are-here-again'
+        }
+        v = r.get_header('foo', 'che')
+        self.assertEqual('bar', v)
+
+        v = r.get_header('Foo', 'che')
+        self.assertEqual('bar', v)
+
+        v = r.get_header('FOO', 'che')
+        self.assertEqual('bar', v)
+
+        v = r.get_header('che', 'che')
+        self.assertEqual('che', v)
+
+        v = r.get_header('che')
+        self.assertEqual(None, v)
+
+        v = r.get_header('content-type')
+        self.assertEqual('application/json', v)
+
+        v = r.get_header('happy-days')
+        self.assertEqual('are-here-again', v)
+
 class CallTest(TestCase):
 
-    def test_controller_info(self):
+    def test_get_controller_info(self):
         class MockRequest(object): pass
+
+        r = MockRequest()
+        r.path_args = [u'user', u'verify_credentials']
+        r.query_kwargs = {}
+        r.method = u"GET"
+        out_d = {
+            'class_name': u"Verify_credentials",
+            'args': [],
+            'method': u"get",
+            'module': u"controller.user",
+            'kwargs': {}
+        }
+
+        c = endpoints.Call("controller")
+        c.request = r
+
+        d = c.get_controller_info()
+        self.assertEqual(d, out_d)
+
         r = MockRequest()
         r.path_args = [u"foo", u"bar"]
         r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
@@ -101,7 +175,7 @@ class CallTest(TestCase):
             'class_name': u"Bar",
             'args': [],
             'method': u"get",
-            'module': u"foo",
+            'module': u"controller.foo",
             'kwargs':
                 {
                     'foo': u"bar",
@@ -109,7 +183,7 @@ class CallTest(TestCase):
                 }
         }
 
-        c = endpoints.Call()
+        c = endpoints.Call("controller")
         c.request = r
 
         d = c.get_controller_info()
@@ -123,7 +197,7 @@ class CallTest(TestCase):
 
         r.path_args = []
         out_d['args'] = []
-        out_d['module'] = u'default'
+        out_d['module'] = u'controller.default'
         out_d['class_name'] = u'Default'
 
         d = c.get_controller_info()
@@ -136,7 +210,7 @@ class CallTest(TestCase):
         r.path_args = [u"foo", u"bar"]
         r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
         r.method = u"GET"
-        c = endpoints.Call()
+        c = endpoints.Call("controller")
         c.request = r
 
         with self.assertRaises(endpoints.CallError):
@@ -147,7 +221,7 @@ class CallTest(TestCase):
             "    endpoint_public = True",
             "    def get(*args, **kwargs): pass"
         ])
-        testdata.create_module("foo", contents=contents)
+        testdata.create_module("controller.foo", contents=contents)
 
         # if it succeeds, then it passed the test :)
         d = c.get_callback_info()
@@ -159,7 +233,7 @@ class CallTest(TestCase):
         r.path_args = [u"foo2", u"bar"]
         r.query_kwargs = {u'foo2': u'bar', u'che': u'baz'}
         r.method = u"GET"
-        c = endpoints.Call()
+        c = endpoints.Call("controller")
         c.request = r
 
         contents = os.linesep.join([
@@ -167,7 +241,7 @@ class CallTest(TestCase):
             "    endpoint_public = False",
             "    def get(*args, **kwargs): pass"
         ])
-        testdata.create_module("foo2", contents=contents)
+        testdata.create_module("controller.foo2", contents=contents)
 
         # if it succeeds, then it passed the test :)
         with self.assertRaises(endpoints.CallError):
@@ -179,7 +253,7 @@ class VersionCallTest(TestCase):
         r = endpoints.Request()
         r.headers = {u'accept': u'application/json;version=v1'}
 
-        c = endpoints.VersionCall()
+        c = endpoints.VersionCall("controller")
         c.version_media_type = u'application/json'
         c.request = r
 
@@ -199,14 +273,10 @@ class VersionCallTest(TestCase):
         r = endpoints.Request()
         r.headers = {u'accept': u'application/json;version=v1'}
 
-        c = endpoints.VersionCall()
+        c = endpoints.VersionCall("foo.bar")
         c.content_type = u'application/json'
         c.request = r
 
-        cp = c.get_normalized_prefix()
-        self.assertEqual(u"v1", cp)
-
-        c.controller_prefix = "foo.bar"
         cp = c.get_normalized_prefix()
         self.assertEqual(u"foo.bar.v1", cp)
 
@@ -290,7 +360,7 @@ class ReflectTest(TestCase):
             "    def get(*args, **kwargs): pass",
             ""
         ])
-        testdata.create_module("controller.default", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_reflect.default", contents=contents, tmpdir=tmpdir)
 
         contents = os.linesep.join([
             "import endpoints",
@@ -299,7 +369,7 @@ class ReflectTest(TestCase):
             "    def get(*args, **kwargs): pass",
             ""
         ])
-        testdata.create_module("controller.foo", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_reflect.foo", contents=contents, tmpdir=tmpdir)
 
         contents = os.linesep.join([
             "from endpoints import Controller",
@@ -308,7 +378,7 @@ class ReflectTest(TestCase):
             "    def post(*args, **kwargs): pass",
             ""
         ])
-        testdata.create_module("controller.che", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_reflect.che", contents=contents, tmpdir=tmpdir)
 
         contents = os.linesep.join([
             "from endpoints import Controller as Con",
@@ -326,9 +396,9 @@ class ReflectTest(TestCase):
             "    endpoint_options = ['head']",
             ""
         ])
-        testdata.create_module("controller.bam", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_reflect.bam", contents=contents, tmpdir=tmpdir)
 
-        r = endpoints.Reflect("controller")
+        r = endpoints.Reflect("controller_reflect")
         l = r.get_endpoints()
         self.assertEqual(5, len(l))
 
@@ -359,7 +429,7 @@ class VersionReflectTest(TestCase):
             "    def get(*args, **kwargs): pass",
             ""
         ])
-        testdata.create_module("controller.v1.foo", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_vreflect.v1.foo", contents=contents, tmpdir=tmpdir)
         contents = os.linesep.join([
             "from endpoints import Controller",
             "class Baz(Controller):",
@@ -367,9 +437,9 @@ class VersionReflectTest(TestCase):
             "    def get(*args, **kwargs): pass",
             ""
         ])
-        testdata.create_module("controller.v2.che", contents=contents, tmpdir=tmpdir)
+        testdata.create_module("controller_vreflect.v2.che", contents=contents, tmpdir=tmpdir)
 
-        r = endpoints.VersionReflect("controller", 'application/json')
+        r = endpoints.VersionReflect("controller_vreflect", 'application/json')
         l = r.get_endpoints()
 
         self.assertEqual(2, len(l))

@@ -75,6 +75,14 @@ class Request(object):
     should route requests, so, many times, you'll need to write a glue function that takes however
     your request data is passed to Python and convert it into a Request instance that endpoints can
     understand
+
+    properties --
+
+    headers -- a dict of all the request headers
+    path -- the /path/part/of/the/url
+    path_args -- tied to path, it's path, but divided by / so all the path bits are returned as a list
+    query -- the ?name=val portion of a url
+    query_kwargs -- tied to query, the values in query but converted to a dict {name: val}
     '''
 
     @property
@@ -85,6 +93,12 @@ class Request(object):
     
     @headers.setter
     def headers(self, v):
+        """
+        set the headers
+
+        TODO -- to facilitate compatibility, all the header keys should be lower cased before setting, I can
+        do that here but I'm not sure I want to bother yet, that would simplify the get_header() method
+        """
         self._headers = v
 
     method = None
@@ -137,19 +151,80 @@ class Request(object):
         if not hasattr(self, '_query_kwargs'):
             self._query_kwargs = {}
             query = self.query
-            if query:
-                # we only want true array query args to be arrays
-                for k, kv in urlparse.parse_qs(query, True).iteritems():
-                    if len(kv) > 1:
-                        self._query_kwargs[k] = kv
-                    else:
-                        self._query_kwargs[k] = kv[0]
+            if query: self._query_kwargs = self._parse_query_str(query)
 
         return self._query_kwargs
 
     @query_kwargs.setter
     def query_kwargs(self, v):
         self._query_kwargs = v
+
+    @property
+    def body(self):
+        """
+        the request body, if this is a POST request
+
+        this tries to do the right thing with the body, so if you have set the body and
+        the content type is json, then it will return the body json decoded, if you need
+        the original string body, use _body
+
+        example --
+
+            self.body = '{"foo":{"name":"bar"}}'
+            b = self.body # a dict with: {"foo": { "name": "bar"}}
+            print self._body # '{"foo":{"name":"bar"}}'
+        """
+        if not hasattr(self, '_body'):
+            self._body = u""
+
+        b = self._body
+
+        # we are returning the body, let's try and be smart about it and match content type
+        ct = self.get_header('content-type')
+        if ct:
+            ct = ct.lower()
+            if ct.rfind(u"json") >= 0:
+                if b:
+                    b = json.loads(b)
+                else:
+                    b = None
+
+            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+                b = self._parse_query_str(b)
+
+        return b
+
+    @body.setter
+    def body(self, v):
+        self._body = v
+
+    def get_header(self, header_name, default_val=None):
+        """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
+        ret = default_val
+        headers = self.headers
+        if header_name in headers:
+            ret = headers[header_name]
+        elif header_name.lower() in headers:
+            ret = headers[header_name.lower()]
+        elif header_name.title() in headers:
+            ret = headers[header_name.title()]
+        elif header_name.upper() in headers:
+            ret = headers[header_name.upper()]
+        elif header_name.capitalize() in headers:
+            ret = headers[header_name.capitalize()]
+
+        return ret
+
+    def _parse_query_str(self, query):
+        """return name=val&name2=val2 strings into {name: val} dict"""
+        d = {}
+        for k, kv in urlparse.parse_qs(query, True).iteritems():
+            if len(kv) > 1:
+                d[k] = kv
+            else:
+                d[k] = kv[0]
+
+        return d
 
 class Response(object):
     """
@@ -319,7 +394,7 @@ class Call(object):
     def response(self, v):
         self._response = v
 
-    def __init__(self, controller_prefix=u"", *args, **kwargs):
+    def __init__(self, controller_prefix, *args, **kwargs):
         '''
         create the instance
 
@@ -357,7 +432,7 @@ class Call(object):
         # the second arg is the Class
         if len(path_args) > 0:
             class_name = path_args.pop(0)
-            d['class_name'] = class_name.title()
+            d['class_name'] = class_name.capitalize()
 
         d['args'] = path_args
         d['kwargs'] = req.query_kwargs
@@ -586,7 +661,6 @@ class Reflect(object):
     """
     def __init__(self, controller_prefix, content_type=None):
         self.controller_prefix = controller_prefix
-        self.content_type = content_type
 
     def normalize_endpoint(self, endpoint, *args, **kwargs):
         """
@@ -723,6 +797,10 @@ class VersionReflect(Reflect):
     """
     same as Reflect, but for VersionCall
     """
+    def __init__(self, controller_prefix, content_type=None):
+        self.content_type = content_type
+        super(VersionReflect, self).__init__(controller_prefix)
+
     def normalize_controller_module(self, controller_prefix, fname, version, *args, **kwargs):
         return u".".join([controller_prefix, version, fname])
 
