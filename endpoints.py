@@ -496,11 +496,11 @@ class Call(object):
 
         except CallError, e:
             self.response.code = e.code
-            self.response.body = e.message
+            self.response.body = e.msg
 
         except Exception, e:
             self.response.code = 500
-            self.response.body = e.message
+            self.response.body = e.msg
 
         return self.response
 
