@@ -56,6 +56,14 @@ class ResponseTest(TestCase):
         r.body = {}
         self.assertEqual(r.body, "{}")
 
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = ValueError("this is the message")
+        r.code = 500
+        self.assertEqual(r.body, '{"errno": 500, "errmsg": "this is the message"}')
+        r.headers['Content-Type'] = ''
+        self.assertEqual(r.body, "this is the message")
+
         # TODO: this really needs to be tested with unicode data
 
 class RequestTest(TestCase):

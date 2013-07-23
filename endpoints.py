@@ -78,28 +78,15 @@ class Request(object):
 
     properties --
 
-    headers -- a dict of all the request headers
+    headers -- a dict of all the request headers in { header_name: header_val } format
     path -- the /path/part/of/the/url
     path_args -- tied to path, it's path, but divided by / so all the path bits are returned as a list
     query -- the ?name=val portion of a url
     query_kwargs -- tied to query, the values in query but converted to a dict {name: val}
     '''
 
-    @property
-    def headers(self):
-        """all the http request headers in header: val format"""
-        if not getattr(self, '_headers', None): self._headers = {}
-        return self._headers
-    
-    @headers.setter
-    def headers(self, v):
-        """
-        set the headers
-
-        TODO -- to facilitate compatibility, all the header keys should be lower cased before setting, I can
-        do that here but I'm not sure I want to bother yet, that would simplify the get_header() method
-        """
-        self._headers = v
+    headers = None
+    """all the http request headers in header: val format"""
 
     method = None
     """the http method (GET, POST)"""
@@ -197,6 +184,9 @@ class Request(object):
     @body.setter
     def body(self, v):
         self._body = v
+
+    def __init__(self):
+        self.headers = {}
 
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
@@ -303,15 +293,11 @@ class Response(object):
     https://github.com/symfony/HttpFoundation/blob/master/Response.php
     """
 
-    @property
-    def headers(self):
-        """response headers in header: value format"""
-        if not getattr(self, '_headers', None): self._headers = {}
-        return self._headers
-    
-    @headers.setter
-    def headers(self, v):
-        self._headers = v
+    headers = None
+    """the http return headers in { header_name: header_val } format"""
+
+    def __init__(self):
+        self.headers = {}
 
     @property
     def status(self):
@@ -332,11 +318,22 @@ class Response(object):
         if not hasattr(self, '_body'): return None
 
         b = self._body
+        is_error = isinstance(b, Exception)
         ct = self.headers.get('Content-Type', None)
         if ct:
             ct = ct.lower()
             if ct.rfind(u"json") >= 0: # fuzzy, not sure I like that
-                b = json.dumps(b)
+                if is_error:
+                    b = json.dumps({
+                        "errmsg": str(b),
+                        "errno": self.code
+                    })
+                else:
+                    b = json.dumps(b)
+
+        else:
+            if is_error:
+                b = str(b)
 
         return b
     
@@ -496,11 +493,11 @@ class Call(object):
 
         except CallError, e:
             self.response.code = e.code
-            self.response.body = str(e)
+            self.response.body = e
 
         except Exception, e:
             self.response.code = 500
-            self.response.body = str(e)
+            self.response.body = e
 
         return self.response
 
