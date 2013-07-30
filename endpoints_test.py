@@ -98,10 +98,11 @@ class RequestTest(TestCase):
 
     def test_body(self):
         r = endpoints.Request()
+        r.method = 'POST'
+
         r.headers = {
             'content-type': u"application/x-www-form-urlencoded",
         }
-
         r.body = u"foo=bar&che=baz&foo=che"
         body_r = {u'foo': [u'bar', u'che'], u'che': u'baz'}
         self.assertEqual(body_r, r.body)
@@ -113,7 +114,6 @@ class RequestTest(TestCase):
         r.headers = {
             'content-type': u"application/json",
         }
-
         r.body = '{"person":{"name":"bob"}}'
         body_r = {u'person': {"name":"bob"}}
         self.assertEqual(body_r, r.body)
@@ -121,6 +121,19 @@ class RequestTest(TestCase):
         r.body = u""
         body_r = None
         self.assertEqual(body_r, r.body)
+
+        r.headers = {}
+        r.body = '{"person":{"name":"bob"}}'
+        with self.assertRaises(ValueError):
+            r.body
+
+        r.method = 'GET'
+        r.headers = {
+            'content-type': u"application/json",
+        }
+        r.body = '{"person":{"name":"bob"}}'
+        with self.assertRaises(ValueError):
+            r.body
 
     def test_get_header(self):
         r = endpoints.Request()

@@ -161,6 +161,8 @@ class Request(object):
             b = self.body # a dict with: {"foo": { "name": "bar"}}
             print self._body # '{"foo":{"name":"bar"}}'
         """
+        if self.method != 'POST':
+            raise ValueError('no body on non POST requests')
         if not hasattr(self, '_body'):
             self._body = u""
 
@@ -178,6 +180,9 @@ class Request(object):
 
             elif ct.rfind(u"x-www-form-urlencoded") >= 0:
                 b = self._parse_query_str(b)
+
+        else:
+            raise ValueError('POST body decode failed because of missing Content-Type header')
 
         return b
 
