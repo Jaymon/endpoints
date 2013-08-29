@@ -7,8 +7,11 @@ import sys
 import os
 import inspect
 import types
+import logging
 
-__version__ = '0.5.3'
+__version__ = '0.5.4'
+
+logger = logging.getLogger(__name__)
 
 class CallError(RuntimeError):
     """
@@ -469,6 +472,7 @@ class Call(object):
             module_instance.call = self
 
             callback = getattr(module_instance, d['method'])
+            logger.debug("handling request with callback {}.{}.{}".format(d['module'], d['class_name'], d['method']))
 
         except AttributeError, e:
             r = self.request
@@ -497,10 +501,12 @@ class Call(object):
             self.response.body = body
 
         except CallError, e:
+            logger.exception(e)
             self.response.code = e.code
             self.response.body = e
 
         except Exception, e:
+            logger.exception(e)
             self.response.code = 500
             self.response.body = e
 
