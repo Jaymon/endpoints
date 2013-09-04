@@ -27,6 +27,7 @@ setup(
     author_email='jay@marcyes.com',
     url='http://github.com/firsopinion/{}'.format(name),
     py_modules=[name],
+    packages=[name, '{}.reflection'.format(name)],
     license="MIT",
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 4 - Beta',

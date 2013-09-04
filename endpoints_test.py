@@ -176,7 +176,7 @@ class CallTest(TestCase):
         out_d = {
             'class_name': u"Verify_credentials",
             'args': [],
-            'method': u"get",
+            'method': u"GET",
             'module': u"controller.user",
             'kwargs': {}
         }
@@ -195,7 +195,7 @@ class CallTest(TestCase):
         out_d = {
             'class_name': u"Bar",
             'args': [],
-            'method': u"get",
+            'method': u"GET",
             'module': u"controller.foo",
             'kwargs':
                 {
@@ -240,7 +240,7 @@ class CallTest(TestCase):
         contents = os.linesep.join([
             "class Bar(object):",
             "    endpoint_public = True",
-            "    def get(*args, **kwargs): pass"
+            "    def GET(*args, **kwargs): pass"
         ])
         testdata.create_module("controller.foo", contents=contents)
 
@@ -267,6 +267,7 @@ class CallTest(TestCase):
         # if it succeeds, then it passed the test :)
         with self.assertRaises(endpoints.CallError):
             d = c.get_callback_info()
+
 
 class VersionCallTest(TestCase):
 
@@ -300,6 +301,7 @@ class VersionCallTest(TestCase):
 
         cp = c.get_normalized_prefix()
         self.assertEqual(u"foo.bar.v1", cp)
+
 
 class AcceptHeaderTest(TestCase):
 
@@ -369,6 +371,7 @@ class AcceptHeaderTest(TestCase):
 
             self.assertEqual(t[2], count)
 
+
 class ReflectTest(TestCase):
 
     def test_get_endpoints(self):
@@ -377,8 +380,7 @@ class ReflectTest(TestCase):
         contents = os.linesep.join([
             "import endpoints",
             "class default(endpoints.Controller):",
-            "    endpoint_public = True",
-            "    def get(*args, **kwargs): pass",
+            "    def GET(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_reflect.default", contents=contents, tmpdir=tmpdir)
@@ -386,8 +388,7 @@ class ReflectTest(TestCase):
         contents = os.linesep.join([
             "import endpoints",
             "class default(endpoints.Controller):",
-            "    endpoint_public = True",
-            "    def get(*args, **kwargs): pass",
+            "    def GET(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_reflect.foo", contents=contents, tmpdir=tmpdir)
@@ -395,26 +396,23 @@ class ReflectTest(TestCase):
         contents = os.linesep.join([
             "from endpoints import Controller",
             "class Baz(Controller):",
-            "    endpoint_public = True",
-            "    def post(*args, **kwargs): pass",
+            "    def POST(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_reflect.che", contents=contents, tmpdir=tmpdir)
 
         contents = os.linesep.join([
             "from endpoints import Controller as Con",
-            "class Base(Con):",
-            "    def get(*args, **kwargs): pass",
+            "class _Base(Con):",
+            "    def GET(*args, **kwargs): pass",
             "",
-            "class Boo(Base):",
-            "    endpoint_public = True",
-            "    def delete(*args, **kwargs): pass",
-            "    def post(*args, **kwargs): pass",
+            "class Boo(_Base):",
+            "    def DELETE(*args, **kwargs): pass",
+            "    def POST(*args, **kwargs): pass",
             ""
-            "class Bah(Base):",
+            "class Bah(_Base):",
             "    '''this is the doc string'''",
-            "    endpoint_public = True",
-            "    endpoint_options = ['head']",
+            "    def HEAD(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_reflect.bam", contents=contents, tmpdir=tmpdir)
@@ -429,7 +427,7 @@ class ReflectTest(TestCase):
                     return d
 
         d = get_match("/bam/bah", l)
-        self.assertEqual(d['options'], ["head"])
+        self.assertEqual(d['options'], ["GET", "HEAD"])
         self.assertGreater(len(d['doc']), 0)
 
         d = get_match("/", l)
@@ -446,16 +444,14 @@ class VersionReflectTest(TestCase):
         contents = os.linesep.join([
             "import endpoints",
             "class Bar(endpoints.Controller):",
-            "    endpoint_public = True",
-            "    def get(*args, **kwargs): pass",
+            "    def GET(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_vreflect.v1.foo", contents=contents, tmpdir=tmpdir)
         contents = os.linesep.join([
             "from endpoints import Controller",
             "class Baz(Controller):",
-            "    endpoint_public = True",
-            "    def get(*args, **kwargs): pass",
+            "    def GET(*args, **kwargs): pass",
             ""
         ])
         testdata.create_module("controller_vreflect.v2.che", contents=contents, tmpdir=tmpdir)

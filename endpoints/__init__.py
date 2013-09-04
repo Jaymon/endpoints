@@ -3,13 +3,12 @@ import urlparse
 import urllib
 import importlib
 import json
-import sys
 import os
-import inspect
-import types
 import logging
 
-__version__ = '0.5.4'
+from .reflection import Reflect, VersionReflect
+
+__version__ = '0.6'
 
 logger = logging.getLogger(__name__)
 
@@ -33,25 +32,36 @@ class Controller(object):
 
     I would suggest all your controllers extend this base class :)
 
-    to activate a new endpoint, just add a module on your PYTHONPATH that has a class
-    that extends this class, and then defines at least a get method, so if you wanted to create
-    the endpoint /foo/bar, you would just need to:
+    to activate a new endpoint, just add a module on your PYTHONPATH.controller_prefix that has a class
+    that extends this class, and then defines at least one option method (like GET or POST), so if you
+    wanted to create the endpoint /foo/bar (using che controller_prefix), you would just need to:
 
     ---------------------------------------------------------------------------
-    # foo.py
+    # che.foo.py
     import endpoints
 
     class Bar(endpoints.Controller):
-        endpoint_public = True
-        def get(self, *args, **kwargs):
+        def GET(self, *args, **kwargs):
             return "you just made a GET request"
     ---------------------------------------------------------------------------
 
-    as you support more methods, like POST and PUT, you can just add post(self) and put(self)
+    as you support more methods, like POST and PUT, you can just add POST(self) and PUT(self)
     methods to your Bar class and Bar will support those methods. Although you can
-    request any method, here is a list of rfc approved http request methods:
+    request any method (a method is valid if it is all uppercase), here is a list of
+    rfc approved http request methods:
 
     http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+
+    If you would like to create a base controller that other controllers will extend and don't
+    want that controller to be picked up by reflection, just start the classname with an underscore:
+
+    ---------------------------------------------------------------------------
+    import endpoints
+
+    class _BaseController(endpoints.Controller):
+        def GET(self, *args, **kwargs):
+            return "every controller that extends this will have this GET method"
+    ---------------------------------------------------------------------------
     """
 
     request = None
@@ -63,12 +73,10 @@ class Controller(object):
     call = None
     """holds the call() instance that invoked this Controller"""
 
-    endpoint_public = False
-    """set this to True if the controller should be made publicly available, this is
-    handy for when you want to make base controllers that can't be accessed, like endpoints.Controller"""
+    private = False
+    """set this to True if the controller should not be picked up by reflection, the controller
+    will still be available, but reflection will not reveal it as an endpoint"""
 
-    endpoint_options = None
-    """the list of supported http method options the controller has"""
 
 class Request(object):
     '''
@@ -161,8 +169,8 @@ class Request(object):
         example --
 
             self.body = '{"foo":{"name":"bar"}}'
-            b = self.body # a dict with: {"foo": { "name": "bar"}}
-            print self._body # '{"foo":{"name":"bar"}}'
+            b = self.body # dict with: {"foo": { "name": "bar"}}
+            print self._body # string with: u'{"foo":{"name":"bar"}}'
         """
         if self.method != 'POST':
             raise ValueError('no body on non POST requests')
@@ -185,7 +193,7 @@ class Request(object):
                 b = self._parse_query_str(b)
 
         else:
-            raise ValueError('POST body decode failed because of missing Content-Type header')
+            raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
 
         return b
 
@@ -223,6 +231,7 @@ class Request(object):
                 d[k] = kv[0]
 
         return d
+
 
 class Response(object):
     """
@@ -349,6 +358,7 @@ class Response(object):
     def body(self, v):
         self._body = v
 
+
 class Call(object):
     """
     Where all the routing magic happens
@@ -422,7 +432,7 @@ class Call(object):
         path_args = list(req.path_args)
         d['module'] = u"default"
         d['class_name'] = u"Default"
-        d['method'] = req.method.lower()
+        d['method'] = req.method.upper()
         d['args'] = []
         d['kwargs'] = {}
 
@@ -457,9 +467,9 @@ class Call(object):
             module = importlib.import_module(d['module'])
             module_class = getattr(module, d['class_name'])
 
-            if not getattr(module_class, 'endpoint_public'):
+            if getattr(module_class, 'disabled', False):
                 r = self.request
-                raise ImportError('{} is not public'.format(r.path))
+                raise ImportError('{} is disabled'.format(r.path))
 
         except (ImportError, AttributeError), e:
             r = self.request
@@ -662,167 +672,4 @@ class AcceptHeader(object):
                         yield x
                     elif x[0][1] == msubtype:
                         yield x
-
-class Reflect(object):
-    """
-    Reflect the controllers to reveal information about what endpoints are live
-    """
-    def __init__(self, controller_prefix, content_type=None):
-        self.controller_prefix = controller_prefix
-
-    def normalize_endpoint(self, endpoint, *args, **kwargs):
-        """
-        handy for adding any args, or kwargs accumulated through all the calls to the endpoint
-
-        endpoint -- dict -- the endpoint information dict
-        """
-        return endpoint
-
-    def normalize_controller_module(self, controller_prefix, fname, *args, **kwargs):
-        """
-        normalize controller bits to a python module
-
-        example -- controller_prefix="foo", fname="bar" --> return "foo.bar"
-
-        return -- string -- the full.python.module that can be imported
-        """
-        return u".".join([controller_prefix, fname])
-
-    def walk_files(self, controller_path):
-        """
-        walk all the controllers that are submodules of controller_path
-
-        controller_path -- string -- the path to where the controllers are
-
-        return -- generator -- (file, args, kwargs) it yields each file and any extra info
-        """
-        for root, dirs, files in os.walk(controller_path, topdown=True):
-            for f in files:
-                yield f, [], {}
-            break
-
-    def get_controller_modules(self):
-        """
-        get all the controller modules
-
-        this will find any valid controller modules and yield all the endpoints in them
-
-        return -- generator -- endpoint info found in each controller module file
-        """
-        controller_path = self.find_controller_path()
-        controller_prefix = self.controller_prefix
-        for f, args, kwargs in self.walk_files(controller_path):
-                fname, fext = os.path.splitext(f)
-                if fext.lower() != u".py": continue
-                if fname == u"__init__": continue
-
-                controller_module = self.normalize_controller_module(controller_prefix, fname, *args, **kwargs)
-
-                for endpoint, args, kwargs in self.get_endpoints_in_controller(controller_module, *args, **kwargs):
-                    yield endpoint, args, kwargs
-
-    def get_endpoints(self):
-        """
-        go through all the controllers in controller prefix and return them
-
-        return -- list -- a list of endpoints found
-        """
-        pre_module_names = set(sys.modules.keys())
-
-        l = []
-
-        for endpoint, args, kwargs in self.get_controller_modules():
-            l.append(self.normalize_endpoint(endpoint, *args, **kwargs))
-
-        new_module_names = set(sys.modules.keys()) - pre_module_names
-
-        # remove any new modules that were added when this was run
-        for n in new_module_names: sys.modules.pop(n, None)
-
-        return l
-
-    def find_controller_path(self):
-        """
-        find the base controller path using this class's set controller_prefix
-
-        return -- string -- the controller base directory
-        """
-        controller_prefix = self.controller_prefix
-        if not controller_prefix:
-            raise ValueError("reflect only works when you use a controller_prefix")
-
-        controller_path = u""
-        controller_dirs = controller_prefix.split(u".")
-        for p in sys.path:
-            fullp = os.path.join(p, *controller_dirs)
-            if os.path.isdir(fullp):
-                controller_path = fullp
-                break
-
-        if not controller_path:
-            raise IOError("could not find a valid path for controllers in module: {}".format(controller_prefix))
-
-        return controller_path
-
-    def get_endpoints_in_controller(self, controller, *args, **kwargs):
-        """
-        get all the endpoints in this controller
-
-        return -- list -- a list of dicts with information about each endpoint in the controller
-        """
-        module = importlib.import_module(controller)
-        classes = inspect.getmembers(module, inspect.isclass)
-        options = set(['get', 'head', 'post', 'put', 'delete', 'trace', 'options', 'connect', 'patch'])
-        for k, v in classes:
-            k = k.lower()
-            public = getattr(v, 'endpoint_public', False)
-            if public:
-                v_options = getattr(v, 'endpoint_options', [])
-                if not v_options:
-                    v_options = []
-                    for option in options:
-                        if hasattr(v, option):
-                            v_options.append(option.upper())
-
-                doc = inspect.getdoc(v)
-                name = controller.rpartition(".")[2].lower()
-                endpoint = [u""]
-                for n in [name, k]:
-                    if n != 'default': endpoint.append(n)
-                if len(endpoint) == 1:
-                    endpoint = u"/"
-                else:
-                    endpoint = u"/".join(endpoint)
-
-                d = {
-                    'endpoint': endpoint,
-                    'options': v_options,
-                    'doc': doc if doc else u""
-                }
-                yield d, args, kwargs
-
-class VersionReflect(Reflect):
-    """
-    same as Reflect, but for VersionCall
-    """
-    def __init__(self, controller_prefix, content_type=None):
-        self.content_type = content_type
-        super(VersionReflect, self).__init__(controller_prefix)
-
-    def normalize_controller_module(self, controller_prefix, fname, version, *args, **kwargs):
-        return u".".join([controller_prefix, version, fname])
-
-    def normalize_endpoint(self, endpoint, version, *args, **kwargs):
-        endpoint['headers'] = {}
-        endpoint['headers']['Accept'] = "{};version={}".format(self.content_type, version)
-        endpoint['version'] = version
-        return endpoint
-
-    def walk_files(self, controller_path):
-        for root, versions, _ in os.walk(controller_path, topdown=True):
-            for version in versions:
-                for root,  _, files in os.walk(os.path.join(controller_path, version), topdown=True):
-                    for f in files:
-                        yield f, [], {'version': version}
-
 
