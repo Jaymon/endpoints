@@ -9,7 +9,7 @@ import ast
 
 name = 'endpoints'
 version = ''
-with open('{}.py'.format(name), 'rU') as f:
+with open('{}/__init__.py'.format(name), 'rU') as f:
     for node in (n for n in ast.parse(f.read()).body if isinstance(n, ast.Assign)):
         node_name = node.targets[0]
         if isinstance(node_name, ast.Name) and node_name.id.startswith('__version__'):
