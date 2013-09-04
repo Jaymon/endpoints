@@ -4,7 +4,7 @@
 # http://docs.python.org/2/distutils/examples.html
 
 import sys
-from setuptools import setup
+from setuptools import setup, find_packages
 import ast
 
 name = 'endpoints'
@@ -27,7 +27,7 @@ setup(
     author_email='jay@marcyes.com',
     url='http://github.com/firsopinion/{}'.format(name),
     py_modules=[name],
-    packages=[name, '{}.reflection'.format(name)],
+    packages=find_packages(),
     license="MIT",
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 4 - Beta',
