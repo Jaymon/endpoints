@@ -438,7 +438,10 @@ class Call(object):
 
         # the first arg is the module
         if len(path_args) > 0:
-            d['module'] = path_args.pop(0)
+            module_name = path_args.pop(0)
+            if module_name.startswith(u'_'):
+                raise ValueError("{} is an invalid".format(module_name))
+            d['module'] = module_name
 
         controller_prefix = self.get_normalized_prefix()
         if controller_prefix:
@@ -447,6 +450,8 @@ class Call(object):
         # the second arg is the Class
         if len(path_args) > 0:
             class_name = path_args.pop(0)
+            if class_name.startswith(u'_'):
+                raise ValueError("{} is an invalid".format(class_name))
             d['class_name'] = class_name.capitalize()
 
         d['args'] = path_args
