@@ -238,8 +238,8 @@ class CallTest(TestCase):
             d = c.get_callback_info()
 
         contents = os.linesep.join([
-            "class Bar(object):",
-            "    endpoint_public = True",
+            "from endpoints import Controller",
+            "class Bar(Controller):",
             "    def GET(*args, **kwargs): pass"
         ])
         testdata.create_module("controller.foo", contents=contents)
@@ -258,8 +258,8 @@ class CallTest(TestCase):
         c.request = r
 
         contents = os.linesep.join([
-            "class Bar(object):",
-            "    endpoint_public = False",
+            "from endpoints import Controller",
+            "class Bar(Controller):",
             "    def get(*args, **kwargs): pass"
         ])
         testdata.create_module("controller.foo2", contents=contents)

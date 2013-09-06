@@ -30,7 +30,7 @@ class Controller(object):
     """
     this is the interface for a Controller sub class
 
-    I would suggest all your controllers extend this base class :)
+    I would suggest all your controllers extend this base class, since it ensures a proper interface :)
 
     to activate a new endpoint, just add a module on your PYTHONPATH.controller_prefix that has a class
     that extends this class, and then defines at least one option method (like GET or POST), so if you
@@ -76,6 +76,10 @@ class Controller(object):
     private = False
     """set this to True if the controller should not be picked up by reflection, the controller
     will still be available, but reflection will not reveal it as an endpoint"""
+
+    def __init__(self, request, response):
+        self.request = request
+        self.response = response
 
 
 class Request(object):
@@ -481,9 +485,7 @@ class Call(object):
             raise CallError(404, "{} not found because of error: {}".format(r.path, e.message))
 
         try:
-            module_instance = module_class()
-            module_instance.request = self.request
-            module_instance.response = self.response
+            module_instance = module_class(self.request, self.response)
             module_instance.call = self
 
             callback = getattr(module_instance, d['method'])
