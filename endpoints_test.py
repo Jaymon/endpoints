@@ -276,7 +276,7 @@ class VersionCallTest(TestCase):
         r.headers = {u'accept': u'application/json;version=v1'}
 
         c = endpoints.VersionCall("controller")
-        c.version_media_type = u'application/json'
+        #c.version_media_type = u'application/json'
         c.request = r
 
         v = c.get_version()
@@ -290,6 +290,57 @@ class VersionCallTest(TestCase):
         c.default_version = u'v1'
         v = c.get_version()
         self.assertEqual(u'v1', v)
+
+    def test_get_version_default(self):
+        """turns out, calls were failing if there was no accept header even if there were defaults set"""
+        r = endpoints.Request()
+        r.headers = {}
+
+        c = endpoints.VersionCall("controller")
+        c.request = r
+
+        r.headers = {}
+        c.content_type = u'application/json'
+        c.default_version = None
+        with self.assertRaises(endpoints.CallError):
+            v = c.get_version()
+
+        r.headers = {u'accept': u'application/json;version=v1'}
+        v = c.get_version()
+        self.assertEqual(u'v1', v)
+
+        c.content_type = None
+        c.default_version = "v1"
+        with self.assertRaises(ValueError):
+            v = c.get_version()
+
+        r.headers = {}
+        c.content_type = None
+        c.default_version = "v1"
+        with self.assertRaises(ValueError):
+            v = c.get_version()
+
+        r.headers = {u'accept': u'application/json;version=v1'}
+        with self.assertRaises(ValueError):
+            v = c.get_version()
+
+        r.headers = {u'accept': u'*/*'}
+        c.content_type = u'application/json'
+        c.default_version = "v5"
+        v = c.get_version()
+        self.assertEqual(u'v5', v)
+
+        r.headers = {u'accept': u'*/*'}
+        c.content_type = u'application/json'
+        c.default_version = None
+        with self.assertRaises(endpoints.CallError):
+            v = c.get_version()
+
+        r.headers = {u'accept': u'*/*;version=v8'}
+        c.content_type = u'application/json'
+        c.default_version = None
+        v = c.get_version()
+        self.assertEqual(u'v8', v)
 
     def test_controller_prefix(self):
         r = endpoints.Request()
@@ -335,6 +386,16 @@ class AcceptHeaderTest(TestCase):
 
     def test_filter(self):
         ts = [
+            (
+                u"*/*;version=v5", # accept header that is parsed
+                (u"application/json", {}), # filter args, kwargs
+                1 # how many matches are expected
+            ),
+            (
+                u"*/*;version=v5",
+                (u"application/json", {u'version': u'v5'}),
+                1
+            ),
             (
                 u"application/json",
                 (u"application/json", {}),

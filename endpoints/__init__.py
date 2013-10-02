@@ -349,8 +349,19 @@ class Response(object):
                         "errmsg": str(b),
                         "errno": self.code
                     })
+
                 else:
+                    # I don't like this, if we have a content type but it isn't one
+                    # of the supported ones we were returning the exception, which threw
+                    # Jarid off, but now it just returns a string, which is not best either
+                    # my thought is we could have a body_type_subtype method that would 
+                    # make it possible to easily handle custom types
+                    # eg, "application/json" would become: self.body_application_json(b, is_error)
                     b = json.dumps(b)
+
+            else:
+                if is_error:
+                    b = str(b)
 
         else:
             if is_error:
@@ -556,18 +567,16 @@ class VersionCall(Call):
         v = None
         h = self.request.headers
         accept_header = h.get('accept', u"")
-        if not accept_header:
-            raise CallError(406, "Expected accept header with {} media type".format(self.content_type))
-
-        a = AcceptHeader(accept_header)
-        for mt in a.filter(self.content_type):
-            v = mt[2].get(u"version", None)
-            if v: break
+        if accept_header:
+            a = AcceptHeader(accept_header)
+            for mt in a.filter(self.content_type):
+                v = mt[2].get(u"version", None)
+                if v: break
 
         if not v:
             v = self.default_version
             if not v:
-                raise CallError(406, "Expected accept header with {};version=vN media type".format(self.content_type))
+                raise CallError(406, "Expected accept header with {};version=N media type".format(self.content_type))
 
         return v
 
@@ -659,7 +668,6 @@ class AcceptHeader(object):
         """
         mtype, msubtype = self._split_media_type(media_type)
         for x in self.__iter__():
-
             # all the params have to match to make the media type valid
             matched = True
             for k, v in params.iteritems():
@@ -668,15 +676,27 @@ class AcceptHeader(object):
                     break
 
             if matched:
-                if mtype == u'*':
+                if x[0][0] == u'*':
+                    if x[0][1] == u'*':
+                        yield x
+
+                    elif x[0][1] == msubtype:
+                        yield x
+
+                elif mtype == u'*':
                     if msubtype == u'*':
                         yield x
-                    else:
-                        if x[0][1] == msubtype:
-                            yield x
+
+                    elif x[0][1] == msubtype:
+                        yield x
+
                 elif x[0][0] == mtype:
                     if msubtype == u'*':
                         yield x
+
+                    elif x[0][1] == u'*':
+                        yield x
+
                     elif x[0][1] == msubtype:
                         yield x
 
