@@ -131,9 +131,8 @@ class RequestTest(TestCase):
         r.headers = {
             'content-type': u"application/json",
         }
-        r.body = '{"person":{"name":"bob"}}'
-        with self.assertRaises(ValueError):
-            r.body
+        r.body = None
+        self.assertEqual(None, r.body)
 
     def test_get_header(self):
         r = endpoints.Request()

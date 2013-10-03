@@ -176,28 +176,28 @@ class Request(object):
             b = self.body # dict with: {"foo": { "name": "bar"}}
             print self._body # string with: u'{"foo":{"name":"bar"}}'
         """
-        if self.method != 'POST':
-            raise ValueError('no body on non POST requests')
+#        if self.method != 'POST':
+#            raise ValueError('no body on non POST requests')
         if not hasattr(self, '_body'):
-            self._body = u""
+            self._body = None
 
         b = self._body
+        if b is not None:
+            # we are returning the body, let's try and be smart about it and match content type
+            ct = self.get_header('content-type')
+            if ct:
+                ct = ct.lower()
+                if ct.rfind(u"json") >= 0:
+                    if b:
+                        b = json.loads(b)
+                    else:
+                        b = None
 
-        # we are returning the body, let's try and be smart about it and match content type
-        ct = self.get_header('content-type')
-        if ct:
-            ct = ct.lower()
-            if ct.rfind(u"json") >= 0:
-                if b:
-                    b = json.loads(b)
-                else:
-                    b = None
+                elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+                    b = self._parse_query_str(b)
 
-            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-                b = self._parse_query_str(b)
-
-        else:
-            raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
+            else:
+                raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
 
         return b
 
