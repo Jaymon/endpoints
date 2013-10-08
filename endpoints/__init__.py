@@ -8,7 +8,7 @@ import logging
 
 from .reflection import Reflect, VersionReflect
 
-__version__ = '0.6'
+__version__ = '0.6.1'
 
 logger = logging.getLogger(__name__)
 
