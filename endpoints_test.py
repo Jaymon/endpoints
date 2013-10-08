@@ -97,6 +97,24 @@ class RequestTest(TestCase):
         self.assertEqual(r.query_kwargs, query_kwargs)
 
     def test_body(self):
+        # simulate a problem I had with a request with curl
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.body = ""
+        r.headers = {
+            'PATTERN': u"/",
+            'x-forwarded-for': u"127.0.0.1",
+            'URI': u"/",
+            'accept': u"*/*",
+            'user-agent': u"curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8y zlib/1.2.5",
+            'host': u"localhost",
+            'VERSION': u"HTTP/1.1",
+            'PATH': u"/",
+            'METHOD': u"GET",
+            'authorization': u"Basic SOME_HASH_THAT_DOES_NOT_MATTER="
+        }
+        self.assertEqual("", r.body)
+
         r = endpoints.Request()
         r.method = 'POST'
 
@@ -123,7 +141,8 @@ class RequestTest(TestCase):
         self.assertEqual(body_r, r.body)
 
         r.headers = {}
-        r.body = '{"person":{"name":"bob"}}'
+        body = '{"person":{"name":"bob"}}'
+        r.body = body
         with self.assertRaises(ValueError):
             r.body
 

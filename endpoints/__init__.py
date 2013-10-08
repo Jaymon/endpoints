@@ -8,7 +8,7 @@ import logging
 
 from .reflection import Reflect, VersionReflect
 
-__version__ = '0.6.1'
+__version__ = '0.6.2'
 
 logger = logging.getLogger(__name__)
 
@@ -176,8 +176,6 @@ class Request(object):
             b = self.body # dict with: {"foo": { "name": "bar"}}
             print self._body # string with: u'{"foo":{"name":"bar"}}'
         """
-#        if self.method != 'POST':
-#            raise ValueError('no body on non POST requests')
         if not hasattr(self, '_body'):
             self._body = None
 
@@ -197,7 +195,8 @@ class Request(object):
                     b = self._parse_query_str(b)
 
             else:
-                raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
+                if b:
+                    raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
 
         return b
 
