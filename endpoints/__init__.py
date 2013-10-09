@@ -8,7 +8,7 @@ import logging
 
 from .reflection import Reflect, VersionReflect
 
-__version__ = '0.6.2'
+__version__ = '0.6.3'
 
 logger = logging.getLogger(__name__)
 
@@ -193,10 +193,6 @@ class Request(object):
 
                 elif ct.rfind(u"x-www-form-urlencoded") >= 0:
                     b = self._parse_query_str(b)
-
-            else:
-                if b:
-                    raise ValueError('POST .body decode failed because of missing Content-Type header, use ._body instead')
 
         return b
 

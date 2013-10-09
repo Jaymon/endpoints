@@ -143,8 +143,9 @@ class RequestTest(TestCase):
         r.headers = {}
         body = '{"person":{"name":"bob"}}'
         r.body = body
-        with self.assertRaises(ValueError):
-            r.body
+#        with self.assertRaises(ValueError):
+#            r.body
+        self.assertEqual(body, r.body)
 
         r.method = 'GET'
         r.headers = {
