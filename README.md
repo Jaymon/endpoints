@@ -1,6 +1,6 @@
 # Endpoints
 
-Quickest api builder in the west, maybe even the world!
+Quickest api builder in the west!
 
 ## How does it work?
 
@@ -8,12 +8,15 @@ Quickest api builder in the west, maybe even the world!
 
     METHOD /module/class/args?kwargs
 
-To find the modules, you can assign a module prefix, to make it easier to bundle your controllers to something like a `controllers` module. Some examples of how http requests would be interpretted:
+To find the modules, you assign a base module that endpoints will use as a reference point to find the correct submodule using the path. This makes it easier to bundle your controllers into something like a `controllers` module. Some examples of how http requests would be interpretted:
 
+    GET / -> prefix.Default.GET()
     GET /foo -> prefix.foo.Default.GET()
     POST /foo/bar -> prefix.foo.Bar.POST()
     GET /foo/bar/che -> prefix.foo.Bar.GET(che)
     POST /foo/bar/che?baz=foo -> prefix.foo.Bar.POST(che, baz=foo)
+
+Endpoints works from left bit to right bit of the path (so /foo/bar/che/baz, Endpoints would check for `foo` module, then `foo.bar` module, then `foo.bar.che` module, etc. until it fails to find a valid module). Once the module is found, endpoints will then attempt to find the class with the remaining path bits, if no class is found, `Default` will be used.
 
 **todo, add better examples and examples of glue code to use endpoints in your project**
 
@@ -29,9 +32,13 @@ Then, in another terminal window:
 
 ### Versioning requests
 
-Endpoints has support for `accept` [header](http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html) versioning, inspired by this [series of blog posts](http://urthen.github.io/2013/05/09/ways-to-version-your-api/).
+Endpoints has support for `Accept` [header](http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html) versioning, inspired by this [series of blog posts](http://urthen.github.io/2013/05/09/ways-to-version-your-api/).
 
 **todo, add examples of versioning**
+
+**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic
+
+**todo, move the require_params decorator into a decorators sub module** - no reason for this one to be private
 
 ## Install
 

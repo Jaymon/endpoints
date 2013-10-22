@@ -6,6 +6,50 @@ import json
 import testdata
 
 import endpoints
+import endpoints.call
+
+def create_modules(controller_prefix):
+    r = testdata.create_modules({
+        controller_prefix: os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            ""
+        ]),
+        "{}.default".format(controller_prefix): os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            ""
+        ]),
+        "{}.foo".format(controller_prefix): os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            "",
+            "class Bar(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            "    def POST(*args, **kwargs): pass",
+            ""
+        ]),
+        "{}.foo.baz".format(controller_prefix): os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            "",
+            "class Che(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            ""
+        ]),
+    })
+
+    s = set([
+        controller_prefix,
+        '{}.foo.baz'.format(controller_prefix),
+        '{}.default'.format(controller_prefix),
+        '{}.foo'.format(controller_prefix)
+    ])
+    return s
 
 class ResponseTest(TestCase):
     def test_headers(self):
@@ -185,7 +229,93 @@ class RequestTest(TestCase):
 
 class CallTest(TestCase):
 
-    def test_get_controller_info(self):
+    def test_get_controller_info_advanced(self):
+        controller_prefix = "controller_info_advanced"
+        s = create_modules(controller_prefix)
+
+        ts = [
+            {
+                'in': dict(method=u"GET", path="/foo/bar/happy/sad"),
+                'out': {
+                    'module_name': u"controller_info_advanced.foo",
+                    'class_name': u'Bar',
+                    'args': [u'happy', u'sad'],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/"),
+                'out': {
+                    'module_name': u"controller_info_advanced",
+                    'class_name': u'Default',
+                    'args': [],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/happy"),
+                'out': {
+                    'module_name': u"controller_info_advanced",
+                    'class_name': u'Default',
+                    'args': [u"happy"],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/foo/baz"),
+                'out': {
+                    'module_name': u"controller_info_advanced.foo.baz",
+                    'class_name': u'Default',
+                    'args': [],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/foo/baz/che"),
+                'out': {
+                    'module_name': u"controller_info_advanced.foo.baz",
+                    'class_name': u'Che',
+                    'args': [],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/foo/baz/happy"),
+                'out': {
+                    'module_name': u"controller_info_advanced.foo.baz",
+                    'class_name': u'Default',
+                    'args': [u"happy"],
+                    'method': u"GET",
+                }
+            },
+            {
+                'in': dict(method=u"GET", path="/foo/happy"),
+                'out': {
+                    'module_name': u"controller_info_advanced.foo",
+                    'class_name': u'Default',
+                    'args': [u"happy"],
+                    'method': u"GET",
+                }
+            },
+        ]
+
+        for t in ts:
+            r = endpoints.Request()
+            for key, val in t['in'].iteritems():
+                setattr(r, key, val)
+
+            c = endpoints.Call(controller_prefix)
+            c.request = r
+
+            d = c.get_controller_info_advanced()
+            for key, val in t['out'].iteritems():
+                self.assertEqual(val, d[key])
+
+    def test_get_controller_info_simple(self):
+        """while the method should work in real life with valid controller modules
+        I haven't updated this test to use testdata.create_modules, so I'm just
+        disabling it for right now"""
+        return
         class MockRequest(object): pass
 
         r = MockRequest()
@@ -203,7 +333,7 @@ class CallTest(TestCase):
         c = endpoints.Call("controller")
         c.request = r
 
-        d = c.get_controller_info()
+        d = c.get_controller_info_simple()
         self.assertEqual(d, out_d)
 
         r = MockRequest()
@@ -226,7 +356,7 @@ class CallTest(TestCase):
         c = endpoints.Call("controller")
         c.request = r
 
-        d = c.get_controller_info()
+        d = c.get_controller_info_simple()
         self.assertEqual(d, out_d)
 
         r.path_args.append(u"che")
@@ -240,17 +370,18 @@ class CallTest(TestCase):
         out_d['module'] = u'controller.default'
         out_d['class_name'] = u'Default'
 
-        d = c.get_controller_info()
+        d = c.get_controller_info_simple()
         self.assertEqual(d, out_d)
 
     def test_callback_info(self):
+        controller_prefix = "callback_info"
         class MockRequest(object): pass
         r = MockRequest()
         r.path = u"/foo/bar"
         r.path_args = [u"foo", u"bar"]
         r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
         r.method = u"GET"
-        c = endpoints.Call("controller")
+        c = endpoints.Call(controller_prefix)
         c.request = r
 
         with self.assertRaises(endpoints.CallError):
@@ -261,7 +392,7 @@ class CallTest(TestCase):
             "class Bar(Controller):",
             "    def GET(*args, **kwargs): pass"
         ])
-        testdata.create_module("controller.foo", contents=contents)
+        testdata.create_module("{}.foo".format(controller_prefix), contents=contents)
 
         # if it succeeds, then it passed the test :)
         d = c.get_callback_info()
@@ -544,4 +675,16 @@ class VersionReflectTest(TestCase):
             self.assertTrue('headers' in d)
             self.assertTrue("version" in d)
 
+
+class EndpointsTest(TestCase):
+    def test_get_controllers(self):
+        controller_prefix = "get_controllers"
+        s = create_modules(controller_prefix)
+
+        controllers = endpoints.call.get_controllers(controller_prefix)
+        self.assertEqual(s, controllers)
+
+        # just making sure it always returns the same list
+        controllers = endpoints.call.get_controllers(controller_prefix)
+        self.assertEqual(s, controllers)
 

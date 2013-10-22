@@ -11,8 +11,6 @@ from endpoints import Call, Request, Response
 
 class SimpleHandler(BaseHTTPRequestHandler):
 
-    call = Call("controllers")
-
     def handle_one_request(self):
         try:
             self.raw_requestline = self.rfile.readline(65537)
