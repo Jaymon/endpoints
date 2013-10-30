@@ -60,7 +60,7 @@ class Reflect(object):
 
         return -- generator -- (file, args, kwargs) it yields each file and any extra info
         """
-        r = re.compile('^(?:__init__|[^_][^.]+)\.py', re.I)
+        r = re.compile('^(?:__init__|[^_][^.]+)\.py$', re.I)
         for root, dirs, files in os.walk(controller_path, topdown=True):
             #for f in fnmatch.filter(files, '?*.py'):
             for f in files:
