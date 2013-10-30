@@ -3,13 +3,25 @@ import sys
 import importlib
 import inspect
 import re
+import fnmatch
 
 class Reflect(object):
     """
     Reflect the controllers to reveal information about what endpoints are live
     """
+    controller_prefix = u''
+
+    @property
+    def controller_path(self):
+        if not hasattr(self, '_controller_path'):
+            self._controller_path = self.find_controller_path()
+
+        return self._controller_path
+
     def __init__(self, controller_prefix, content_type=None):
         self.controller_prefix = controller_prefix
+        if not controller_prefix:
+            raise ValueError("reflect only works when you use a controller_prefix")
 
     def normalize_endpoint(self, endpoint, *args, **kwargs):
         """
@@ -19,15 +31,26 @@ class Reflect(object):
         """
         return endpoint
 
-    def normalize_controller_module(self, controller_prefix, fname, *args, **kwargs):
+    def normalize_controller_module(self, controller_submodule_path, *args, **kwargs):
         """
         normalize controller bits to a python module
 
-        example -- controller_prefix="foo", fname="bar" --> return "foo.bar"
+        example -- self.controller_prefix="foo", fname="bar" --> return "foo.bar"
+
+        controller_submodule_path -- string -- the path to module in the controller path (eg, if
+            self.controller path was /foo then module_path can be something like /foo/bar/che.py)
 
         return -- string -- the full.python.module that can be imported
         """
-        return u".".join([controller_prefix, fname])
+        ret = u""
+        filesubpath = controller_submodule_path.replace(self.controller_path, '', 1)
+        fbase, fext = os.path.splitext(filesubpath)
+        fbits = filter(None, fbase.split(os.sep))
+        if fbits[-1] == u"__init__":
+            fbits = fbits[0:-1]
+
+        ret = u".".join([self.controller_prefix] + fbits)
+        return ret
 
     def walk_files(self, controller_path):
         """
@@ -37,10 +60,12 @@ class Reflect(object):
 
         return -- generator -- (file, args, kwargs) it yields each file and any extra info
         """
+        r = re.compile('^(?:__init__|[^_][^.]+)\.py', re.I)
         for root, dirs, files in os.walk(controller_path, topdown=True):
+            #for f in fnmatch.filter(files, '?*.py'):
             for f in files:
-                yield f, [], {}
-            break
+                if r.match(f):
+                    yield os.path.join(root, f), [], {}
 
     def get_controller_modules(self):
         """
@@ -50,17 +75,12 @@ class Reflect(object):
 
         return -- generator -- endpoint info found in each controller module file
         """
-        controller_path = self.find_controller_path()
         controller_prefix = self.controller_prefix
-        for f, args, kwargs in self.walk_files(controller_path):
-                fname, fext = os.path.splitext(f)
-                if fext.lower() != u".py": continue
-                if fname == u"__init__": continue
+        for f, args, kwargs in self.walk_files(self.controller_path):
+            controller_module = self.normalize_controller_module(f, *args, **kwargs)
 
-                controller_module = self.normalize_controller_module(controller_prefix, fname, *args, **kwargs)
-
-                for endpoint, args, kwargs in self.get_endpoints_in_controller(controller_module, *args, **kwargs):
-                    yield endpoint, args, kwargs
+            for endpoint, args, kwargs in self.get_endpoints_in_controller(controller_module, *args, **kwargs):
+                yield endpoint, args, kwargs
 
     def get_endpoints(self):
         """
@@ -89,9 +109,6 @@ class Reflect(object):
         return -- string -- the controller base directory
         """
         controller_prefix = self.controller_prefix
-        if not controller_prefix:
-            raise ValueError("reflect only works when you use a controller_prefix")
-
         controller_path = u""
         controller_dirs = controller_prefix.split(u".")
         for p in sys.path:
@@ -105,18 +122,17 @@ class Reflect(object):
 
         return controller_path
 
-    def get_endpoints_in_controller(self, controller, *args, **kwargs):
+    def get_endpoints_in_controller(self, controller_name, *args, **kwargs):
         """
         get all the endpoints in this controller
 
         return -- list -- a list of dicts with information about each endpoint in the controller
         """
-        module = importlib.import_module(controller)
+        module = importlib.import_module(controller_name)
         classes = inspect.getmembers(module, inspect.isclass)
-        #options = set(['get', 'head', 'post', 'put', 'delete', 'trace', 'options', 'connect', 'patch'])
-        for k, v in classes:
-            k = k.lower()
-            public = not k.startswith(u'_') and not getattr(v, 'private', False)
+        for class_name, v in classes:
+            class_name = class_name.lower()
+            public = not class_name.startswith(u'_') and not getattr(v, 'private', False)
             if public:
                 methods = inspect.getmembers(v, inspect.ismethod)
                 v_options = []
@@ -127,10 +143,12 @@ class Reflect(object):
 
                 if v_options:
                     doc = inspect.getdoc(v)
-                    name = controller.rpartition(".")[2].lower()
-                    endpoint = [u""]
-                    for n in [name, k]:
-                        if n != 'default': endpoint.append(n)
+
+                    name = controller_name.replace(self.controller_prefix, '', 1).lower()
+                    endpoint = name.split(u".")
+                    if class_name != "default":
+                        endpoint.append(class_name)
+
                     if len(endpoint) == 1:
                         endpoint = u"/"
                     else:
@@ -152,9 +170,6 @@ class VersionReflect(Reflect):
         self.content_type = content_type
         super(VersionReflect, self).__init__(controller_prefix)
 
-    def normalize_controller_module(self, controller_prefix, fname, version, *args, **kwargs):
-        return u".".join([controller_prefix, version, fname])
-
     def normalize_endpoint(self, endpoint, version, *args, **kwargs):
         endpoint['headers'] = {}
         endpoint['headers']['Accept'] = "{};version={}".format(self.content_type, version)
@@ -162,10 +177,18 @@ class VersionReflect(Reflect):
         return endpoint
 
     def walk_files(self, controller_path):
+        base_controller_prefix = self.controller_prefix
+        base_controller_path = controller_path
         for root, versions, _ in os.walk(controller_path, topdown=True):
             for version in versions:
-                for root,  _, files in os.walk(os.path.join(controller_path, version), topdown=True):
-                    for f in files:
-                        yield f, [], {'version': version}
+                self.controller_prefix = u".".join([base_controller_prefix, version])
+                self._controller_path = os.path.join(base_controller_path, version)
+                for f, args, kwargs in super(VersionReflect, self).walk_files(self._controller_path):
+                    kwargs['version'] = version
+                    yield f, args, kwargs
 
+                self.controller_prefix = base_controller_prefix
+                self._controller_path = base_controller_path
+
+            break
 

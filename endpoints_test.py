@@ -585,48 +585,85 @@ class AcceptHeaderTest(TestCase):
 
 class ReflectTest(TestCase):
 
+    def test_walk_files(self):
+
+        tmpdir, ds, fs = testdata.create_file_structure(os.linesep.join([
+            "foo/",
+            "  __init__.py",
+            "  bar/",
+            "    __init__.py",
+            "    che.py",
+            "  baz/",
+            "    __init__.py",
+            "    boom/",
+            "      __init__.py",
+            "      pez.py",
+            ""
+        ]))
+
+        r = endpoints.Reflect("foo")
+        count = 0
+        for f in r.walk_files(tmpdir):
+            count += 1
+            self.assertTrue(f[0] in fs)
+
+        self.assertEqual(len(fs), count)
+
+
+    def test_normalize_controller_module(self):
+
+        r = endpoints.Reflect("controller_reflect")
+        r._controller_path = "/some/long/path/controller_reflect"
+
+        name = r.normalize_controller_module("/some/long/path/controller_reflect/foo/bar.py")
+        self.assertEqual("controller_reflect.foo.bar", name)
+
+        name = r.normalize_controller_module("/some/long/path/controller_reflect/__init__.py")
+        self.assertEqual("controller_reflect", name)
+
+        name = r.normalize_controller_module("/some/long/path/controller_reflect/foo/__init__.py")
+        self.assertEqual("controller_reflect.foo", name)
+
     def test_get_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("reflecttest")
-        contents = os.linesep.join([
-            "import endpoints",
-            "class default(endpoints.Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_reflect.default", contents=contents, tmpdir=tmpdir)
-
-        contents = os.linesep.join([
-            "import endpoints",
-            "class default(endpoints.Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_reflect.foo", contents=contents, tmpdir=tmpdir)
-
-        contents = os.linesep.join([
-            "from endpoints import Controller",
-            "class Baz(Controller):",
-            "    def POST(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_reflect.che", contents=contents, tmpdir=tmpdir)
-
-        contents = os.linesep.join([
-            "from endpoints import Controller as Con",
-            "class _Base(Con):",
-            "    def GET(*args, **kwargs): pass",
-            "",
-            "class Boo(_Base):",
-            "    def DELETE(*args, **kwargs): pass",
-            "    def POST(*args, **kwargs): pass",
-            ""
-            "class Bah(_Base):",
-            "    '''this is the doc string'''",
-            "    def HEAD(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_reflect.bam", contents=contents, tmpdir=tmpdir)
+        testdata.create_modules(
+            {
+                "controller_reflect": os.linesep.join([
+                    "import endpoints",
+                    "class Default(endpoints.Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ]),
+                "controller_reflect.foo": os.linesep.join([
+                    "import endpoints",
+                    "class Default(endpoints.Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ]),
+                "controller_reflect.che": os.linesep.join([
+                    "from endpoints import Controller",
+                    "class Baz(Controller):",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                ]),
+                "controller_reflect.che.bam": os.linesep.join([
+                    "from endpoints import Controller as Con",
+                    "class _Base(Con):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Boo(_Base):",
+                    "    def DELETE(*args, **kwargs): pass",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                    "class Bah(_Base):",
+                    "    '''this is the doc string'''",
+                    "    def HEAD(*args, **kwargs): pass",
+                    ""
+                ])
+            },
+            tmpdir=tmpdir
+        )
 
         r = endpoints.Reflect("controller_reflect")
         l = r.get_endpoints()
@@ -637,7 +674,7 @@ class ReflectTest(TestCase):
                 if d['endpoint'] == endpoint:
                     return d
 
-        d = get_match("/bam/bah", l)
+        d = get_match("/che/bam/bah", l)
         self.assertEqual(d['options'], ["GET", "HEAD"])
         self.assertGreater(len(d['doc']), 0)
 
@@ -647,25 +684,29 @@ class ReflectTest(TestCase):
         d = get_match("/foo", l)
         self.assertNotEqual(d, {})
 
+
 class VersionReflectTest(TestCase):
 
     def test_get_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("versionreflecttest")
-        contents = os.linesep.join([
-            "import endpoints",
-            "class Bar(endpoints.Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_vreflect.v1.foo", contents=contents, tmpdir=tmpdir)
-        contents = os.linesep.join([
-            "from endpoints import Controller",
-            "class Baz(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ])
-        testdata.create_module("controller_vreflect.v2.che", contents=contents, tmpdir=tmpdir)
+        testdata.create_modules(
+            {
+                "controller_vreflect.v1.foo": os.linesep.join([
+                    "import endpoints",
+                    "class Bar(endpoints.Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ]),
+                "controller_vreflect.v2.che": os.linesep.join([
+                    "from endpoints import Controller",
+                    "class Baz(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ]),
+            },
+            tmpdir=tmpdir
+        )
 
         r = endpoints.VersionReflect("controller_vreflect", 'application/json')
         l = r.get_endpoints()
@@ -674,6 +715,16 @@ class VersionReflectTest(TestCase):
         for d in l:
             self.assertTrue('headers' in d)
             self.assertTrue("version" in d)
+
+        def get_match(endpoint, l):
+            ret = {}
+            for d in l:
+                if d['endpoint'] == endpoint:
+                    ret = d
+            return ret
+
+        d = get_match("/foo/bar", l)
+        self.assertNotEqual({}, d)
 
 
 class EndpointsTest(TestCase):

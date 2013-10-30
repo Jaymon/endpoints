@@ -261,8 +261,8 @@ class Call(object):
         return -- Response() -- the response object, populated with info from running the controller
         '''
         try:
-            callback, callback_args, callback_kwargs = self.get_callback_info()
             self.response.headers['Content-Type'] = self.content_type
+            callback, callback_args, callback_kwargs = self.get_callback_info()
             body = callback(*callback_args, **callback_kwargs)
             self.response.body = body
 
