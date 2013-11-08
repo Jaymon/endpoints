@@ -4,7 +4,7 @@ from .call import CallError, Call, VersionCall
 from .http import Request, Response
 from .utils import AcceptHeader
 
-__version__ = '0.6.7'
+__version__ = '0.6.8'
 
 
 class Controller(object):

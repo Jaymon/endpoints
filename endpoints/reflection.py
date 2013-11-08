@@ -134,7 +134,10 @@ class Reflect(object):
             class_name = class_name.lower()
             public = not class_name.startswith(u'_') and not getattr(v, 'private', False)
             if public:
-                methods = inspect.getmembers(v, inspect.ismethod)
+                # TODO -- inspect.ismethod was failing when a method was wrapped
+                # with a class decorator, this needs to be fixed in a better way
+                #methods = inspect.getmembers(v, inspect.ismethod)
+                methods = inspect.getmembers(v)
                 v_options = []
                 option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
                 for method_name, method in methods:
