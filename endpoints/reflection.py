@@ -5,6 +5,8 @@ import inspect
 import re
 import fnmatch
 
+from .core import Controller
+
 class Reflect(object):
     """
     Reflect the controllers to reveal information about what endpoints are live
@@ -130,39 +132,44 @@ class Reflect(object):
         """
         module = importlib.import_module(controller_name)
         classes = inspect.getmembers(module, inspect.isclass)
+        option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
         for class_name, v in classes:
+            if not issubclass(v, Controller): continue
+            if class_name.startswith(u'_') or getattr(v, 'private', False):
+                continue
+
             class_name = class_name.lower()
-            public = not class_name.startswith(u'_') and not getattr(v, 'private', False)
-            if public:
-                # TODO -- inspect.ismethod was failing when a method was wrapped
-                # with a class decorator, this needs to be fixed in a better way
-                #methods = inspect.getmembers(v, inspect.ismethod)
-                methods = inspect.getmembers(v)
-                v_options = []
-                option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
-                for method_name, method in methods:
-                    if option_regex.match(method_name):
-                        v_options.append(method_name)
+            # won't pick up class decorators
+            #methods = inspect.getmembers(v, inspect.ismethod)
+            # won't pick up class decorators that haven't been functools wrapped
+            #methods = inspect.getmembers(v, inspect.isroutine)
+            methods = inspect.getmembers(v)
+            v_options = []
+            for method_name, method in methods:
+                if method_name.startswith(u'_'): continue
 
-                if v_options:
-                    doc = inspect.getdoc(v)
+                if option_regex.match(method_name):
+                    v_options.append(method_name)
 
-                    name = controller_name.replace(self.controller_prefix, '', 1).lower()
-                    endpoint = name.split(u".")
-                    if class_name != "default":
-                        endpoint.append(class_name)
+            if v_options:
+                doc = inspect.getdoc(v)
 
-                    if len(endpoint) == 1:
-                        endpoint = u"/"
-                    else:
-                        endpoint = u"/".join(endpoint)
+                name = controller_name.replace(self.controller_prefix, '', 1).lower()
+                endpoint = name.split(u".")
+                if class_name != "default":
+                    endpoint.append(class_name)
 
-                    d = {
-                        'endpoint': endpoint,
-                        'options': v_options,
-                        'doc': doc if doc else u""
-                    }
-                    yield d, args, kwargs
+                if len(endpoint) == 1:
+                    endpoint = u"/"
+                else:
+                    endpoint = u"/".join(endpoint)
+
+                d = {
+                    'endpoint': endpoint,
+                    'options': v_options,
+                    'doc': doc if doc else u""
+                }
+                yield d, args, kwargs
 
 
 class VersionReflect(Reflect):

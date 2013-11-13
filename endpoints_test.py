@@ -585,6 +585,36 @@ class AcceptHeaderTest(TestCase):
 
 class ReflectTest(TestCase):
 
+    def test_decorators(self):
+        testdata.create_modules({
+            "controller_reflect.foo": os.linesep.join([
+                "def dec_func(f):",
+                "    def wrapped(*args, **kwargs):",
+                "        return f(*args, **kwargs)",
+                "    return wrapped",
+                "",
+                "class dec_cls(object):",
+                "    def __init__(self, func):",
+                "        self.func = func",
+                "    def __call__(*args, **kwargs):",
+                "        return f(*args, **kwargs)",
+                "",
+                "import endpoints",
+                "class Default(endpoints.Controller):",
+                "    @dec_func",
+                "    def GET(*args, **kwargs): pass",
+                "    @dec_cls",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ])
+        })
+
+        r = endpoints.Reflect("controller_reflect")
+        l = r.get_endpoints()
+        self.assertEqual(1, len(l))
+        self.assertEqual(u'/foo', l[0]['endpoint'])
+        self.assertEqual(['GET', 'POST'], l[0]['options'])
+
     def test_walk_files(self):
 
         tmpdir, ds, fs = testdata.create_file_structure(os.linesep.join([
