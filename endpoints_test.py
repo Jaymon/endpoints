@@ -110,6 +110,21 @@ class ResponseTest(TestCase):
 
         # TODO: this really needs to be tested with unicode data
 
+    def test_body_json_error(self):
+        """I was originally going to have the body method smother the error, but
+        after thinking about it a little more, I think it is better to bubble up
+        the error and rely on the user to handle it in their code"""
+        class Foo(object): pass
+        b = {'foo': Foo()}
+
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = b
+        with self.assertRaises(TypeError):
+            rb = r.body
+
+
+
 class RequestTest(TestCase):
 
     def test_properties(self):
