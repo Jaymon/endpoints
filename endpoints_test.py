@@ -123,6 +123,23 @@ class ResponseTest(TestCase):
         with self.assertRaises(TypeError):
             rb = r.body
 
+    def test_code(self):
+        r = endpoints.Response()
+        self.assertEqual(204, r.code)
+
+        r.body = "this is the body"
+        self.assertEqual(200, r.code)
+
+        r.code = 404
+        self.assertEqual(404, r.code)
+
+        r.body = "this is the body 2"
+        self.assertEqual(404, r.code)
+
+        r.body = None
+        self.assertEqual(404, r.code)
+        del(r._code)
+        self.assertEqual(204, r.code)
 
 
 class RequestTest(TestCase):

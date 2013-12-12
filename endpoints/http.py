@@ -158,10 +158,6 @@ class Response(object):
     an instance of this class is used to create the text response that will be sent 
     back to the client
     """
-
-    code = 200
-    """the http status code to return to the client"""
-
     statuses = {
         100: 'Continue',
         101: 'Switching Protocols',
@@ -233,8 +229,22 @@ class Response(object):
     headers = None
     """the http return headers in { header_name: header_val } format"""
 
-    def __init__(self):
-        self.headers = {}
+    @property
+    def code(self):
+        """the http status code to return to the client, by default, 200 if a body is present otherwise 204"""
+        code = getattr(self, '_code', None)
+        if not code:
+            body = getattr(self, '_body', None)
+            if body:
+                code = 200
+            else:
+                code = 204
+
+        return code
+
+    @code.setter
+    def code(self, v):
+        self._code = v
 
     @property
     def status(self):
@@ -284,8 +294,11 @@ class Response(object):
                 b = str(b)
 
         return b
-    
+
     @body.setter
     def body(self, v):
         self._body = v
+
+    def __init__(self):
+        self.headers = {}
 

@@ -1,10 +1,10 @@
 # Endpoints
 
-Quickest api builder in the west!
+Quickest api builder in the west! Built for [First Opinion](http://firstopinionapp.com/).
 
 ## How does it work?
 
-`endpoints` translates requests to python modules without any configuration. It uses the convention:
+Endpoints translates requests to python modules without any configuration. It uses the convention:
 
     METHOD /module/class/args?kwargs
 
@@ -16,7 +16,7 @@ To find the modules, you assign a base module that endpoints will use as a refer
     GET /foo/bar/che -> prefix.foo.Bar.GET(che)
     POST /foo/bar/che?baz=foo -> prefix.foo.Bar.POST(che, baz=foo)
 
-Endpoints works from left bit to right bit of the path (so /foo/bar/che/baz, Endpoints would check for `foo` module, then `foo.bar` module, then `foo.bar.che` module, etc. until it fails to find a valid module). Once the module is found, endpoints will then attempt to find the class with the remaining path bits, if no class is found, `Default` will be used.
+Requests are translated from left bit to right bit of the path (so for path `/foo/bar/che/baz`, Endpoints would check for the `foo` module, then the `foo.bar` module, then the `foo.bar.che` module, etc. until it fails to find a valid module). Once the module is found, endpoints will then attempt to find the class with the remaining path bits, if no class is found, `Default` will be used.
 
 **todo, add better examples and examples of glue code to use endpoints in your project**
 
@@ -36,9 +36,9 @@ Endpoints has support for `Accept` [header](http://www.w3.org/Protocols/rfc2616/
 
 **todo, add examples of versioning**
 
-**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic
+**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic
 
-**todo, move the require_params decorator into a decorators sub module** - no reason for this one to be private
+**todo, move the require_params decorator into a decorators sub module** - no reason for this one to only be in our code
 
 ## Install
 
@@ -59,4 +59,8 @@ To run the tests, you'll also need to install the `testdata` module:
 To run the tests:
 
     python -m unittest endpoints_test
+
+## License
+
+MIT
 

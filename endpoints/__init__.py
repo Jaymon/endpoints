@@ -5,6 +5,6 @@ from .http import Request, Response
 from .utils import AcceptHeader
 from .core import Controller
 
-__version__ = '0.6.9'
+__version__ = '0.7'
 
 
