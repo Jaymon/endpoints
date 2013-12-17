@@ -1,3 +1,61 @@
+import inspect
+import re
+
+from .call import CallError
+
+class CorsMixin(object):
+    """
+    Use this mixin if you want your controller to support cross site scripting
+    requests. Adding this to your controller should be all you need to do to allow
+    the endpoint to start accepting CORS requests
+
+    ---------------------------------------------------------------------------
+    import endpoints
+
+    class Cors(endpoints.Controller, endpoints.CorsMixin):
+        def POST(self, *args, **kwargs):
+            return "you just made a POST preflighted cors request"
+    ---------------------------------------------------------------------------
+
+    spec -- http://www.w3.org/TR/cors/
+    """
+    def __init__(self, *args, **kwargs):
+        super(CorsMixin, self).__init__(*args, **kwargs)
+        self.set_cors_common_headers()
+
+    def OPTIONS(self, *args, **kwargs):
+        req = self.request
+
+        origin = req.get_header('origin')
+        if not origin:
+            raise CallError(400, 'Need Origin header')
+
+        req_headers = [
+            'Access-Control-{}-Headers',
+            'Access-Control-{}-Method'
+        ]
+        for req_header in req_headers:
+            v = req.get_header(req_header.format('Request'))
+            if v:
+                self.response.headers[req_header.format('Allow')] = v
+            else:
+                raise CallError(400, 'Need {} header'.format(v))
+
+        other_headers = {
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': 3600
+        }
+        self.response.headers.update(other_headers)
+
+    def set_cors_common_headers(self):
+        """
+        This will set the headers that are needed for any cors request (OPTIONS or real)
+        """
+        req = self.request
+        origin = req.get_header('origin')
+        if origin:
+            self.response.headers['Access-Control-Allow-Origin'] = origin
+
 
 class Controller(object):
     """
@@ -36,7 +94,6 @@ class Controller(object):
             return "every controller that extends this will have this GET method"
     ---------------------------------------------------------------------------
     """
-
     request = None
     """holds a Request() instance"""
 
@@ -50,7 +107,31 @@ class Controller(object):
     """set this to True if the controller should not be picked up by reflection, the controller
     will still be available, but reflection will not reveal it as an endpoint"""
 
-    def __init__(self, request, response):
+    def __init__(self, request, response, *args, **kwargs):
         self.request = request
         self.response = response
+        super(Controller, self).__init__(*args, **kwargs)
+
+    @classmethod
+    def get_methods(cls):
+        """
+        return the supported http method options that this class supports
+
+        return -- list -- the list of http methods (eg, ['GET', 'POST'])
+        """
+        option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
+        # won't pick up class decorators
+        #methods = inspect.getmembers(v, inspect.ismethod)
+        # won't pick up class decorators that haven't been functools wrapped
+        #methods = inspect.getmembers(v, inspect.isroutine)
+        methods = inspect.getmembers(cls)
+        v_options = []
+        for method_name, method in methods:
+            if method_name.startswith(u'_'): continue
+
+            if option_regex.match(method_name):
+                v_options.append(method_name)
+
+        return v_options
+
 

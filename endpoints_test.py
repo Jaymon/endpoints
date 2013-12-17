@@ -51,6 +51,46 @@ def create_modules(controller_prefix):
     ])
     return s
 
+class ControllerTest(TestCase):
+    def test_cors_mixin(self):
+        class Cors(endpoints.Controller, endpoints.CorsMixin):
+            def POST(self): pass
+
+        res = endpoints.Response()
+        req = endpoints.Request()
+        c = Cors(req, res)
+        self.assertTrue(c.OPTIONS)
+        self.assertFalse('Access-Control-Allow-Origin' in c.response.headers)
+
+        req.headers['Origin'] = 'http://example.com'
+        c = Cors(req, res)
+        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
+
+        req.headers['Access-Control-Request-Method'] = 'POST'
+        req.headers['Access-Control-Request-Headers'] = 'xone, xtwo'
+        c = Cors(req, res)
+        c.OPTIONS()
+        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
+        self.assertEqual(req.headers['Access-Control-Request-Method'], c.response.headers['Access-Control-Allow-Method']) 
+        self.assertEqual(req.headers['Access-Control-Request-Headers'], c.response.headers['Access-Control-Allow-Headers']) 
+
+        c = Cors(req, res)
+        c.POST()
+        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
+
+    def test_get_methods(self):
+        class GetMethodsController(endpoints.Controller):
+            def POST(self): pass
+            def GET(self): pass
+            def ABSURD(self): pass
+            def ignORED(self): pass
+
+        options = GetMethodsController.get_methods()
+        self.assertEqual(3, len(options))
+        for o in ['ABSURD', 'GET', 'POST']:
+            self.assertTrue(o in options)
+
+
 class ResponseTest(TestCase):
     def test_headers(self):
         """make sure headers don't persist between class instantiations"""

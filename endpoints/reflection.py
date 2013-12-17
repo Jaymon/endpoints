@@ -132,25 +132,13 @@ class Reflect(object):
         """
         module = importlib.import_module(controller_name)
         classes = inspect.getmembers(module, inspect.isclass)
-        option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
         for class_name, v in classes:
             if not issubclass(v, Controller): continue
             if class_name.startswith(u'_') or getattr(v, 'private', False):
                 continue
 
             class_name = class_name.lower()
-            # won't pick up class decorators
-            #methods = inspect.getmembers(v, inspect.ismethod)
-            # won't pick up class decorators that haven't been functools wrapped
-            #methods = inspect.getmembers(v, inspect.isroutine)
-            methods = inspect.getmembers(v)
-            v_options = []
-            for method_name, method in methods:
-                if method_name.startswith(u'_'): continue
-
-                if option_regex.match(method_name):
-                    v_options.append(method_name)
-
+            v_options = v.get_methods()
             if v_options:
                 doc = inspect.getdoc(v)
 

@@ -302,3 +302,23 @@ class Response(object):
     def __init__(self):
         self.headers = {}
 
+    def set_cors_headers(self, request_headers, custom_response_headers=None):
+
+        allow_headers = request_headers['Access-Control-Request-Headers']
+        allow_method = request_headers['Access-Control-Request-Method']
+        origin = request_headers['origin']
+
+        cors_headers = {
+            'Access-Control-Allow-Origin': origin,
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Allow-Methods': allow_method,
+            'Access-Control-Allow-Headers': allow_headers,
+            'Access-Control-Max-Age': 3600
+        }
+
+        if custom_response_headers:
+            cors_headers.update(custom_response_headers)
+
+        self.headers.update(cors_headers)
+
+

@@ -2,10 +2,14 @@ from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 import os
 import sys
 import socket
+import logging
+
+logging.basicConfig()
 
 #sys.path.append(os.path.join("..", "endpoints"))
 sys.path.append("..")
 sys.path.append(os.path.join("..", ".."))
+
 
 from endpoints import Call, Request, Response
 
@@ -33,6 +37,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             req.query = query
             req.method = self.command
             req.headers = self.headers.dict
+            pout.v(req.method, req.headers)
 
             c = Call("controllers")
             c.request = req
@@ -45,8 +50,11 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             self.end_headers()
 
-            self.wfile.write(res.body)
-            self.wfile.flush()
+            pout.v(res.headers, res.body)
+            body = res.body
+            if body:
+                self.wfile.write(res.body)
+                self.wfile.flush()
 
         except socket.timeout, e:
             self.log_error("Request timed out: %r", e)
