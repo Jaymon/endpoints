@@ -39,7 +39,7 @@ class CorsMixin(object):
             if v:
                 self.response.headers[req_header.format('Allow')] = v
             else:
-                raise CallError(400, 'Need {} header'.format(v))
+                raise CallError(400, 'Need {} header'.format(req_header.format('Request')))
 
         other_headers = {
             'Access-Control-Allow-Credentials': 'true',
