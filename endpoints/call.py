@@ -42,6 +42,13 @@ def get_controllers(controller_prefix):
     return modules
 
 
+class Redirect(Exception):
+    """controllers can raise this to redirect to the new location"""
+    def __init__(self, location, code=302):
+        self.code = code
+        super(Redirect, self).__init__(location)
+
+
 class CallError(RuntimeError):
     """
     http errors can raise this with an HTTP status code and message
@@ -270,6 +277,12 @@ class Call(object):
             logger.exception(e)
             self.response.code = e.code
             self.response.body = e
+
+        except Redirect, e:
+            logger.exception(e)
+            self.response.code = e.code
+            self.response.headers['Location'] = str(e)
+            self.response.body = None
 
         except Exception, e:
             logger.exception(e)

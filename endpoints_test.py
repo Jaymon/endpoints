@@ -2,11 +2,16 @@ from unittest import TestCase
 import os
 import urlparse
 import json
+import logging
 
 import testdata
 
 import endpoints
 import endpoints.call
+
+
+logging.basicConfig()
+
 
 def create_modules(controller_prefix):
     r = testdata.create_modules({
@@ -489,6 +494,28 @@ class CallTest(TestCase):
         # if it succeeds, then it passed the test :)
         with self.assertRaises(endpoints.CallError):
             d = c.get_callback_info()
+
+    def test_handle_redirect(self):
+        contents = os.linesep.join([
+            "from endpoints import Controller, Redirect",
+            "class Testredirect(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise Redirect('http://example.com')"
+        ])
+        testdata.create_module("controller.handle", contents=contents)
+
+        class MockRequest(object): pass
+        r = MockRequest()
+        r.path = u"/handle/testredirect"
+        r.path_args = [u'handle', u'testredirect']
+        r.query_kwargs = {}
+        r.method = u"GET"
+        c = endpoints.Call("controller")
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual(302, res.code)
+        self.assertEqual('http://example.com', res.headers['Location'])
 
 
 class VersionCallTest(TestCase):
