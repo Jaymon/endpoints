@@ -5,6 +5,6 @@ from .http import Request, Response
 from .utils import AcceptHeader
 from .core import Controller, CorsMixin
 
-__version__ = '0.7.2'
+__version__ = '0.7.3'
 
 
