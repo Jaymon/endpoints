@@ -30,16 +30,16 @@ class CorsMixin(object):
         if not origin:
             raise CallError(400, 'Need Origin header')
 
-        req_headers = [
-            'Access-Control-{}-Headers',
-            'Access-Control-{}-Method'
+        call_headers = [
+            ('Access-Control-Request-Headers', 'Access-Control-Allow-Headers'),
+            ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
         ]
-        for req_header in req_headers:
-            v = req.get_header(req_header.format('Request'))
+        for req_header, res_header in call_headers:
+            v = req.get_header(req_header)
             if v:
-                self.response.headers[req_header.format('Allow')] = v
+                self.response.headers[res_header] = v
             else:
-                raise CallError(400, 'Need {} header'.format(req_header.format('Request')))
+                raise CallError(400, 'Need {} header'.format(req_header))
 
         other_headers = {
             'Access-Control-Allow-Credentials': 'true',

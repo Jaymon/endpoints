@@ -75,8 +75,8 @@ class ControllerTest(TestCase):
         req.headers['Access-Control-Request-Headers'] = 'xone, xtwo'
         c = Cors(req, res)
         c.OPTIONS()
-        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
-        self.assertEqual(req.headers['Access-Control-Request-Method'], c.response.headers['Access-Control-Allow-Method']) 
+        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin'])
+        self.assertEqual(req.headers['Access-Control-Request-Method'], c.response.headers['Access-Control-Allow-Methods']) 
         self.assertEqual(req.headers['Access-Control-Request-Headers'], c.response.headers['Access-Control-Allow-Headers']) 
 
         c = Cors(req, res)
