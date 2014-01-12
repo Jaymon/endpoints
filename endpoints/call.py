@@ -1,10 +1,13 @@
 import importlib
 import logging
 import os
+import sys
 import fnmatch
 
 from .utils import AcceptHeader
 from .http import Response, Request
+from .exception import CallError, Redirect
+from .core import Controller
 
 
 logger = logging.getLogger(__name__)
@@ -40,28 +43,6 @@ def get_controllers(controller_prefix):
     _module_cache.setdefault(controller_prefix, {})
     _module_cache[controller_prefix] = modules
     return modules
-
-
-class Redirect(Exception):
-    """controllers can raise this to redirect to the new location"""
-    def __init__(self, location, code=302):
-        self.code = code
-        super(Redirect, self).__init__(location)
-
-
-class CallError(RuntimeError):
-    """
-    http errors can raise this with an HTTP status code and message
-    """
-    def __init__(self, code, msg):
-        '''
-        create the error
-
-        code -- integer -- http status code
-        msg -- string -- the message you want to accompany your status code
-        '''
-        self.code = code
-        super(CallError, self).__init__(msg)
 
 
 class Call(object):
@@ -213,11 +194,12 @@ class Call(object):
         # let's get the class
         if path_args:
             class_name = path_args[0].capitalize()
-            if hasattr(d['module'], class_name):
+            class_object = getattr(d['module'], class_name, None)
+            if class_object and issubclass(class_object, Controller):
                 d['class_name'] = class_name
+                d['class'] = class_object
                 path_args.pop(0)
 
-        d['class'] = getattr(d['module'], d['class_name'])
         d['args'] = path_args
         d['kwargs'] = req.query_kwargs
 
@@ -238,7 +220,17 @@ class Call(object):
 
         except (ImportError, AttributeError), e:
             r = self.request
-            raise CallError(404, "{} not found because of error: {}".format(r.path, e.message))
+            logger.exception(e)
+            raise CallError(
+                404,
+                "{} not found because of {} \"{}\" on {}:{}".format(
+                    r.path,
+                    sys.exc_info()[0].__name__,
+                    str(e),
+                    os.path.basename(sys.exc_info()[2].tb_frame.f_code.co_filename),
+                    sys.exc_info()[2].tb_lineno
+                )
+            )
 
         try:
             instance = d['class'](self.request, self.response)
@@ -274,6 +266,7 @@ class Call(object):
             self.response.body = body
 
         except CallError, e:
+            #logger.debug("Request Path: {}".format(self.request.path))
             logger.exception(e)
             self.response.code = e.code
             self.response.body = e

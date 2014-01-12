@@ -1,7 +1,8 @@
 import inspect
 import re
 
-from .call import CallError
+from .exception import CallError
+
 
 class CorsMixin(object):
     """

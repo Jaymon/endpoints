@@ -305,6 +305,55 @@ class RequestTest(TestCase):
         self.assertEqual('are-here-again', v)
 
 class CallTest(TestCase):
+    def test_no_match(self):
+        """make sure a controller module that imports a class with the same as
+        one of the query args doesen't get picked up as the controller class"""
+        controller_prefix = "nomodcontroller"
+        r = testdata.create_modules({
+            "nomod": os.linesep.join([
+                "class Nomodbar(object): pass",
+                ""
+            ]),
+            controller_prefix: os.linesep.join([
+                "from endpoints import Controller",
+                "from nomod import Nomodbar",
+                "class Default(Controller):",
+                "    def GET(): pass",
+                ""
+            ])
+        })
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/nomodbar' # same name as one of the non controller classes
+        c.request = r
+        info = c.get_controller_info()
+
+        self.assertEqual('Default', info['class_name'])
+        self.assertEqual('nomodcontroller', info['module_name'])
+        self.assertEqual('nomodbar', info['args'][0])
+
+    def test_import_error(self):
+        controller_prefix = "importerrorcontroller"
+        r = testdata.create_modules({
+            controller_prefix: os.linesep.join([
+                "from endpoints import Controller",
+                "from does_not_exist import FairyDust",
+                "class Default(Controller):",
+                "    def GET(): pass",
+                ""
+            ])
+        })
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/'
+        c.request = r
+        with self.assertRaises(endpoints.CallError):
+            info = c.get_callback_info()
+
 
     def test_get_controller_info_advanced(self):
         controller_prefix = "controller_info_advanced"
@@ -475,21 +524,21 @@ class CallTest(TestCase):
         d = c.get_callback_info()
 
     def test_public_controller(self):
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Bar(Controller):",
+            "    def get(*args, **kwargs): pass"
+        ])
+        testdata.create_module("controller2.foo2", contents=contents)
+
         class MockRequest(object): pass
         r = MockRequest()
         r.path = u"/foo2/bar"
         r.path_args = [u"foo2", u"bar"]
         r.query_kwargs = {u'foo2': u'bar', u'che': u'baz'}
         r.method = u"GET"
-        c = endpoints.Call("controller")
+        c = endpoints.Call("controller2")
         c.request = r
-
-        contents = os.linesep.join([
-            "from endpoints import Controller",
-            "class Bar(Controller):",
-            "    def get(*args, **kwargs): pass"
-        ])
-        testdata.create_module("controller.foo2", contents=contents)
 
         # if it succeeds, then it passed the test :)
         with self.assertRaises(endpoints.CallError):
