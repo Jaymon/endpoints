@@ -354,6 +354,28 @@ class CallTest(TestCase):
         with self.assertRaises(endpoints.CallError):
             info = c.get_callback_info()
 
+    def test_get_controller_info_default(self):
+        """I introduced a bug on 1-12-14 that caused default controllers to fail
+        to be found, this makes sure that bug is squashed"""
+        controller_prefix = "controller_info_default"
+        r = testdata.create_modules({
+            controller_prefix: os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(): pass",
+                ""
+            ])
+        })
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/'
+        c.request = r
+        info = c.get_controller_info()
+        self.assertEqual(u'Default', info['class_name'])
+        self.assertTrue(issubclass(info['class'], endpoints.Controller))
+
 
     def test_get_controller_info_advanced(self):
         controller_prefix = "controller_info_advanced"

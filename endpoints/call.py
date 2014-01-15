@@ -192,12 +192,17 @@ class Call(object):
         d['module'] = importlib.import_module(d['module_name'])
 
         # let's get the class
+        class_name = d['class_name']
+        pop_class_name = False
         if path_args:
             class_name = path_args[0].capitalize()
-            class_object = getattr(d['module'], class_name, None)
-            if class_object and issubclass(class_object, Controller):
-                d['class_name'] = class_name
-                d['class'] = class_object
+            pop_class_name = True
+
+        class_object = getattr(d['module'], class_name, None)
+        if class_object and issubclass(class_object, Controller):
+            d['class_name'] = class_name
+            d['class'] = class_object
+            if pop_class_name:
                 path_args.pop(0)
 
         d['args'] = path_args
