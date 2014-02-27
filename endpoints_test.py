@@ -305,6 +305,27 @@ class RequestTest(TestCase):
         self.assertEqual('are-here-again', v)
 
 class CallTest(TestCase):
+    def test_default_match_with_path(self):
+        """when the default controller is used, make sure it falls back to default class
+        name if the path bit fails to be a controller class name"""
+        controller_prefix = "nomodcontroller2"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        return args[0]"
+        ])
+        testdata.create_module("{}.nmcon".format(controller_prefix), contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/nmcon/8'
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual('8', res._body)
+
     def test_no_match(self):
         """make sure a controller module that imports a class with the same as
         one of the query args doesen't get picked up as the controller class"""

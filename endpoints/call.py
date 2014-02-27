@@ -192,19 +192,31 @@ class Call(object):
         d['module'] = importlib.import_module(d['module_name'])
 
         # let's get the class
-        class_name = d['class_name']
-        pop_class_name = False
+        class_object = None
         if path_args:
             class_name = path_args[0].capitalize()
-            pop_class_name = True
-
-        class_object = getattr(d['module'], class_name, None)
-        if class_object and issubclass(class_object, Controller):
-            d['class_name'] = class_name
-            d['class'] = class_object
-            if pop_class_name:
+            class_object = getattr(d['module'], class_name, None)
+            if class_object and issubclass(class_object, Controller):
+                d['class_name'] = class_name
                 path_args.pop(0)
 
+            else:
+                class_object = None
+
+        if not class_object:
+            class_name = d['class_name']
+            class_object = getattr(d['module'], class_name, None)
+            if not class_object or not issubclass(class_object, Controller):
+                class_object = None
+                raise TypeError(
+                    "could not find a valid controller with {}.{}.{}".format(
+                        d['module_name'],
+                        class_name,
+                        d['method']
+                    )
+                )
+
+        d['class'] = class_object
         d['args'] = path_args
         d['kwargs'] = req.query_kwargs
 
