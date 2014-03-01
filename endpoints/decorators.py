@@ -100,7 +100,7 @@ def get_param(name, **flags):
 
             kwargs[name] = val
 
-            return func(*args, **kwargs)
+            return func(self, *args, **kwargs)
 
         return wrapper
 

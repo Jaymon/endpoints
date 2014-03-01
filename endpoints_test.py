@@ -962,79 +962,79 @@ class EndpointsTest(TestCase):
 
 
 class DecoratorsTest(TestCase):
-    def test_param(self):
+    def test_get_param(self):
 
-        @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
+        @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(**{'foo': '8'})
+            r = foo(None, **{'foo': '8'})
 
-        @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
+        @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(**{'foo': '1'})
+        r = foo(None, **{'foo': '1'})
         self.assertEqual(1, r)
 
-        @endpoints.decorators.param('foo', type=int)
-        @endpoints.decorators.param('bar', type=float)
+        @endpoints.decorators.get_param('foo', type=int)
+        @endpoints.decorators.get_param('bar', type=float)
         def foo(*args, **kwargs):
             return kwargs['foo'], kwargs['bar']
-        r = foo(**{'foo': '1', 'bar': '1.5'})
+        r = foo(None, **{'foo': '1', 'bar': '1.5'})
         self.assertEqual(1, r[0])
         self.assertEqual(1.5, r[1])
 
-        @endpoints.decorators.param('foo', type=int, action='blah')
+        @endpoints.decorators.get_param('foo', type=int, action='blah')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(ValueError):
-            r = foo(**{'foo': '1'})
+            r = foo(None, **{'foo': '1'})
 
-        @endpoints.decorators.param('foo', type=int, action='store_list')
+        @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(**{'foo': ['1,2,3,4', '5']})
+            r = foo(None, **{'foo': ['1,2,3,4', '5']})
 
-        @endpoints.decorators.param('foo', type=int, action='append_list')
+        @endpoints.decorators.get_param('foo', type=int, action='append_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(**{'foo': ['1,2,3,4', '5']})
+        r = foo(None, **{'foo': ['1,2,3,4', '5']})
         self.assertEqual(range(1, 6), r)
 
-        @endpoints.decorators.param('foo', type=int, action='store_list')
+        @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(**{'foo': '1,2,3,4'})
+        r = foo(None, **{'foo': '1,2,3,4'})
         self.assertEqual(range(1, 5), r)
 
-        @endpoints.decorators.param('foo', type=int, default=1, required=False)
+        @endpoints.decorators.get_param('foo', type=int, default=1, required=False)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo()
+        r = foo(None)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.param('foo', type=int, default=1, required=True)
+        @endpoints.decorators.get_param('foo', type=int, default=1, required=True)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo()
+        r = foo(None)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.param('foo', type=int, default=1)
+        @endpoints.decorators.get_param('foo', type=int, default=1)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo()
+        r = foo(None)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.param('foo', type=int)
+        @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(**{'foo': '1'})
+        r = foo(None, **{'foo': '1'})
         self.assertEqual(1, r)
 
-        @endpoints.decorators.param('foo', type=int)
+        @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo()
+            r = foo(None)
 
