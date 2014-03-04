@@ -10,8 +10,14 @@ import endpoints
 import endpoints.call
 
 
-logging.basicConfig()
-
+#logging.basicConfig()
+import sys
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+log_handler = logging.StreamHandler(stream=sys.stderr)
+log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+log_handler.setFormatter(log_formatter)
+logger.addHandler(log_handler)
 
 def create_modules(controller_prefix):
     r = testdata.create_modules({
@@ -594,7 +600,7 @@ class CallTest(TestCase):
             "    def GET(*args, **kwargs):",
             "        raise Redirect('http://example.com')"
         ])
-        testdata.create_module("controller.handle", contents=contents)
+        testdata.create_module("controllerhr.handle", contents=contents)
 
         class MockRequest(object): pass
         r = MockRequest()
@@ -602,12 +608,43 @@ class CallTest(TestCase):
         r.path_args = [u'handle', u'testredirect']
         r.query_kwargs = {}
         r.method = u"GET"
-        c = endpoints.Call("controller")
+        c = endpoints.Call("controllerhr")
         c.request = r
 
         res = c.handle()
         self.assertEqual(302, res.code)
         self.assertEqual('http://example.com', res.headers['Location'])
+
+    def test_handle_callstop(self):
+        contents = os.linesep.join([
+            "from endpoints import Controller, CallStop",
+            "class Testcallstop(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise CallStop(205, None)",
+            "class Testcallstop2(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise CallStop(200, 'this is the body')"
+        ])
+        testdata.create_module("controllerhcs.handlecallstop", contents=contents)
+
+        class MockRequest(object): pass
+        r = MockRequest()
+        r.path = u"/handlecallstop/testcallstop"
+        r.path_args = [u'handlecallstop', u'testcallstop']
+        r.query_kwargs = {}
+        r.method = u"GET"
+        c = endpoints.Call("controllerhcs")
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual(205, res.code)
+        self.assertEqual(None, res._body)
+
+        r.path = u"/handlecallstop/testcallstop2"
+        r.path_args = [u'handlecallstop', u'testcallstop2']
+        res = c.handle()
+        self.assertEqual(200, res.code)
+        self.assertEqual('this is the body', res._body)
 
 
 class VersionCallTest(TestCase):

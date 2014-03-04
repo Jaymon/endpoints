@@ -6,7 +6,7 @@ import fnmatch
 
 from .utils import AcceptHeader
 from .http import Response, Request
-from .exception import CallError, Redirect
+from .exception import CallError, Redirect, CallStop
 from .core import Controller
 
 
@@ -282,6 +282,12 @@ class Call(object):
             body = callback(*callback_args, **callback_kwargs)
             self.response.body = body
 
+        except CallStop, e:
+            exc_info = sys.exc_info()
+            logger.info(str(e), exc_info=exc_info)
+            self.response.code = e.code
+            self.response.body = e.body
+
         except CallError, e:
             #logger.debug("Request Path: {}".format(self.request.path))
             logger.exception(e)
@@ -289,7 +295,9 @@ class Call(object):
             self.response.body = e
 
         except Redirect, e:
-            logger.exception(e)
+            #logger.exception(e)
+            exc_info = sys.exc_info()
+            logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             self.response.headers['Location'] = str(e)
             self.response.body = None
