@@ -141,9 +141,7 @@ class Default(Controller, CorsMixin):
         return "called / supports cors"
 ```
 
-**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic
-
-**todo, move the require_params decorator into a decorators sub module** - no reason for this one to only be in our code
+**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic. The other issue is we use [decorators](https://github.com/firstopinion/decorators) for all those decorators and I'm not sure I want to introduce a dependency.
 
 
 ## Install
