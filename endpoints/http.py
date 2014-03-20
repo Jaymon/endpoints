@@ -124,6 +124,13 @@ class Request(object):
     def __init__(self):
         self.headers = {}
 
+    def is_method(self, method):
+        """return True if the request method matches the passed in method"""
+        return self.method.upper() == method.upper()
+
+    def has_body(self):
+        return self.method.upper() in set(['POST', 'PUT'])
+
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
         ret = default_val

@@ -19,6 +19,21 @@ log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
 log_handler.setFormatter(log_formatter)
 logger.addHandler(log_handler)
 
+
+def create_controller():
+    class FakeController(endpoints.Controller, endpoints.CorsMixin):
+        def POST(self): pass
+        def GET(self): pass
+
+    res = endpoints.Response()
+
+    req = endpoints.Request()
+    req.method = 'GET'
+
+    c = FakeController(req, res)
+    return c
+
+
 def create_modules(controller_prefix):
     r = testdata.create_modules({
         controller_prefix: os.linesep.join([
@@ -999,25 +1014,103 @@ class EndpointsTest(TestCase):
 
 
 class DecoratorsTest(TestCase):
+
+    def test_require_params(self):
+        class MockObject(object):
+            request = endpoints.Request()
+
+            @endpoints.decorators.require_params('foo', 'bar')
+            def foo(self, *args, **kwargs): return 1
+
+            @endpoints.decorators.require_params('foo', 'bar', allow_empty=True)
+            def bar(self, *args, **kwargs): return 2
+
+        o = MockObject()
+        o.request.method = 'GET'
+        o.request.query_kwargs = {'foo': 1}
+
+        with self.assertRaises(endpoints.CallError):
+            o.foo()
+
+        with self.assertRaises(endpoints.CallError):
+            o.bar()
+
+        o.request.query_kwargs['bar'] = 2
+        r = o.foo()
+        self.assertEqual(1, r)
+
+        r = o.bar()
+        self.assertEqual(2, r)
+
+        o.request.query_kwargs['bar'] = 0
+        with self.assertRaises(endpoints.CallError):
+            o.foo()
+
+        r = o.bar()
+        self.assertEqual(2, r)
+
+    def test_param(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
+        def foo(self, *args, **kwargs):
+            return kwargs['foo'] if 'foo' in kwargs else self.request.body['foo']
+
+        c.request.method = 'POST'
+        c.request.body = {'foo': '1'}
+        r = foo(c)
+        self.assertEqual(1, r)
+
+        c.request.body = None
+        r = foo(c, **{'foo': '2'})
+        self.assertEqual(2, r)
+
+    def test_post_param(self):
+        c = create_controller()
+        c.request.method = 'POST'
+
+        @endpoints.decorators.post_param('foo', type=int, choices=set([1, 2, 3]))
+        def foo(self, *args, **kwargs):
+            return self.request.body['foo']
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c)
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': '1'})
+
+        c.request.body = {'foo': '8'}
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c)
+
+        c.request.body = {'foo': '1'}
+        r = foo(c)
+        self.assertEqual(1, r)
+
+        c.request.body = {'foo': '3'}
+        r = foo(c, **{'foo': '1'})
+        self.assertEqual(3, r)
+
     def test_get_param(self):
+        c = create_controller()
 
         @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(None, **{'foo': '8'})
+            r = foo(c, **{'foo': '8'})
 
         @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None, **{'foo': '1'})
+        r = foo(c, **{'foo': '1'})
         self.assertEqual(1, r)
 
         @endpoints.decorators.get_param('foo', type=int)
         @endpoints.decorators.get_param('bar', type=float)
         def foo(*args, **kwargs):
             return kwargs['foo'], kwargs['bar']
-        r = foo(None, **{'foo': '1', 'bar': '1.5'})
+        r = foo(c, **{'foo': '1', 'bar': '1.5'})
         self.assertEqual(1, r[0])
         self.assertEqual(1.5, r[1])
 
@@ -1025,53 +1118,53 @@ class DecoratorsTest(TestCase):
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(ValueError):
-            r = foo(None, **{'foo': '1'})
+            r = foo(c, **{'foo': '1'})
 
         @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(None, **{'foo': ['1,2,3,4', '5']})
+            r = foo(c, **{'foo': ['1,2,3,4', '5']})
 
         @endpoints.decorators.get_param('foo', type=int, action='append_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None, **{'foo': ['1,2,3,4', '5']})
+        r = foo(c, **{'foo': ['1,2,3,4', '5']})
         self.assertEqual(range(1, 6), r)
 
         @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None, **{'foo': '1,2,3,4'})
+        r = foo(c, **{'foo': '1,2,3,4'})
         self.assertEqual(range(1, 5), r)
 
         @endpoints.decorators.get_param('foo', type=int, default=1, required=False)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None)
+        r = foo(c)
         self.assertEqual(1, r)
 
         @endpoints.decorators.get_param('foo', type=int, default=1, required=True)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None)
+        r = foo(c)
         self.assertEqual(1, r)
 
         @endpoints.decorators.get_param('foo', type=int, default=1)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None)
+        r = foo(c)
         self.assertEqual(1, r)
 
         @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(None, **{'foo': '1'})
+        r = foo(c, **{'foo': '1'})
         self.assertEqual(1, r)
 
         @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(None)
+            r = foo(c)
 
