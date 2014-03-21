@@ -218,7 +218,12 @@ class Call(object):
 
         d['class'] = class_object
         d['args'] = path_args
-        d['kwargs'] = req.query_kwargs
+
+        # combine GET and POST params to be passed to the controller
+        kwargs = dict(req.query_kwargs)
+        if req.has_body():
+            kwargs.update(req.body_kwargs)
+        d['kwargs'] = kwargs
 
         return d
 

@@ -539,9 +539,7 @@ class CallTest(TestCase):
         I haven't updated this test to use testdata.create_modules, so I'm just
         disabling it for right now"""
         return
-        class MockRequest(object): pass
-
-        r = MockRequest()
+        r = endpoints.Request()
         r.path_args = [u'user', u'verify_credentials']
         r.query_kwargs = {}
         r.method = u"GET"
@@ -559,7 +557,7 @@ class CallTest(TestCase):
         d = c.get_controller_info_simple()
         self.assertEqual(d, out_d)
 
-        r = MockRequest()
+        r = endpoints.Request()
         r.path_args = [u"foo", u"bar"]
         r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
         r.method = u"GET"
@@ -598,8 +596,7 @@ class CallTest(TestCase):
 
     def test_callback_info(self):
         controller_prefix = "callback_info"
-        class MockRequest(object): pass
-        r = MockRequest()
+        r = endpoints.Request()
         r.path = u"/foo/bar"
         r.path_args = [u"foo", u"bar"]
         r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
@@ -628,8 +625,7 @@ class CallTest(TestCase):
         ])
         testdata.create_module("controller2.foo2", contents=contents)
 
-        class MockRequest(object): pass
-        r = MockRequest()
+        r = endpoints.Request()
         r.path = u"/foo2/bar"
         r.path_args = [u"foo2", u"bar"]
         r.query_kwargs = {u'foo2': u'bar', u'che': u'baz'}
@@ -650,8 +646,7 @@ class CallTest(TestCase):
         ])
         testdata.create_module("controllerhr.handle", contents=contents)
 
-        class MockRequest(object): pass
-        r = MockRequest()
+        r = endpoints.Request()
         r.path = u"/handle/testredirect"
         r.path_args = [u'handle', u'testredirect']
         r.query_kwargs = {}
@@ -675,8 +670,7 @@ class CallTest(TestCase):
         ])
         testdata.create_module("controllerhcs.handlecallstop", contents=contents)
 
-        class MockRequest(object): pass
-        r = MockRequest()
+        r = endpoints.Request()
         r.path = u"/handlecallstop/testcallstop"
         r.path_args = [u'handlecallstop', u'testcallstop']
         r.query_kwargs = {}
@@ -1069,17 +1063,17 @@ class DecoratorsTest(TestCase):
             o.bar()
 
         o.request.query_kwargs['bar'] = 2
-        r = o.foo()
+        r = o.foo(**o.request.query_kwargs)
         self.assertEqual(1, r)
 
-        r = o.bar()
+        r = o.bar(**o.request.query_kwargs)
         self.assertEqual(2, r)
 
         o.request.query_kwargs['bar'] = 0
         with self.assertRaises(endpoints.CallError):
-            o.foo()
+            o.foo(**o.request.query_kwargs)
 
-        r = o.bar()
+        r = o.bar(**o.request.query_kwargs)
         self.assertEqual(2, r)
 
     def test_param(self):
@@ -1087,11 +1081,11 @@ class DecoratorsTest(TestCase):
 
         @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
-            return kwargs['foo'] if 'foo' in kwargs else self.request.body_kwargs['foo']
+            return kwargs.get('foo')
 
         c.request.method = 'POST'
         c.request.body_kwargs = {'foo': '1'}
-        r = foo(c)
+        r = foo(c, **c.request.body_kwargs)
         self.assertEqual(1, r)
 
         c.request.body_kwargs = {}
@@ -1104,24 +1098,27 @@ class DecoratorsTest(TestCase):
 
         @endpoints.decorators.post_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
-            return self.request.body_kwargs['foo']
+            return kwargs['foo']
 
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
 
+        c.request.query_kwargs['foo'] = '1'
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **{'foo': '1'})
 
         c.request.body_kwargs = {'foo': '8'}
         with self.assertRaises(endpoints.CallError):
-            r = foo(c)
+            r = foo(c, **c.request.body_kwargs)
 
+        c.request.query_kwargs = {}
         c.request.body_kwargs = {'foo': '1'}
-        r = foo(c)
+        r = foo(c, **c.request.body_kwargs)
         self.assertEqual(1, r)
 
+        c.request.query_kwargs = {'foo': '1'}
         c.request.body_kwargs = {'foo': '3'}
-        r = foo(c, **{'foo': '1'})
+        r = foo(c, **{'foo': '3'})
         self.assertEqual(3, r)
 
     def test_get_param(self):

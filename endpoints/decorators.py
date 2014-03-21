@@ -40,13 +40,12 @@ class param(object):
         self.flags = flags
 
     def find_param(self, pname, prequired, pdefault, request, args, kwargs):
+        return self.get_param(pname, prequired, pdefault, kwargs)
         val = None
-        val_post = False
         if request.has_body():
             try:
                 d = request.body_kwargs
                 val = self.get_param(pname, prequired, pdefault, d)
-                val_post = True
 
             except CallError:
                 val = self.get_param(pname, prequired, pdefault, kwargs)
@@ -54,7 +53,7 @@ class param(object):
         else:
             val = self.get_param(pname, prequired, pdefault, kwargs)
 
-        return val, val_post
+        return val
 
     def get_param(self, name, required, default, params):
         val = None
@@ -88,7 +87,7 @@ class param(object):
         pchoices = flags.get('choices', None)
 
         request = slf.request
-        val, val_post = self.find_param(name, prequired, pdefault, request, args, kwargs)
+        val = self.find_param(name, prequired, pdefault, request, args, kwargs)
 
         if paction in set(['store', 'store_list', 'store_false', 'store_true']):
             if isinstance(val, list):
@@ -130,14 +129,7 @@ class param(object):
             if val not in pchoices:
                 raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
 
-        if val_post:
-            b = request.body_kwargs
-            b[name] = val
-            request.body_kwargs = b
-
-        else:
-            kwargs[name] = val
-
+        kwargs[name] = val
         return slf, args, kwargs
 
     def __call__(slf, func):
@@ -151,18 +143,27 @@ class param(object):
 class get_param(param):
     """same as param, but only checks GET params"""
     def find_param(self, name, prequired, pdefault, request, args, kwargs):
-        val_post = False
         val = self.get_param(name, prequired, pdefault, kwargs)
-        return val, val_post
+        body_kwargs = request.body_kwargs
+        if name in body_kwargs:
+            query_kwargs = request.query_kwargs
+            if name not in query_kwargs:
+                raise CallError(400, "required param {} was not present in GET params".format(name))
+
+        return val
 
 
 class post_param(param):
     """same as param but only checks POST params"""
     def find_param(self, name, prequired, pdefault, request, args, kwargs):
-        b = request.body_kwargs
-        val_post = True
-        val = self.get_param(name, prequired, pdefault, b)
-        return val, val_post
+        val = self.get_param(name, prequired, pdefault, kwargs)
+        query_kwargs = request.query_kwargs
+        if name in query_kwargs:
+            body_kwargs = request.body_kwargs
+            if name not in body_kwargs:
+                raise CallError(400, "required param {} was not present in POST params".format(name))
+
+        return val
 
 
 class require_params(object):
@@ -192,17 +193,11 @@ class require_params(object):
         not_empty = not param_options.pop('allow_empty', False)
 
         def decorated(self, *args, **kwargs):
-            if self.request.has_body():
-                d = self.request.body_kwargs
-
-            else:
-                d = self.request.query_kwargs
-
             for req_param_name in req_param_names:
-                if req_param_name not in d:
+                if req_param_name not in kwargs:
                     raise CallError(400, "required param {} was not present".format(req_param_name))
 
-                if not_empty and not d[req_param_name]:
+                if not_empty and not kwargs[req_param_name]:
                     raise CallError(400, "required param {} was empty".format(req_param_name))
 
             return f(self, *args, **kwargs)
