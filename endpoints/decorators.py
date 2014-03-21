@@ -44,8 +44,7 @@ class param(object):
         val_post = False
         if request.has_body():
             try:
-                d = request.body
-                if not d: d = {}
+                d = request.body_kwargs
                 val = self.get_param(pname, prequired, pdefault, d)
                 val_post = True
 
@@ -71,7 +70,7 @@ class param(object):
 
         return val
 
-    def normalize_param(self, slf, *args, **kwargs):
+    def normalize_param(self, slf, args, kwargs):
         name = self.name
         flags = self.flags
         ptype = flags.get('type', None)
@@ -132,10 +131,9 @@ class param(object):
                 raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
 
         if val_post:
-            b = request.body
-            if not b: b = {}
+            b = request.body_kwargs
             b[name] = val
-            request.body = b
+            request.body_kwargs = b
 
         else:
             kwargs[name] = val
@@ -144,7 +142,7 @@ class param(object):
 
     def __call__(slf, func):
         def wrapper(self, *args, **kwargs):
-            self, args, kwargs = slf.normalize_param(self, *args, **kwargs)
+            self, args, kwargs = slf.normalize_param(self, args, kwargs)
             return func(self, *args, **kwargs)
 
         return wrapper
@@ -161,8 +159,7 @@ class get_param(param):
 class post_param(param):
     """same as param but only checks POST params"""
     def find_param(self, name, prequired, pdefault, request, args, kwargs):
-        b = request.body
-        if not b: b = {}
+        b = request.body_kwargs
         val_post = True
         val = self.get_param(name, prequired, pdefault, b)
         return val, val_post
@@ -196,8 +193,7 @@ class require_params(object):
 
         def decorated(self, *args, **kwargs):
             if self.request.has_body():
-                d = self.request.body
-                if not d: d = {}
+                d = self.request.body_kwargs
 
             else:
                 d = self.request.query_kwargs

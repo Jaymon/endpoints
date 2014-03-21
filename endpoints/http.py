@@ -1,9 +1,87 @@
 import urlparse
 import urllib
 import json
+import types
 
 
-class Request(object):
+class Http(object):
+    headers = None
+    """all the http request headers in header: val format"""
+
+    def __init__(self):
+        self.headers = {}
+
+    def get_header(self, header_name, default_val=None):
+        """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
+        ret = default_val
+        headers = self.headers
+        if header_name in headers:
+            ret = headers[header_name]
+        elif header_name.lower() in headers:
+            ret = headers[header_name.lower()]
+        elif header_name.title() in headers:
+            ret = headers[header_name.title()]
+        elif header_name.upper() in headers:
+            ret = headers[header_name.upper()]
+        elif header_name.capitalize() in headers:
+            ret = headers[header_name.capitalize()]
+
+        return ret
+
+    def _parse_body_str(self, b):
+        # we are returning the string, let's try and be smart about it and match content type
+        ct = self.get_header('content-type')
+        if ct:
+            ct = ct.lower()
+            if ct.rfind(u"json") >= 0:
+                if b:
+                    b = json.loads(b)
+                else:
+                    b = None
+
+            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+                b = self._parse_query_str(b)
+
+        return b
+
+    def _parse_json_str(self, query):
+        return json.loads(query)
+
+    def _parse_query_str(self, query):
+        """return name=val&name2=val2 strings into {name: val} dict"""
+        d = {}
+        for k, kv in urlparse.parse_qs(query, True).iteritems():
+            if len(kv) > 1:
+                d[k] = kv
+            else:
+                d[k] = kv[0]
+
+        return d
+
+    def _build_json_str(self, query):
+        return json.dumps(query)
+
+    def _build_body_str(self, b):
+        # we are returning the body, let's try and be smart about it and match content type
+        ct = self.get_header('content-type')
+        if ct:
+            ct = ct.lower()
+            if ct.rfind(u"json") >= 0:
+                if b:
+                    b = json.dumps(b)
+                else:
+                    b = None
+
+            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+                b = self._build_query_str(b)
+
+        return b
+
+    def _build_query_str(self, query_kwargs):
+        return urllib.urlencode(query_kwargs, doseq=True)
+
+
+class Request(Http):
     '''
     common interface that endpoints uses to decide what to do with the incoming request
 
@@ -20,9 +98,6 @@ class Request(object):
     query -- the ?name=val portion of a url
     query_kwargs -- tied to query, the values in query but converted to a dict {name: val}
     '''
-
-    headers = None
-    """all the http request headers in header: val format"""
 
     method = None
     """the http method (GET, POST)"""
@@ -84,45 +159,53 @@ class Request(object):
 
     @property
     def body(self):
-        """
-        the request body, if this is a POST request
-
-        this tries to do the right thing with the body, so if you have set the body and
-        the content type is json, then it will return the body json decoded, if you need
-        the original string body, use _body
-
-        example --
-
-            self.body = '{"foo":{"name":"bar"}}'
-            b = self.body # dict with: {"foo": { "name": "bar"}}
-            print self._body # string with: u'{"foo":{"name":"bar"}}'
-        """
+        """return the raw version of the body"""
         if not hasattr(self, '_body'):
             self._body = None
+            body_kwargs = self.body_kwargs
+            if body_kwargs:
+                self._body = self._build_body_str(body_kwargs)
 
-        b = self._body
-        if b is not None:
-            # we are returning the body, let's try and be smart about it and match content type
-            ct = self.get_header('content-type')
-            if ct:
-                ct = ct.lower()
-                if ct.rfind(u"json") >= 0:
-                    if b:
-                        b = json.loads(b)
-                    else:
-                        b = None
-
-                elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-                    b = self._parse_query_str(b)
-
-        return b
+        return self._body
 
     @body.setter
     def body(self, v):
         self._body = v
 
+    @property
+    def body_kwargs(self):
+        """
+        the request body, if this is a POST request
+
+        this tries to do the right thing with the body, so if you have set the body and
+        the content type is json, then it will return the body json decoded, if you need
+        the original string body, use body
+
+        example --
+
+            self.body = '{"foo":{"name":"bar"}}'
+            b = self.body_kwargs # dict with: {"foo": { "name": "bar"}}
+            print self.body # string with: u'{"foo":{"name":"bar"}}'
+        """
+        if not hasattr(self, '_body_kwargs'):
+            b = self.body
+            if b is None:
+                b = {}
+
+            else:
+                # we are returning the body, let's try and be smart about it and match content type
+                b = self._parse_body_str(b)
+
+            self._body_kwargs = b
+
+        return self._body_kwargs
+
+    @body_kwargs.setter
+    def body_kwargs(self, v):
+        self._body_kwargs = v
+
     def __init__(self):
-        self.headers = {}
+        super(Request, self).__init__()
 
     def is_method(self, method):
         """return True if the request method matches the passed in method"""
@@ -131,36 +214,7 @@ class Request(object):
     def has_body(self):
         return self.method.upper() in set(['POST', 'PUT'])
 
-    def get_header(self, header_name, default_val=None):
-        """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
-        ret = default_val
-        headers = self.headers
-        if header_name in headers:
-            ret = headers[header_name]
-        elif header_name.lower() in headers:
-            ret = headers[header_name.lower()]
-        elif header_name.title() in headers:
-            ret = headers[header_name.title()]
-        elif header_name.upper() in headers:
-            ret = headers[header_name.upper()]
-        elif header_name.capitalize() in headers:
-            ret = headers[header_name.capitalize()]
-
-        return ret
-
-    def _parse_query_str(self, query):
-        """return name=val&name2=val2 strings into {name: val} dict"""
-        d = {}
-        for k, kv in urlparse.parse_qs(query, True).iteritems():
-            if len(kv) > 1:
-                d[k] = kv
-            else:
-                d[k] = kv[0]
-
-        return d
-
-
-class Response(object):
+class Response(Http):
     """
     an instance of this class is used to create the text response that will be sent 
     back to the client
@@ -233,9 +287,6 @@ class Response(object):
     https://github.com/symfony/HttpFoundation/blob/master/Response.php
     """
 
-    headers = None
-    """the http return headers in { header_name: header_val } format"""
-
     @property
     def code(self):
         """the http status code to return to the client, by default, 200 if a body is present otherwise 204"""
@@ -261,7 +312,7 @@ class Response(object):
             self._status = msg
 
         return self._status
-    
+
     @status.setter
     def status(self, v):
         self._status = v
@@ -307,7 +358,7 @@ class Response(object):
         self._body = v
 
     def __init__(self):
-        self.headers = {}
+        super(Response, self).__init__()
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 

@@ -210,6 +210,38 @@ class ResponseTest(TestCase):
 
 class RequestTest(TestCase):
 
+    def test_body_kwargs(self):
+        body = u"foo=bar&che=baz&foo=che"
+        body_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        body_json = '{"foo": ["bar", "che"], "che": "baz"}'
+        cts = {
+            u"application/x-www-form-urlencoded": (
+                u"foo=bar&che=baz&foo=che",
+                {u'foo': [u'bar', u'che'], u'che': u'baz'}
+            ),
+            u'application/json': (
+                '{"foo": ["bar", "che"], "che": "baz"}',
+                {u'foo': [u'bar', u'che'], u'che': u'baz'}
+            ),
+        }
+
+        for ct, bodies in cts.iteritems():
+            r = endpoints.Request()
+            r.body = bodies[0]
+            r.headers = {'content-type': ct}
+            self.assertTrue(isinstance(r.body_kwargs, dict))
+            self.assertEqual(r.body_kwargs, body_kwargs)
+
+            r = endpoints.Request()
+            r.headers = {'content-type': ct}
+            self.assertEqual(r.body_kwargs, {})
+            self.assertEqual(r.body, None)
+
+            r = endpoints.Request()
+            r.headers = {'content-type': ct}
+            r.body_kwargs = bodies[1]
+            self.assertEqual(r._parse_query_str(r.body), r._parse_query_str(bodies[0]))
+
     def test_properties(self):
 
         path = u'/foo/bar'
@@ -265,28 +297,29 @@ class RequestTest(TestCase):
         }
         r.body = u"foo=bar&che=baz&foo=che"
         body_r = {u'foo': [u'bar', u'che'], u'che': u'baz'}
-        self.assertEqual(body_r, r.body)
+        self.assertEqual(body_r, r.body_kwargs)
 
-        r.body = u""
+        r.body = None
+        del(r._body_kwargs)
         body_r = {}
-        self.assertEqual(body_r, r.body)
+        self.assertEqual(body_r, r.body_kwargs)
 
         r.headers = {
             'content-type': u"application/json",
         }
         r.body = '{"person":{"name":"bob"}}'
+        del(r._body_kwargs)
         body_r = {u'person': {"name":"bob"}}
-        self.assertEqual(body_r, r.body)
+        self.assertEqual(body_r, r.body_kwargs)
 
-        r.body = u""
-        body_r = None
+        r.body = u''
+        del(r._body_kwargs)
+        body_r = u''
         self.assertEqual(body_r, r.body)
 
         r.headers = {}
         body = '{"person":{"name":"bob"}}'
         r.body = body
-#        with self.assertRaises(ValueError):
-#            r.body
         self.assertEqual(body, r.body)
 
         r.method = 'GET'
@@ -1054,14 +1087,14 @@ class DecoratorsTest(TestCase):
 
         @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
-            return kwargs['foo'] if 'foo' in kwargs else self.request.body['foo']
+            return kwargs['foo'] if 'foo' in kwargs else self.request.body_kwargs['foo']
 
         c.request.method = 'POST'
-        c.request.body = {'foo': '1'}
+        c.request.body_kwargs = {'foo': '1'}
         r = foo(c)
         self.assertEqual(1, r)
 
-        c.request.body = None
+        c.request.body_kwargs = {}
         r = foo(c, **{'foo': '2'})
         self.assertEqual(2, r)
 
@@ -1071,7 +1104,7 @@ class DecoratorsTest(TestCase):
 
         @endpoints.decorators.post_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
-            return self.request.body['foo']
+            return self.request.body_kwargs['foo']
 
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
@@ -1079,15 +1112,15 @@ class DecoratorsTest(TestCase):
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **{'foo': '1'})
 
-        c.request.body = {'foo': '8'}
+        c.request.body_kwargs = {'foo': '8'}
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
 
-        c.request.body = {'foo': '1'}
+        c.request.body_kwargs = {'foo': '1'}
         r = foo(c)
         self.assertEqual(1, r)
 
-        c.request.body = {'foo': '3'}
+        c.request.body_kwargs = {'foo': '3'}
         r = foo(c, **{'foo': '1'})
         self.assertEqual(3, r)
 
