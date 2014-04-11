@@ -31,6 +31,9 @@ class param(object):
         default -- mixed -- the value that should be set if query param isn't there
         required -- boolean -- True if param is required, default is true
         choices -- set() -- a set of values to be in tested against (eg, val in choices)
+        allow_empty -- boolean -- True allows values like False, 0, '' through,
+            default False, this will also let through any empty value that was set
+            via the default flag
 
     raises -- 
         CallError -- with 400 status code on any param validation failures
@@ -41,21 +44,12 @@ class param(object):
 
     def find_param(self, pname, prequired, pdefault, request, args, kwargs):
         return self.get_param(pname, prequired, pdefault, kwargs)
-        val = None
-        if request.has_body():
-            try:
-                d = request.body_kwargs
-                val = self.get_param(pname, prequired, pdefault, d)
-
-            except CallError:
-                val = self.get_param(pname, prequired, pdefault, kwargs)
-
-        else:
-            val = self.get_param(pname, prequired, pdefault, kwargs)
-
-        return val
 
     def get_param(self, name, required, default, params):
+        """actually try to retrieve name key from params dict
+
+        this is meant to be used by find_param()
+        """
         val = None
         if required:
             try:
@@ -70,6 +64,8 @@ class param(object):
         return val
 
     def normalize_param(self, slf, args, kwargs):
+        """this is where all the magic happens, this will try and find the param and
+        put its value in kwargs if it has a default and stuff"""
         name = self.name
         flags = self.flags
         ptype = flags.get('type', None)
@@ -85,6 +81,7 @@ class param(object):
         pdefault = flags.get('default', None)
         prequired = False if 'default' in flags else flags.get('required', True)
         pchoices = flags.get('choices', None)
+        allow_empty = flags.get('allow_empty', False)
 
         request = slf.request
         val = self.find_param(name, prequired, pdefault, request, args, kwargs)
@@ -117,7 +114,6 @@ class param(object):
         else:
             raise ValueError('unknown param action {}'.format(paction))
 
-
         if ptype:
             if isinstance(val, list):
                 val = map(ptype, val)
@@ -128,6 +124,10 @@ class param(object):
         if pchoices:
             if val not in pchoices:
                 raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
+
+        if not allow_empty and not val:
+            if 'default' not in flags:
+                raise CallError(400, "param {} was empty".format(name))
 
         kwargs[name] = val
         return slf, args, kwargs

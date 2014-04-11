@@ -54,7 +54,8 @@ You can define your controller methods to accept certain path params and to acce
 
 ```python
 class Foo(Controller):
-  def GET(self, one, two=None, **query_params)
+  def GET(self, one, two=None, **params): pass
+  def POST(self, **params): pass
 ```
 
 your call requests would be translated like this:
@@ -63,6 +64,40 @@ your call requests would be translated like this:
     GET /foo/one?param1=val1&param2=val2 -> prefix.Foo.GET("one", param1="val1", param2="val2")
     GET /foo -> 404, no one path param
     GET /foo/one/two -> prefix.Foo.GET("one", "two")
+
+Post requests are also merged with the `**params` on the controller method, with the `POST` params taking precedence:
+
+    POST /foo?param1=GET1&param2=GET2 body: param1=POST1&param3=val3 -> prefix.Foo.POST(param1="POST1", param2="GET2", param3="val3")
+
+
+#### Fun with parameters
+
+The `endpoints.decorators` module gives you some handy decorators to make parameter handling and error checking easier:
+
+```python
+from endpoints import Controller
+from endpoints.decorators import param
+
+class Foo(Controller):
+  @param('param1', default="some val")
+  @param('param2', choices=['one', 'two'])
+  def GET(self, **params): pass
+```
+
+For the most part, the `param` decorator tries to act like Python's built-in [argparse.add_argument()](https://docs.python.org/2/library/argparse.html#the-add-argument-method) method.
+
+There is also a `get_param` decorator when you just want to make sure a query param exists and don't care about post params and a `post_param` when you only care about posted parameters. There is also a `require_params` decorator that is a quick way to just make sure certain params were passed in:
+
+```python
+from endpoints import Controller
+from endpoints.decorators import param
+
+class Foo(Controller):
+  @require_params('param1', 'param2', 'param3')
+  def GET(self, **params): pass
+```
+
+That will make sure `param1`, `param2`, and `param3` were all present in the `**params` dict.
 
 
 ### Example application
@@ -140,6 +175,8 @@ class Default(Controller, CorsMixin):
     def GET(self):
         return "called / supports cors"
 ```
+
+The `CorsMixin` will handle all the `OPTION` requests, and setting all the headers, so you don't have to worry about them (unless you want to).
 
 **todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic. The other issue is we use [decorators](https://github.com/firstopinion/decorators) for all those decorators and I'm not sure I want to introduce a dependency.
 

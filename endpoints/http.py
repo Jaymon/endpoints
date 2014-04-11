@@ -293,10 +293,10 @@ class Response(Http):
         code = getattr(self, '_code', None)
         if not code:
             body = getattr(self, '_body', None)
-            if body:
-                code = 200
-            else:
+            if body is None:
                 code = 204
+            else:
+                code = 200
 
         return code
 

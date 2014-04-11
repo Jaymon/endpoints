@@ -204,8 +204,17 @@ class ResponseTest(TestCase):
 
         r.body = None
         self.assertEqual(404, r.code)
+
+        # now let's test defaults
         del(r._code)
+
         self.assertEqual(204, r.code)
+
+        r.body = ''
+        self.assertEqual(200, r.code)
+
+        r.body = {}
+        self.assertEqual(200, r.code)
 
 
 class RequestTest(TestCase):
@@ -1078,6 +1087,20 @@ class DecoratorsTest(TestCase):
 
     def test_param(self):
         c = create_controller()
+
+        @endpoints.decorators.param('foo', type=int)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': 0})
+
+        @endpoints.decorators.param('foo', default=0)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+
+        r = foo(c, **{})
+        self.assertEqual(0, r)
 
         @endpoints.decorators.param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
