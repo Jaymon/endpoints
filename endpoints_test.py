@@ -174,7 +174,12 @@ class ResponseTest(TestCase):
         r.headers['Content-Type'] = ''
         self.assertEqual(r.body, "this is the message")
 
-        # TODO: this really needs to be tested with unicode data
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = None
+        self.assertEqual(None, r.body) # was getting "null" when content-type was set to json
+
+        # TODO: this really needs to be better tested with unicode data
 
     def test_body_json_error(self):
         """I was originally going to have the body method smother the error, but

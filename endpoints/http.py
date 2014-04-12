@@ -320,9 +320,9 @@ class Response(Http):
     @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
-        if not hasattr(self, '_body'): return None
+        b = getattr(self, '_body', None)
+        if b is None: return b
 
-        b = self._body
         is_error = isinstance(b, Exception)
         ct = self.headers.get('Content-Type', None)
         if ct:
