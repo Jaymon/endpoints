@@ -50,7 +50,7 @@ class Http(object):
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
         d = {}
-        for k, kv in urlparse.parse_qs(query, True).iteritems():
+        for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).iteritems():
             if len(kv) > 1:
                 d[k] = kv
             else:

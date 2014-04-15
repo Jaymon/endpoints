@@ -224,6 +224,20 @@ class ResponseTest(TestCase):
 
 class RequestTest(TestCase):
 
+    def test_body_kwargs_bad_content_type(self):
+        """make sure a form upload content type with json body fails correctly"""
+        r = endpoints.Request()
+        r.body = u"foo=bar&che=baz&foo=che"
+        r.headers = {'content-type': 'application/json'}
+        with self.assertRaises(ValueError):
+            br = r.body_kwargs
+
+        r.body = u'{"foo": ["bar", "che"], "che": "baz"}'
+        r.headers = {'content-type': "application/x-www-form-urlencoded"}
+
+        with self.assertRaises(ValueError):
+            br = r.body_kwargs
+
     def test_body_kwargs(self):
         body = u"foo=bar&che=baz&foo=che"
         body_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
@@ -254,7 +268,7 @@ class RequestTest(TestCase):
             r = endpoints.Request()
             r.headers = {'content-type': ct}
             r.body_kwargs = bodies[1]
-            self.assertEqual(r._parse_query_str(r.body), r._parse_query_str(bodies[0]))
+            self.assertEqual(r._parse_body_str(r.body), r._parse_body_str(bodies[0]))
 
     def test_properties(self):
 
