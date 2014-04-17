@@ -146,7 +146,7 @@ class ResponseTest(TestCase):
         b = {'foo': 'bar'}
 
         r = endpoints.Response()
-        self.assertEqual(None, r.body)
+        self.assertEqual('', r.body)
         r.body = b
         self.assertEqual(b, r.body)
 
@@ -156,8 +156,8 @@ class ResponseTest(TestCase):
         self.assertEqual(json.dumps(b), r.body)
 
         r = endpoints.Response()
-        self.assertEqual(None, r.body)
-        self.assertEqual(None, r.body) # Make sure it doesn't change
+        self.assertEqual('', r.body)
+        self.assertEqual('', r.body) # Make sure it doesn't change
         r.body = b
         self.assertEqual(b, r.body)
 
@@ -177,7 +177,7 @@ class ResponseTest(TestCase):
         r = endpoints.Response()
         r.headers['Content-Type'] = 'application/json'
         r.body = None
-        self.assertEqual(None, r.body) # was getting "null" when content-type was set to json
+        self.assertEqual('', r.body) # was getting "null" when content-type was set to json
 
         # TODO: this really needs to be better tested with unicode data
 
@@ -223,6 +223,21 @@ class ResponseTest(TestCase):
 
 
 class RequestTest(TestCase):
+
+    def test_ip(self):
+        r = endpoints.Request()
+        r.headers['x-forwarded-for'] = '54.241.34.107'
+        ip = r.ip
+        self.assertEqual('54.241.34.107', ip)
+
+        r.headers['x-forwarded-for'] = '127.0.0.1, 54.241.34.107'
+        ip = r.ip
+        self.assertEqual('54.241.34.107', ip)
+
+        r.headers['x-forwarded-for'] = '127.0.0.1'
+        r.headers['client-ip'] = '54.241.34.107'
+        ip = r.ip
+        self.assertEqual('54.241.34.107', ip)
 
     def test_body_kwargs_bad_content_type(self):
         """make sure a form upload content type with json body fails correctly"""

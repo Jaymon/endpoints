@@ -2,6 +2,7 @@ import urlparse
 import urllib
 import json
 import types
+import re
 
 
 class Http(object):
@@ -101,6 +102,55 @@ class Request(Http):
 
     method = None
     """the http method (GET, POST)"""
+
+    @property
+    def ips(self):
+        """return all the possible ips of this request, this will include public and private"""
+        r = []
+        headers = ['x-forwarded-for', 'client-ip', 'x-real-ip', 'x-forwarded', 
+               'x-cluster-client-ip', 'forwarded-for', 'forwarded', 'via',
+               'remote-addr']
+
+        for h in headers:
+            vs = self.get_header(h, '')
+            if not vs: continue
+            for v in vs.split(','):
+                r.append(v.strip())
+
+        return r
+
+    @property
+    def ip(self):
+        """return the public ip address"""
+        r = ''
+
+        # this was compiled from here:
+        # https://github.com/un33k/django-ipware
+        # http://www.ietf.org/rfc/rfc3330.txt (IPv4)
+        # http://www.ietf.org/rfc/rfc5156.txt (IPv6)
+        regex = re.compile(ur'^(?:{})'.format(ur'|'.join([
+            ur'[0-2]\.', # externally non-routable
+            ur'10\.', # class A
+            ur'169\.254', # link local block
+            ur'172\.(?:1[6-9]|2[0-9]|3[0-1])', # class B
+            ur'192\.0\.2', # documentation/examples
+            ur'192\.168', # class C
+            ur'255\.{3}', # broadcast address
+            ur'2001\:db8', # documentation/examples
+            ur'fc00\:', # private
+            ur'fe80\:', # link local unicast
+            ur'ff00\:', # multicast
+            ur'127\.', # localhost
+            ur'\:\:1' # localhost
+        ])))
+
+        ips = self.ips
+        for ip in ips:
+            if not regex.match(ip):
+                r = ip
+                break
+
+        return r
 
     @property
     def path(self):
@@ -321,7 +371,7 @@ class Response(Http):
     def body(self):
         """return the body, formatted to the appropriate content type"""
         b = getattr(self, '_body', None)
-        if b is None: return b
+        if b is None: return ''
 
         is_error = isinstance(b, Exception)
         ct = self.headers.get('Content-Type', None)
