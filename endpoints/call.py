@@ -6,7 +6,7 @@ import fnmatch
 
 from .utils import AcceptHeader
 from .http import Response, Request
-from .exception import CallError, Redirect, CallStop
+from .exception import CallError, Redirect, CallStop, AccessDenied
 from .core import Controller
 
 
@@ -240,7 +240,7 @@ class Call(object):
         try:
             d = self.get_controller_info()
 
-        except (ImportError, AttributeError), e:
+        except (ImportError, AttributeError, TypeError), e:
             r = self.request
             logger.exception(e)
             raise CallError(
@@ -292,20 +292,29 @@ class Call(object):
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             self.response.body = e.body
-
-        except CallError, e:
-            #logger.debug("Request Path: {}".format(self.request.path))
-            logger.exception(e)
-            self.response.code = e.code
-            self.response.body = e
+            self.response.headers.update(e.headers)
 
         except Redirect, e:
             #logger.exception(e)
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
-            self.response.headers['Location'] = str(e)
             self.response.body = None
+            self.response.headers.update(e.headers)
+
+        except (AccessDenied, CallError), e:
+            #logger.debug("Request Path: {}".format(self.request.path))
+            logger.exception(e)
+            self.response.code = e.code
+            self.response.body = e
+            self.response.headers.update(e.headers)
+
+        except TypeError, e:
+            # this is raised when there aren't enough args passed to controller
+            exc_info = sys.exc_info()
+            logger.info(str(e), exc_info=exc_info)
+            self.response.code = 404
+            self.response.body = e
 
         except Exception, e:
             logger.exception(e)

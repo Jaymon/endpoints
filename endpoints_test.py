@@ -35,7 +35,7 @@ def create_controller():
 
 
 def create_modules(controller_prefix):
-    r = testdata.create_modules({
+    d = {
         controller_prefix: os.linesep.join([
             "from endpoints import Controller",
             "class Default(Controller):",
@@ -67,14 +67,17 @@ def create_modules(controller_prefix):
             "    def GET(*args, **kwargs): pass",
             ""
         ]),
-    })
+        "{}.foo.boom".format(controller_prefix): os.linesep.join([
+            "from endpoints import Controller",
+            "",
+            "class Bang(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            ""
+        ]),
+    }
+    r = testdata.create_modules(d)
 
-    s = set([
-        controller_prefix,
-        '{}.foo.baz'.format(controller_prefix),
-        '{}.default'.format(controller_prefix),
-        '{}.foo'.format(controller_prefix)
-    ])
+    s = set(d.keys())
     return s
 
 class ControllerTest(TestCase):
@@ -700,6 +703,60 @@ class CallTest(TestCase):
         res = c.handle()
         self.assertEqual(302, res.code)
         self.assertEqual('http://example.com', res.headers['Location'])
+
+    def test_handle_404_typeerror(self):
+        """make sure not having a controller is correctly identified as a 404"""
+        controller_prefix = "h404te"
+        s = create_modules(controller_prefix)
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/foo/boom'
+
+        c = endpoints.Call(controller_prefix)
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual(404, res.code)
+
+    def test_handle_404_typeerror_2(self):
+        """make sure 404 works when a path bit is missing"""
+        controller_prefix = "h404te2"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, needed_bit, **kwargs):",
+            "       return ''"
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/'
+
+        c = endpoints.Call(controller_prefix)
+        c.request = r
+        res = c.handle()
+        self.assertEqual(404, res.code)
+
+    def test_handle_accessdenied(self):
+        """raising an AccessDenied error should set code to 401 and the correct header"""
+        controller_prefix = "haccessdenied"
+        contents = os.linesep.join([
+            "from endpoints import Controller, AccessDenied",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise AccessDenied('basic')",
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/'
+
+        c = endpoints.Call(controller_prefix)
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual(401, res.code)
+        self.assertTrue('Basic' in res.headers['WWW-Authenticate'])
 
     def test_handle_callstop(self):
         contents = os.linesep.join([
