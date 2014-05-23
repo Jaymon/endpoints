@@ -3,6 +3,9 @@ import urllib
 import json
 import types
 import re
+import base64
+
+from .decorators import _property
 
 
 class Http(object):
@@ -100,10 +103,16 @@ class Request(Http):
     query_kwargs -- tied to query, the values in query but converted to a dict {name: val}
     '''
 
+    environ = None
+    """holds all the values that aren't considered headers but usually get passed with the request"""
+
+    raw_request = None
+    """the original raw request that was filtered through one of the interfaces"""
+
     method = None
     """the http method (GET, POST)"""
 
-    @property
+    @_property(read_only=True)
     def ips(self):
         """return all the possible ips of this request, this will include public and private"""
         r = []
@@ -119,7 +128,7 @@ class Request(Http):
 
         return r
 
-    @property
+    @_property(read_only=True)
     def ip(self):
         """return the public ip address"""
         r = ''
@@ -152,77 +161,48 @@ class Request(Http):
 
         return r
 
-    @property
+    @_property
     def path(self):
         """path part of a url (eg, http://host.com/path?query=string)"""
-        if not hasattr(self, '_path'):
-            path_args = self.path_args
-            self._path = u"/{}".format(u"/".join(path_args))
+        self._path = ''
+        path_args = self.path_args
+        path = u"/{}".format(u"/".join(path_args))
+        return path
 
-        return self._path
-
-    @path.setter
-    def path(self, v):
-        self._path = v
-
-    @property
+    @_property
     def path_args(self):
         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
-        if not hasattr(self, '_path_args'):
-            path = self.path
-            self._path_args = filter(None, path.split(u'/'))
+        self._path_args = []
+        path = self.path
+        path_args = filter(None, path.split(u'/'))
+        return path_args
 
-        return self._path_args
-
-    @path_args.setter
-    def path_args(self, v):
-        self._path_args = v
-
-    @property
+    @_property
     def query(self):
         """query_string part of a url (eg, http://host.com/path?query=string)"""
-        if not hasattr(self, '_query'):
-            self._query = u""
-            query_kwargs = self.query_kwargs
-            if query_kwargs:
-                self._query = urllib.urlencode(query_kwargs, doseq=True)
+        self._query = query = u""
 
-        return self._query
+        query_kwargs = self.query_kwargs
+        if query_kwargs: query = urllib.urlencode(query_kwargs, doseq=True)
+        return query
 
-    @query.setter
-    def query(self, v):
-        self._query = v
-
-    @property
+    @_property
     def query_kwargs(self):
         """{foo: bar, baz: che}"""
-        if not hasattr(self, '_query_kwargs'):
-            self._query_kwargs = {}
-            query = self.query
-            if query: self._query_kwargs = self._parse_query_str(query)
+        self._query_kwargs = query_kwargs = {}
+        query = self.query
+        if query: query_kwargs = self._parse_query_str(query)
+        return query_kwargs
 
-        return self._query_kwargs
-
-    @query_kwargs.setter
-    def query_kwargs(self, v):
-        self._query_kwargs = v
-
-    @property
+    @_property
     def body(self):
         """return the raw version of the body"""
-        if not hasattr(self, '_body'):
-            self._body = None
-            body_kwargs = self.body_kwargs
-            if body_kwargs:
-                self._body = self._build_body_str(body_kwargs)
+        self._body = body = None
+        body_kwargs = self.body_kwargs
+        if body_kwargs: body = self._build_body_str(body_kwargs)
+        return body
 
-        return self._body
-
-    @body.setter
-    def body(self, v):
-        self._body = v
-
-    @property
+    @_property
     def body_kwargs(self):
         """
         the request body, if this is a POST request
@@ -237,24 +217,19 @@ class Request(Http):
             b = self.body_kwargs # dict with: {"foo": { "name": "bar"}}
             print self.body # string with: u'{"foo":{"name":"bar"}}'
         """
-        if not hasattr(self, '_body_kwargs'):
-            b = self.body
-            if b is None:
-                b = {}
+        self._body_kwargs = {}
+        b = self.body
+        if b is None:
+            b = {}
 
-            else:
-                # we are returning the body, let's try and be smart about it and match content type
-                b = self._parse_body_str(b)
+        else:
+            # we are returning the body, let's try and be smart about it and match content type
+            b = self._parse_body_str(b)
 
-            self._body_kwargs = b
-
-        return self._body_kwargs
-
-    @body_kwargs.setter
-    def body_kwargs(self, v):
-        self._body_kwargs = v
+        return b
 
     def __init__(self):
+        self.environ = {}
         super(Request, self).__init__()
 
     def is_method(self, method):
@@ -263,6 +238,30 @@ class Request(Http):
 
     def has_body(self):
         return self.method.upper() in set(['POST', 'PUT'])
+
+    def get_auth_bearer(self):
+        """return the bearer token in the authorization header if it exists"""
+        access_token = ''
+        auth_header = self.get_header('authorization')
+        if auth_header:
+            m = re.search(ur"^Bearer\s+(\S+)$", auth_header, re.I)
+            if m: access_token = m.group(1)
+
+        return access_token
+
+    def get_auth_basic(self):
+        """return the username and password of a basic auth header if it exists"""
+        username = ''
+        password = ''
+        auth_header = self.get_header('authorization')
+        if auth_header:
+            m = re.search(ur"^Basic\s+(\S+)$", auth_header, re.I)
+            if m:
+                auth_str = base64.b64decode(m.group(1))
+                username, password = auth_str.split(':', 1)
+
+        return username, password
+
 
 class Response(Http):
     """
@@ -337,16 +336,17 @@ class Response(Http):
     https://github.com/symfony/HttpFoundation/blob/master/Response.php
     """
 
+    body_generator = None
+
     @property
     def code(self):
         """the http status code to return to the client, by default, 200 if a body is present otherwise 204"""
         code = getattr(self, '_code', None)
         if not code:
-            body = getattr(self, '_body', None)
-            if body is None:
-                code = 204
-            else:
+            if self.has_body():
                 code = 200
+            else:
+                code = 204
 
         return code
 
@@ -368,9 +368,63 @@ class Response(Http):
         self._status = v
 
     @property
+    def gbody(self):
+        """yield the body, formatted to the appropriate content type"""
+        gb = getattr(self, '_gbody', None)
+        if gb is None:
+            b = getattr(self, '_body', None)
+            if b:
+                self._body = b
+                yield b
+
+            else:
+                self._body = None
+                yield ''
+
+        else:
+            for b in gb:
+                self._body = b
+                yield b
+            #yield self.normalize_body(gb.next())
+
+    @gbody.setter
+    def gbody(self, v):
+        if isinstance(v, types.GeneratorType):
+            self._gbody = v
+        else:
+            self._gbody = (b for b in [v])
+
+    @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
         b = getattr(self, '_body', None)
+        if b is None:
+            gb = getattr(self, '_gbody', None)
+            if gb:
+                for b in gb: self._body = b
+
+        return self.normalize_body(b)
+
+    @body.setter
+    def body(self, v):
+        self._body = v
+
+    def __init__(self):
+        super(Response, self).__init__()
+
+    def has_body(self):
+        ret = False
+        if hasattr(self, '_body'):
+            r = getattr(self, '_body', None)
+            if r is not None: ret = True
+
+        else:
+            ret = hasattr(self, '_gbody')
+
+        return ret
+
+    def normalize_body(self, b):
+        """return the body as a string, formatted to the appropriate content type"""
         if b is None: return ''
 
         is_error = isinstance(b, Exception)
@@ -403,12 +457,18 @@ class Response(Http):
 
         return b
 
-    @body.setter
-    def body(self, v):
-        self._body = v
-
-    def __init__(self):
-        super(Response, self).__init__()
+#    def _get_body(self):
+#        b = getattr(self, '_body', None)
+#        if b is None:
+#            if self.body_generator:
+#                for b in body_generator:
+#                    yield b
+#
+#            else:
+#                yield None
+#
+#        else:
+#            yield b
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 

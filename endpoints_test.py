@@ -9,6 +9,8 @@ import testdata
 import endpoints
 import endpoints.call
 
+from endpoints.interface.mongrel2 import Mongrel2 as M2Interface
+
 
 #logging.basicConfig()
 import sys
@@ -424,7 +426,7 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
-        self.assertEqual('8', res._body)
+        self.assertEqual('"8"', res.body)
 
     def test_no_match(self):
         """make sure a controller module that imports a class with the same as
@@ -701,6 +703,7 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
+        res.body # we need to cause the body to be handled
         self.assertEqual(302, res.code)
         self.assertEqual('http://example.com', res.headers['Location'])
 
@@ -716,6 +719,7 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
+        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
     def test_handle_404_typeerror_2(self):
@@ -735,6 +739,7 @@ class CallTest(TestCase):
         c = endpoints.Call(controller_prefix)
         c.request = r
         res = c.handle()
+        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
     def test_handle_accessdenied(self):
@@ -755,6 +760,7 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
+        res.body # we need to cause the body to be handled
         self.assertEqual(401, res.code)
         self.assertTrue('Basic' in res.headers['WWW-Authenticate'])
 
@@ -779,14 +785,15 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
-        self.assertEqual(205, res.code)
+        self.assertEqual('', res.body)
         self.assertEqual(None, res._body)
+        self.assertEqual(205, res.code)
 
         r.path = u"/handlecallstop/testcallstop2"
         r.path_args = [u'handlecallstop', u'testcallstop2']
         res = c.handle()
+        self.assertEqual('"this is the body"', res.body)
         self.assertEqual(200, res.code)
-        self.assertEqual('this is the body', res._body)
 
 
 class VersionCallTest(TestCase):
@@ -1141,6 +1148,65 @@ class EndpointsTest(TestCase):
 
 
 class DecoratorsTest(TestCase):
+    def test__property(self):
+        class WP(object):
+            count_foo = 0
+
+            @endpoints.decorators._property(True)
+            def foo(self):
+                self.count_foo += 1
+                return 1
+
+            @endpoints.decorators._property(read_only=True)
+            def baz(self):
+                return 2
+
+            @endpoints.decorators._property()
+            def bar(self):
+                return 3
+
+            @endpoints.decorators._property
+            def che(self):
+                return 4
+
+        c = WP()
+        r = c.foo
+        self.assertEqual(1, r)
+        self.assertEqual(1, c._foo)
+        with self.assertRaises(AttributeError):
+            c.foo = 2
+        with self.assertRaises(AttributeError):
+            del(c.foo)
+        c.foo
+        c.foo
+        self.assertEqual(1, c.count_foo)
+
+        r = c.baz
+        self.assertEqual(2, r)
+        self.assertEqual(2, c._baz)
+        with self.assertRaises(AttributeError):
+            c.baz = 3
+        with self.assertRaises(AttributeError):
+            del(c.baz)
+
+        r = c.bar
+        self.assertEqual(3, r)
+        self.assertEqual(3, c._bar)
+        c.bar = 4
+        self.assertEqual(4, c.bar)
+        self.assertEqual(4, c._bar)
+        del(c.bar)
+        r = c.bar
+        self.assertEqual(3, r)
+
+        r = c.che
+        self.assertEqual(4, r)
+        self.assertEqual(4, c._che)
+        c.che = 4
+        self.assertEqual(4, c.che)
+        del(c.che)
+        r = c.che
+        self.assertEqual(4, r)
 
     def test_require_params(self):
         class MockObject(object):
@@ -1311,4 +1377,46 @@ class DecoratorsTest(TestCase):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
+
+
+class MockM2Request(object):
+    def __init__(self, **kwargs):
+        self.body = kwargs.get('body', '')
+        self.sender = kwargs.get('sender', 'm2-interface-test')
+        self.conn_id = kwargs.get('conn_id', '1')
+
+        self.data = kwargs.get('data', {})
+        self.data = kwargs.get('msg', 'this is the raw zeromq message')
+
+        self.headers = {
+            'REMOTE_ADDR': u"10.0.2.2",
+            'PATTERN': u"/",
+            'x-forwarded-for': u"10.0.2.2",
+            'URL_SCHEME': u"http",
+            'URI': u"/",
+            'accept': u"*/*",
+            'user-agent': u"m2-interface-test",
+            'host': u"localhost:1234",
+            'VERSION': u"HTTP/1.1",
+            'PATH': u"/",
+            'METHOD': u"GET"
+        }
+        for hk, hv in kwargs.get('headers', {}).iteritems():
+            self.headers[hk] = hv
+
+        self.path = self.headers['PATH']
+
+
+class M2InterfaceTest(TestCase):
+    def test_create_request(self):
+        m2_req = MockM2Request()
+        i = M2Interface('m2.test.controller')
+
+        req = i.create_request(m2_req, request_class=M2Interface.request_class)
+        self.assertEqual({}, req.query_kwargs)
+
+        m2_req = MockM2Request(headers={'QUERY': 'foo=bar'})
+        req = i.create_request(m2_req, request_class=M2Interface.request_class)
+        self.assertTrue('foo' in req.query_kwargs)
+
 

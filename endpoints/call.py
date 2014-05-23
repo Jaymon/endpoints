@@ -3,6 +3,7 @@ import logging
 import os
 import sys
 import fnmatch
+import types
 
 from .utils import AcceptHeader
 from .http import Response, Request
@@ -275,52 +276,88 @@ class Call(object):
         """
         return self.controller_prefix
 
-    def handle(self):
-        '''
-        handle the request
+    def generate_body(self):
+        """create a generator that returns the body for the given request
 
-        return -- Response() -- the response object, populated with info from running the controller
-        '''
+        this is wrapped like this so that a controller can use yield result and then
+        have it pick up right where it left off after resturning back to the client
+        what yield returned, it's just a tricksy way of being able to defer some
+        processing until after responding to the client
+
+        return -- generator -- a body generator"""
         try:
             self.response.headers['Content-Type'] = self.content_type
             callback, callback_args, callback_kwargs = self.get_callback_info()
             body = callback(*callback_args, **callback_kwargs)
-            self.response.body = body
+            if isinstance(body, types.GeneratorType):
+                for b in body:
+                    yield b
+
+            else:
+                yield body
 
         except CallStop, e:
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
-            self.response.body = e.body
+            #self.response.body = e.body
             self.response.headers.update(e.headers)
+            yield e.body
 
         except Redirect, e:
             #logger.exception(e)
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
-            self.response.body = None
+            #self.response.body = None
             self.response.headers.update(e.headers)
+            yield None
 
         except (AccessDenied, CallError), e:
             #logger.debug("Request Path: {}".format(self.request.path))
             logger.exception(e)
             self.response.code = e.code
-            self.response.body = e
+            #self.response.body = e
             self.response.headers.update(e.headers)
+            yield e
 
         except TypeError, e:
             # this is raised when there aren't enough args passed to controller
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = 404
-            self.response.body = e
+            #self.response.body = e
+            yield e
 
         except Exception, e:
             logger.exception(e)
             self.response.code = 500
-            self.response.body = e
+            #self.response.body = e
+            yield e
 
+    def handle(self):
+        """returns a response where the controller is already evaluated
+
+        return -- Response() -- the response object with a body already"""
+        self.ghandle()
+        for b in self.response.gbody: pass
+        return self.response
+
+    def ghandle(self):
+        '''
+        return a response that is ready to have the controller evaluated, you can
+        trigger the controller being called and everything by just calling the body
+
+            response.body
+
+        or by iterating through the generator
+
+            for b in response.gbody: pass
+
+        return -- Response() -- the response object, ready to be populated with
+            information once the body is called
+        '''
+        self.response.gbody = self.generate_body()
         return self.response
 
 

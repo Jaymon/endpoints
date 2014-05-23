@@ -3,6 +3,62 @@ import types
 from .exception import CallError
 
 
+class _property(object):
+    """A memoized @property that is only evaluated once, and then stored at _property
+    and retrieved from there unless deleted, in which case this would be called
+    again and stored in _property again.
+
+    See http://www.reddit.com/r/Python/comments/ejp25/cached_property_decorator_that_is_memory_friendly/
+    see https://docs.python.org/2/howto/descriptor.html
+    see http://stackoverflow.com/questions/17330160/python-how-does-the-property-decorator-work
+    """
+    def __init__(self, *args, **kwargs):
+        self.read_only = kwargs.get('read_only', False)
+        if args:
+            if isinstance(args[0], bool):
+                self.read_only = args[0]
+
+            else:
+                self.set_method(args[0])
+
+    def set_method(self, method):
+        self.method = method
+        self.__doc__ = method.__doc__
+        self.__name__ = method.__name__
+        self.name = '_{}'.format(self.__name__)
+
+    def __call__(self, *args, **kwargs):
+        if args:
+            self.set_method(args[0])
+
+        return self
+
+    def __get__(self, instance, cls):
+        # return the cached value if it exists
+        name = self.name
+        if name not in instance.__dict__:
+            try:
+                instance.__dict__[name] = self.method(instance)
+            except Exception, e:
+                # make sure no value gets set no matter what
+                instance.__dict__.pop(name, None)
+                raise e
+
+        return instance.__dict__[name]
+
+    def __set__(self, instance, val):
+        if self.read_only:
+            raise AttributeError("can't set attribute {}".format(self.__name__))
+
+        instance.__dict__[self.name] = val
+
+    def __delete__(self, instance):
+        if self.read_only:
+            raise AttributeError("can't delete attribute {}".format(self.__name__))
+
+        instance.__dict__.pop(self.name, None)
+
+
 class param(object):
     """
     decorator to allow setting certain expected query/body values and options
