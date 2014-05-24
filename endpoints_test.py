@@ -123,6 +123,15 @@ class ControllerTest(TestCase):
 
 
 class ResponseTest(TestCase):
+    def test_gbody(self):
+        r = endpoints.Response()
+        r.headers['Content-Type'] = 'application/json'
+        gbody = (v for v in [{'foo': 'bar'}])
+        r.gbody = gbody
+
+        for b in r.gbody:
+            self.assertTrue(isinstance(b, str))
+
     def test_headers(self):
         """make sure headers don't persist between class instantiations"""
         r = endpoints.Response()
@@ -151,9 +160,10 @@ class ResponseTest(TestCase):
         b = {'foo': 'bar'}
 
         r = endpoints.Response()
+        r.headers['Content-Type'] = 'plain/text'
         self.assertEqual('', r.body)
         r.body = b
-        self.assertEqual(b, r.body)
+        self.assertEqual(str(b), r.body)
 
         r = endpoints.Response()
         r.headers['Content-Type'] = 'application/json'
@@ -161,10 +171,11 @@ class ResponseTest(TestCase):
         self.assertEqual(json.dumps(b), r.body)
 
         r = endpoints.Response()
+        r.headers['Content-Type'] = 'plain/text'
         self.assertEqual('', r.body)
         self.assertEqual('', r.body) # Make sure it doesn't change
         r.body = b
-        self.assertEqual(b, r.body)
+        self.assertEqual(str(b), r.body)
 
         r = endpoints.Response()
         r.headers['Content-Type'] = 'application/json'

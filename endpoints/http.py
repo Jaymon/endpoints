@@ -374,18 +374,17 @@ class Response(Http):
         if gb is None:
             b = getattr(self, '_body', None)
             if b:
-                self._body = b
-                yield b
+                self.body = b
+                yield self.body
 
             else:
-                self._body = None
-                yield ''
+                self.body = None
+                yield self.body
 
         else:
             for b in gb:
-                self._body = b
-                yield b
-            #yield self.normalize_body(gb.next())
+                self.body = b
+                yield self.body
 
     @gbody.setter
     def gbody(self, v):
@@ -409,9 +408,6 @@ class Response(Http):
     def body(self, v):
         self._body = v
 
-    def __init__(self):
-        super(Response, self).__init__()
-
     def has_body(self):
         ret = False
         if hasattr(self, '_body'):
@@ -428,7 +424,7 @@ class Response(Http):
         if b is None: return ''
 
         is_error = isinstance(b, Exception)
-        ct = self.headers.get('Content-Type', None)
+        ct = self.get_header('Content-Type')
         if ct:
             ct = ct.lower()
             if ct.rfind(u"json") >= 0: # fuzzy, not sure I like that
@@ -448,27 +444,14 @@ class Response(Http):
                     b = json.dumps(b)
 
             else:
-                if is_error:
-                    b = str(b)
-
-        else:
-            if is_error:
+                # no idea what to do here because we don't know how to handle the type
                 b = str(b)
 
-        return b
+        else:
+            # just return a string representation of body if no content type
+            b = str(b)
 
-#    def _get_body(self):
-#        b = getattr(self, '_body', None)
-#        if b is None:
-#            if self.body_generator:
-#                for b in body_generator:
-#                    yield b
-#
-#            else:
-#                yield None
-#
-#        else:
-#            yield b
+        return b
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 
