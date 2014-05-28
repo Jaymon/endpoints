@@ -47,9 +47,9 @@ And add the necessary code to run a simple server:
 
 import os
 
-from endpoints.server.simple import Simple
+from endpoints.interface.simple import Server
 
-s = Simple()
+s = Server()
 s.serve_forever()
 ```
 
@@ -257,13 +257,13 @@ Endpoints comes with [Mongrel2](http://mongrel2.org/) and [Python Simple Server]
 ```python
 import os
 
-from endpoints.server.mongrel2 import Mongrel2
+from endpoints.interface.mongrel2 import Server
 
 os.environ['ENDPOINTS_MONGREL2_SUB'] = "tcp://127.0.0.1:9001"
 os.environ['ENDPOINTS_MONGREL2_PUB'] = "tcp://127.0.0.1:9002"
 os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
 
-s = Mongrel2()
+s = Server()
 s.serve_forever()
 ```
 

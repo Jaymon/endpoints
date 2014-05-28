@@ -90,6 +90,8 @@ class param(object):
         allow_empty -- boolean -- True allows values like False, 0, '' through,
             default False, this will also let through any empty value that was set
             via the default flag
+        max_size -- int -- the maximum size of the param
+        min_size -- int -- the minimum size of the param
 
     raises -- 
         CallError -- with 400 status code on any param validation failures
@@ -138,6 +140,8 @@ class param(object):
         prequired = False if 'default' in flags else flags.get('required', True)
         pchoices = flags.get('choices', None)
         allow_empty = flags.get('allow_empty', False)
+        min_size = flags.get('min_size', None)
+        max_size = flags.get('max_size', None)
 
         request = slf.request
         val = self.find_param(name, prequired, pdefault, request, args, kwargs)
@@ -184,6 +188,26 @@ class param(object):
         if not allow_empty and not val:
             if 'default' not in flags:
                 raise CallError(400, "param {} was empty".format(name))
+
+        if min_size is not None:
+            failed = False
+            if isinstance(val, (int, float)):
+                if val < min_size: failed = True
+            else:
+                if len(val) < min_size: failed = True
+
+            if failed:
+                raise CallError(400, "param {} was smaller than {}".format(name, min_size))
+
+        if max_size is not None:
+            failed = False
+            if isinstance(val, (int, float)):
+                if val > max_size: failed = True
+            else:
+                if len(val) > max_size: failed = True
+
+            if failed:
+                raise CallError(400, "param {} was bigger than {}".format(name, max_size))
 
         kwargs[name] = val
         return slf, args, kwargs

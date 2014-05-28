@@ -3,13 +3,12 @@ import os
 import urlparse
 import json
 import logging
+from BaseHTTPServer import BaseHTTPRequestHandler
 
 import testdata
 
 import endpoints
 import endpoints.call
-
-from endpoints.interface.mongrel2 import Mongrel2 as M2Interface
 
 
 #logging.basicConfig()
@@ -145,10 +144,9 @@ class ResponseTest(TestCase):
 
     def test_status(self):
         r = endpoints.Response()
-        statuses = r.statuses
-        for code, status in statuses.iteritems():
+        for code, status in BaseHTTPRequestHandler.responses.iteritems():
             r.code = code
-            self.assertEqual(status, r.status)
+            self.assertEqual(status[0], r.status)
             r.code = None
             r.status = None
 
@@ -1389,45 +1387,91 @@ class DecoratorsTest(TestCase):
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
 
+    def test_param_size(self):
+        c = create_controller()
 
-class MockM2Request(object):
-    def __init__(self, **kwargs):
-        self.body = kwargs.get('body', '')
-        self.sender = kwargs.get('sender', 'm2-interface-test')
-        self.conn_id = kwargs.get('conn_id', '1')
+        @endpoints.decorators.param('foo', type=int, min_size=100)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': 0})
+        r = foo(c, **{'foo': 200})
+        self.assertEqual(200, r)
 
-        self.data = kwargs.get('data', {})
-        self.data = kwargs.get('msg', 'this is the raw zeromq message')
+        @endpoints.decorators.param('foo', type=int, max_size=100)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': 200})
+        r = foo(c, **{'foo': 20})
+        self.assertEqual(20, r)
 
-        self.headers = {
-            'REMOTE_ADDR': u"10.0.2.2",
-            'PATTERN': u"/",
-            'x-forwarded-for': u"10.0.2.2",
-            'URL_SCHEME': u"http",
-            'URI': u"/",
-            'accept': u"*/*",
-            'user-agent': u"m2-interface-test",
-            'host': u"localhost:1234",
-            'VERSION': u"HTTP/1.1",
-            'PATH': u"/",
-            'METHOD': u"GET"
-        }
-        for hk, hv in kwargs.get('headers', {}).iteritems():
-            self.headers[hk] = hv
+        @endpoints.decorators.param('foo', type=int, min_size=100, max_size=200)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        r = foo(c, **{'foo': 120})
+        self.assertEqual(120, r)
 
-        self.path = self.headers['PATH']
+        @endpoints.decorators.param('foo', type=str, min_size=2, max_size=4)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        r = foo(c, **{'foo': 'bar'})
+        self.assertEqual('bar', r)
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': 'barbar'})
+
+    def test_param_lambda_type(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', type=lambda x: x.upper())
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        r = foo(c, **{'foo': 'bar'})
+        self.assertEqual('BAR', r)
 
 
-class M2InterfaceTest(TestCase):
-    def test_create_request(self):
-        m2_req = MockM2Request()
-        i = M2Interface('m2.test.controller')
+try:
+    from endpoints.interface.mongrel2 import Mongrel2 as M2Interface
+    class MockM2Request(object):
+        def __init__(self, **kwargs):
+            self.body = kwargs.get('body', '')
+            self.sender = kwargs.get('sender', 'm2-interface-test')
+            self.conn_id = kwargs.get('conn_id', '1')
 
-        req = i.create_request(m2_req, request_class=M2Interface.request_class)
-        self.assertEqual({}, req.query_kwargs)
+            self.data = kwargs.get('data', {})
+            self.data = kwargs.get('msg', 'this is the raw zeromq message')
 
-        m2_req = MockM2Request(headers={'QUERY': 'foo=bar'})
-        req = i.create_request(m2_req, request_class=M2Interface.request_class)
-        self.assertTrue('foo' in req.query_kwargs)
+            self.headers = {
+                'REMOTE_ADDR': u"10.0.2.2",
+                'PATTERN': u"/",
+                'x-forwarded-for': u"10.0.2.2",
+                'URL_SCHEME': u"http",
+                'URI': u"/",
+                'accept': u"*/*",
+                'user-agent': u"m2-interface-test",
+                'host': u"localhost:1234",
+                'VERSION': u"HTTP/1.1",
+                'PATH': u"/",
+                'METHOD': u"GET"
+            }
+            for hk, hv in kwargs.get('headers', {}).iteritems():
+                self.headers[hk] = hv
 
+            self.path = self.headers['PATH']
+
+
+    class M2InterfaceTest(TestCase):
+        def test_create_request(self):
+            m2_req = MockM2Request()
+            i = M2Interface('m2.test.controller')
+
+            req = i.create_request(m2_req, request_class=M2Interface.request_class)
+            self.assertEqual({}, req.query_kwargs)
+
+            m2_req = MockM2Request(headers={'QUERY': 'foo=bar'})
+            req = i.create_request(m2_req, request_class=M2Interface.request_class)
+            self.assertTrue('foo' in req.query_kwargs)
+
+except ImportError, e:
+    pass
 
