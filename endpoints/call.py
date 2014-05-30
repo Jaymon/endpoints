@@ -9,6 +9,7 @@ from .utils import AcceptHeader
 from .http import Response, Request
 from .exception import CallError, Redirect, CallStop, AccessDenied
 from .core import Controller
+from .decorators import _property
 
 
 logger = logging.getLogger(__name__)
@@ -16,7 +17,9 @@ logger = logging.getLogger(__name__)
 _module_cache = {}
 
 def get_controllers(controller_prefix):
-    """get all the modules in the controller_prefix"""
+    """get all the modules in the controller_prefix
+
+    returns -- set -- a set of string module names"""
     global _module_cache
     if not controller_prefix:
         raise ValueError("controller prefix is empty")
@@ -64,37 +67,23 @@ class Call(object):
     content_type = "application/json"
     """the content type this call is going to represent"""
 
-    @property
+    @_property
     def request(self):
         '''
         Call.request, this request object is used to decide how to route the client request
 
         a Request instance to be used to translate the request to a controller
         '''
-        if not hasattr(self, "_request"):
-            self._request = Request()
+        return Request()
 
-        return self._request
-
-    @request.setter
-    def request(self, v):
-        self._request = v
-
-    @property
+    @_property
     def response(self):
         '''
         Call.response, this object is used to decide how to answer the client
 
         a Response instance to be returned from handle populated with info from controller
         '''
-        if not hasattr(self, "_response"):
-            self._response = Response()
-
-        return self._response
-
-    @response.setter
-    def response(self, v):
-        self._response = v
+        return Response()
 
     def __init__(self, controller_prefix, *args, **kwargs):
         '''
@@ -104,65 +93,66 @@ class Call(object):
         *args -- tuple -- convenience, in case you extend and need something in another method
         **kwargs -- dict -- convenience, in case you extend
         '''
-        assert controller_prefix, "controller_prefix was empty"
+        if not controller_prefix:
+            raise ValueError("controller_prefix was empty")
 
         self.controller_prefix = controller_prefix
         self.args = args
         self.kwargs = kwargs
 
-    def get_controller_info_simple(self):
-        '''
-        get info about finding a controller based off of the request info
+    def get_controllers(self, controller_prefix):
+        """return a set of string controllers that includes controller_prefix and
+        any sub modules underneath it"""
+        cset = get_controllers(controller_prefix)
+        return cset
 
-        this method will use the path info as:
+    def get_module_name(self, path_args):
+        """returns the module_name and remaining path args.
 
-            module_name/class_name/args?kwargs
-
-        return -- dict -- all the gathered info about the controller
-        '''
-        d = {}
-        req = self.request
-        path_args = list(req.path_args)
-        d['module_name'] = u"default"
-        d['class_name'] = u"Default"
-        d['module'] = None
-        d['class'] = None
-        d['method'] = req.method.upper()
-        d['args'] = []
-        d['kwargs'] = {}
-
-        # the first arg is the module
-        if len(path_args) > 0:
-            module_name = path_args.pop(0)
-            if module_name.startswith(u'_'):
-                raise ValueError("{} is an invalid".format(module_name))
-            d['module_name'] = module_name
-
+        return -- tuple -- (module_name, path_args)"""
         controller_prefix = self.get_normalized_prefix()
-        if controller_prefix:
-            d['module_name'] = u".".join([controller_prefix, d['module_name']])
+        cset = self.get_controllers(controller_prefix)
+        module_name = controller_prefix
+        mod_name = module_name
+        while path_args:
+            mod_name += "." + path_args[0]
+            if mod_name in cset:
+                module_name = mod_name
+                path_args.pop(0)
+            else:
+                break
 
-        # the second arg is the Class
-        if len(path_args) > 0:
-            class_name = path_args.pop(0)
-            if class_name.startswith(u'_'):
-                raise ValueError("{} is invalid".format(class_name))
-            d['class_name'] = class_name.capitalize()
+        return module_name, path_args
 
-        d['module'] = importlib.import_module(d['module_name'])
-        d['class'] = getattr(d['module'], d['class_name'])
-        d['args'] = path_args
-        d['kwargs'] = req.query_kwargs
+    def get_class(self, module, class_name):
+        """try and get the class_name from the module and make sure it is a valid
+        controller"""
+        # let's get the class
+        class_object = getattr(module, class_name, None)
+        if not class_object or not issubclass(class_object, Controller):
+            class_object = None
 
-        return d
+        return class_object
 
-    def get_controller_info_advanced(self):
+    def get_kwargs(self):
+        """combine GET and POST params to be passed to the controller"""
+        req = self.request
+        kwargs = dict(req.query_kwargs)
+        if req.has_body():
+            kwargs.update(req.body_kwargs)
+
+        return kwargs
+
+    def get_controller_info(self):
         '''
         get info about finding a controller based off of the request info
 
         This method will use path info trying to find the longest module name it
         can and then the class name, passing anything else that isn't the module
         or the class as the args, with any query params as the kwargs
+
+        You can modify a lot of the behavior of this method by overriding the
+        sub methods that it calls
 
         return -- dict -- all the gathered info about the controller
         '''
@@ -177,59 +167,35 @@ class Call(object):
         d['args'] = []
         d['kwargs'] = {}
 
-        controller_prefix = self.get_normalized_prefix()
-        cset = get_controllers(controller_prefix)
-        module_name = controller_prefix
-        mod_name = module_name
-        while path_args:
-            mod_name += "." + path_args[0]
-            if mod_name in cset:
-                module_name = mod_name
-                path_args.pop(0)
-            else:
-                break
-
+        module_name, path_args = self.get_module_name(path_args)
         d['module_name'] = module_name
         d['module'] = importlib.import_module(d['module_name'])
 
-        # let's get the class
         class_object = None
         if path_args:
-            class_name = path_args[0].capitalize()
-            class_object = getattr(d['module'], class_name, None)
-            if class_object and issubclass(class_object, Controller):
-                d['class_name'] = class_name
-                path_args.pop(0)
+            class_object = self.get_class(d['module'], path_args[0].capitalize())
 
-            else:
-                class_object = None
+        if class_object:
+            path_args.pop(0)
+            d['class_name'] = class_object.__name__
 
-        if not class_object:
-            class_name = d['class_name']
-            class_object = getattr(d['module'], class_name, None)
-            if not class_object or not issubclass(class_object, Controller):
+        else:
+            class_object = self.get_class(d['module'], d['class_name'])
+            if not class_object:
                 class_object = None
                 raise TypeError(
                     "could not find a valid controller with {}.{}.{}".format(
                         d['module_name'],
-                        class_name,
+                        d['class_name'],
                         d['method']
                     )
                 )
 
         d['class'] = class_object
         d['args'] = path_args
-
-        # combine GET and POST params to be passed to the controller
-        kwargs = dict(req.query_kwargs)
-        if req.has_body():
-            kwargs.update(req.body_kwargs)
-        d['kwargs'] = kwargs
+        d['kwargs'] = self.get_kwargs()
 
         return d
-
-    def get_controller_info(self):
-        return self.get_controller_info_advanced()
 
     def get_callback_info(self):
         '''

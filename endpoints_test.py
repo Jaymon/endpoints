@@ -509,7 +509,7 @@ class CallTest(TestCase):
         self.assertTrue(issubclass(info['class'], endpoints.Controller))
 
 
-    def test_get_controller_info_advanced(self):
+    def test_get_controller_info(self):
         controller_prefix = "controller_info_advanced"
         s = create_modules(controller_prefix)
 
@@ -587,69 +587,9 @@ class CallTest(TestCase):
             c = endpoints.Call(controller_prefix)
             c.request = r
 
-            d = c.get_controller_info_advanced()
+            d = c.get_controller_info()
             for key, val in t['out'].iteritems():
                 self.assertEqual(val, d[key])
-
-    def test_get_controller_info_simple(self):
-        """while the method should work in real life with valid controller modules
-        I haven't updated this test to use testdata.create_modules, so I'm just
-        disabling it for right now"""
-        return
-        r = endpoints.Request()
-        r.path_args = [u'user', u'verify_credentials']
-        r.query_kwargs = {}
-        r.method = u"GET"
-        out_d = {
-            'class_name': u"Verify_credentials",
-            'args': [],
-            'method': u"GET",
-            'module': u"controller.user",
-            'kwargs': {}
-        }
-
-        c = endpoints.Call("controller")
-        c.request = r
-
-        d = c.get_controller_info_simple()
-        self.assertEqual(d, out_d)
-
-        r = endpoints.Request()
-        r.path_args = [u"foo", u"bar"]
-        r.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
-        r.method = u"GET"
-
-        out_d = {
-            'class_name': u"Bar",
-            'args': [],
-            'method': u"GET",
-            'module': u"controller.foo",
-            'kwargs':
-                {
-                    'foo': u"bar",
-                    'che': u"baz"
-                }
-        }
-
-        c = endpoints.Call("controller")
-        c.request = r
-
-        d = c.get_controller_info_simple()
-        self.assertEqual(d, out_d)
-
-        r.path_args.append(u"che")
-        out_d['args'].append(u"che")
-
-        d = c.get_controller_info()
-        self.assertEqual(d, out_d)
-
-        r.path_args = []
-        out_d['args'] = []
-        out_d['module'] = u'controller.default'
-        out_d['class_name'] = u'Default'
-
-        d = c.get_controller_info_simple()
-        self.assertEqual(d, out_d)
 
     def test_callback_info(self):
         controller_prefix = "callback_info"
@@ -1428,6 +1368,15 @@ class DecoratorsTest(TestCase):
             return kwargs.get('foo')
         r = foo(c, **{'foo': 'bar'})
         self.assertEqual('BAR', r)
+
+    def test_param_empty_default(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', default=None)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+        r = foo(c, **{})
+        self.assertEqual(None, r)
 
 
 try:
