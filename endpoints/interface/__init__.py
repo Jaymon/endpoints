@@ -45,8 +45,9 @@ class BaseServer(object):
     Call() instance"""
 
     def __init__(self, controller_prefix='', interface_class=None, server_class=None, request_class=None, call_class=None, **kwargs):
-        self.controller_prefix = controller_prefix
-        if not self.controller_prefix:
+        if controller_prefix:
+            self.controller_prefix = controller_prefix
+        else:
             self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
 
         if interface_class:
