@@ -47,7 +47,7 @@ class BaseServer(object):
     def __init__(self, controller_prefix='', interface_class=None, server_class=None, request_class=None, call_class=None, **kwargs):
         if controller_prefix:
             self.controller_prefix = controller_prefix
-        else:
+        if not self.controller_prefix:
             self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
 
         if interface_class:
