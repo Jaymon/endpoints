@@ -25,7 +25,7 @@ setup(
     description='Get an api up and running quickly',
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
-    url='http://github.com/firsopinion/{}'.format(name),
+    url='http://github.com/firstopinion/{}'.format(name),
     py_modules=[name],
     packages=find_packages(),
     license="MIT",

@@ -177,7 +177,6 @@ class Call(object):
 
         if class_object:
             path_args.pop(0)
-            d['class_name'] = class_object.__name__
 
         else:
             class_object = self.get_class(d['module'], d['class_name'])
@@ -192,6 +191,7 @@ class Call(object):
                 )
 
         d['class'] = class_object
+        d['class_name'] = class_object.__name__
         d['args'] = path_args
         d['kwargs'] = self.get_kwargs()
 
