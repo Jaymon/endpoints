@@ -12,6 +12,16 @@ class _property(object):
     see https://docs.python.org/2/howto/descriptor.html
     see http://stackoverflow.com/questions/17330160/python-how-does-the-property-decorator-work
     """
+#    def __init__(self, fget=None, fset=None, fdel=None, **kwargs):
+#            self.set_method(fget, fset, fdel)
+#
+#    def set_method(self, fget=None, fset=None, fdel=None):
+#        method = fget
+#        self.method = method
+#        self.__doc__ = method.__doc__
+#        self.__name__ = method.__name__
+#        self.name = '_{}'.format(self.__name__)
+#
     def __init__(self, *args, **kwargs):
         self.read_only = kwargs.get('read_only', False)
         if args:
@@ -22,7 +32,9 @@ class _property(object):
                 self.set_method(args[0])
 
     def set_method(self, method):
-        self.method = method
+        self.fget = method
+        self.fset = self.default_set
+        self.fdel = self.default_del
         self.__doc__ = method.__doc__
         self.__name__ = method.__name__
         self.name = '_{}'.format(self.__name__)
@@ -38,7 +50,7 @@ class _property(object):
         name = self.name
         if name not in instance.__dict__:
             try:
-                instance.__dict__[name] = self.method(instance)
+                instance.__dict__[name] = self.fget(instance)
             except Exception, e:
                 # make sure no value gets set no matter what
                 instance.__dict__.pop(name, None)
@@ -46,17 +58,35 @@ class _property(object):
 
         return instance.__dict__[name]
 
+    def default_set(self, instance, val):
+        instance.__dict__[self.name] = val
+
     def __set__(self, instance, val):
         if self.read_only:
             raise AttributeError("can't set attribute {}".format(self.__name__))
 
-        instance.__dict__[self.name] = val
+        self.fset(instance, val)
 
-    def __delete__(self, instance):
+    def default_del(self, instance):
+        instance.__dict__.pop(self.name, None)
+
+    def __delete__(self, instance, *args):
         if self.read_only:
             raise AttributeError("can't delete attribute {}".format(self.__name__))
 
-        instance.__dict__.pop(self.name, None)
+        self.fdel(instance)
+
+    def getter(self, fget):
+        self.fget = fget
+        return self
+
+    def setter(self, fset):
+        self.fset = fset
+        return self
+
+    def deleter(self, fdel):
+        self.fdel = fdel
+        return self
 
 
 class param(object):

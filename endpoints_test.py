@@ -1097,6 +1097,41 @@ class EndpointsTest(TestCase):
 
 
 class DecoratorsTest(TestCase):
+    def test__property_setter(self):
+        class WPS(object):
+            foo_get = False
+            foo_set = False
+            foo_del = False
+
+            @endpoints.decorators._property
+            def foo(self):
+                self.foo_get = True
+                return 1
+
+            @foo.setter
+            def foo(self, val):
+                self.foo_set = True
+                self._foo = val
+
+            @foo.deleter
+            def foo(self):
+                self.foo_del = True
+                del(self._foo)
+
+        c = WPS()
+
+        self.assertEqual(1, c.foo)
+
+        c.foo = 5
+        self.assertEqual(5, c.foo)
+
+        del(c.foo)
+        self.assertEqual(1, c.foo)
+
+        self.assertTrue(c.foo_get)
+        self.assertTrue(c.foo_set)
+        self.assertTrue(c.foo_del)
+
     def test__property(self):
         class WP(object):
             count_foo = 0
