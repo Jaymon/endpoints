@@ -254,7 +254,7 @@ class Call(object):
         try:
             self.response.headers['Content-Type'] = self.content_type
             callback, callback_args, callback_kwargs = self.get_callback_info()
-            body = callback(*callback_args, **callback_kwargs)
+            body = self.handle_controller(callback, callback_args, callback_kwargs)
             if isinstance(body, types.GeneratorType):
                 for b in body:
                     yield b
@@ -262,44 +262,56 @@ class Call(object):
             else:
                 yield body
 
-        except CallStop, e:
+        except Exception, e:
+            body = self.handle_error(e)
+            yield body
+
+    def handle_controller(self, callback, callback_args, callback_kwargs):
+        body = callback(*callback_args, **callback_kwargs)
+        return body
+
+    def handle_error(self, e):
+        ret = None
+        if isinstance(e, CallStop):
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e.body
             self.response.headers.update(e.headers)
-            yield e.body
+            ret = e.body
 
-        except Redirect, e:
+        elif isinstance(e, Redirect):
             #logger.exception(e)
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = None
             self.response.headers.update(e.headers)
-            yield None
+            ret = None
 
-        except (AccessDenied, CallError), e:
+        elif isinstance(e, AccessDenied) or isinstance(e, CallError):
             #logger.debug("Request Path: {}".format(self.request.path))
             logger.exception(e)
             self.response.code = e.code
             #self.response.body = e
             self.response.headers.update(e.headers)
-            yield e
+            ret = e
 
-        except TypeError, e:
+        elif isinstance(e, TypeError):
             # this is raised when there aren't enough args passed to controller
             exc_info = sys.exc_info()
             logger.info(str(e), exc_info=exc_info)
             self.response.code = 404
             #self.response.body = e
-            yield e
+            ret = e
 
-        except Exception, e:
+        else:
             logger.exception(e)
             self.response.code = 500
             #self.response.body = e
-            yield e
+            ret = e
+
+        return ret
 
     def handle(self):
         """returns a response where the controller is already evaluated
