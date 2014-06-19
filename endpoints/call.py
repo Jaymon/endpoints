@@ -102,7 +102,12 @@ class Call(object):
 
     def get_controllers(self, controller_prefix):
         """return a set of string controllers that includes controller_prefix and
-        any sub modules underneath it"""
+        any sub modules underneath it
+
+        controller_prefix -- string -- you pass this in because it can be different
+            values (not just self.controller_prefix) depending on if a Versioned call
+            is being used, etc.
+        """
         cset = get_controllers(controller_prefix)
         return cset
 
@@ -123,6 +128,10 @@ class Call(object):
                 break
 
         return module_name, path_args
+
+    def get_module(self, module_name):
+        """load a module by name"""
+        return importlib.import_module(module_name)
 
     def get_class(self, module, class_name):
         """try and get the class_name from the module and make sure it is a valid
@@ -169,7 +178,7 @@ class Call(object):
 
         module_name, path_args = self.get_module_name(path_args)
         d['module_name'] = module_name
-        d['module'] = importlib.import_module(d['module_name'])
+        d['module'] = self.get_module(d['module_name'])
 
         class_object = None
         if path_args:
@@ -197,6 +206,27 @@ class Call(object):
 
         return d
 
+    def get_callback(self, controller_info):
+        """using the controller_info retrieved from get_controller_info(), get the
+        actual controller callback method that will be used to handle the request"""
+        callback = None
+        try:
+            instance = controller_info['class'](self.request, self.response)
+            instance.call = self
+
+            callback = getattr(instance, controller_info['method'])
+            logger.debug("handling request with callback {}.{}.{}".format(
+                controller_info['module_name'],
+                controller_info['class_name'],
+                controller_info['method'])
+            )
+
+        except AttributeError, e:
+            r = self.request
+            raise CallError(405, "{} {} not supported".format(r.method, r.path))
+
+        return callback
+
     def get_callback_info(self):
         '''
         get the controller callback that will be used to complete the call
@@ -221,18 +251,7 @@ class Call(object):
                 )
             )
 
-        try:
-            instance = d['class'](self.request, self.response)
-            instance.call = self
-
-            callback = getattr(instance, d['method'])
-            logger.debug("handling request with callback {}.{}.{}".format(d['module_name'], d['class_name'], d['method']))
-
-        except AttributeError, e:
-            r = self.request
-            raise CallError(405, "{} {} not supported".format(r.method, r.path))
-
-        return callback, d['args'], d['kwargs']
+        return self.get_callback(d), d['args'], d['kwargs'] 
 
     def get_normalized_prefix(self):
         """
