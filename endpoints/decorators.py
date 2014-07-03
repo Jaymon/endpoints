@@ -54,7 +54,7 @@ class _property(object):
             except Exception, e:
                 # make sure no value gets set no matter what
                 instance.__dict__.pop(name, None)
-                raise e
+                raise
 
         return instance.__dict__[name]
 
