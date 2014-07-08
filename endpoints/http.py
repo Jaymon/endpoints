@@ -329,8 +329,11 @@ class Response(Http):
     @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
-        b = getattr(self, '_body', None)
-        if b is None:
+        b = None
+        if hasattr(self, '_body'):
+            b = self._body
+
+        else:
             gb = getattr(self, '_gbody', None)
             if gb:
                 for b in gb: self._body = b

@@ -4,6 +4,7 @@ import urlparse
 import json
 import logging
 from BaseHTTPServer import BaseHTTPRequestHandler
+import time
 
 import testdata
 
@@ -416,6 +417,32 @@ class RequestTest(TestCase):
         self.assertEqual('are-here-again', v)
 
 class CallTest(TestCase):
+    def test_gbody_none(self):
+        """there was a bug in the original response.body getter that would make
+        the generator body stall until it was done if you did "yield None"."""
+        controller_prefix = "gbodynonecontroller"
+        contents = os.linesep.join([
+            "import time",
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        yield None",
+            "        time.sleep(1)"
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/'
+        c.request = r
+
+        start = time.time()
+        res = c.ghandle()
+        for b in res.gbody:
+            stop = time.time()
+            self.assertGreater(1, stop - start)
+
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to default class
         name if the path bit fails to be a controller class name"""
