@@ -115,9 +115,7 @@ class Server(BaseServer):
     def handle_request(self):
         m2_req = self.server.recv()
         res = self.interface.handle(m2_req)
-        pout.v(res)
         for b in res.gbody:
-            pout.v(b, res.code)
             self.server.reply_http(
               m2_req,
               body=b,
