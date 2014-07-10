@@ -11,19 +11,15 @@ class _property(object):
     See http://www.reddit.com/r/Python/comments/ejp25/cached_property_decorator_that_is_memory_friendly/
     see https://docs.python.org/2/howto/descriptor.html
     see http://stackoverflow.com/questions/17330160/python-how-does-the-property-decorator-work
+
+    options you can use to further customize the property
+
+    read_only -- boolean (default False) -- set to de-activate set and del methods
+    allow_empty -- boolean (default True) -- False to not cache empty values (eg, None, "")
     """
-#    def __init__(self, fget=None, fset=None, fdel=None, **kwargs):
-#            self.set_method(fget, fset, fdel)
-#
-#    def set_method(self, fget=None, fset=None, fdel=None):
-#        method = fget
-#        self.method = method
-#        self.__doc__ = method.__doc__
-#        self.__name__ = method.__name__
-#        self.name = '_{}'.format(self.__name__)
-#
     def __init__(self, *args, **kwargs):
         self.read_only = kwargs.get('read_only', False)
+        self.allow_empty = kwargs.get('allow_empty', True)
         if args:
             if isinstance(args[0], bool):
                 self.read_only = args[0]
@@ -47,16 +43,23 @@ class _property(object):
 
     def __get__(self, instance, cls):
         # return the cached value if it exists
+        val = None
         name = self.name
-        if name not in instance.__dict__:
+        if name in instance.__dict__:
+            val = instance.__dict__[name]
+
+        else:
             try:
-                instance.__dict__[name] = self.fget(instance)
+                val = self.fget(instance)
+                if val or self.allow_empty:
+                    instance.__dict__[name] = val
+
             except Exception, e:
                 # make sure no value gets set no matter what
                 instance.__dict__.pop(name, None)
                 raise
 
-        return instance.__dict__[name]
+        return val
 
     def default_set(self, instance, val):
         instance.__dict__[self.name] = val

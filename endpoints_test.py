@@ -1124,6 +1124,21 @@ class EndpointsTest(TestCase):
 
 
 class DecoratorsTest(TestCase):
+    def test__property_allow_empty(self):
+        class PAE(object):
+            foo_val = None
+            @endpoints.decorators._property(allow_empty=False)
+            def foo(self):
+                return self.foo_val
+
+        c = PAE()
+        self.assertEqual(None, c.foo)
+        self.assertFalse('_foo' in c.__dict__)
+
+        c.foo_val = 1
+        self.assertEqual(1, c.foo)
+        self.assertTrue('_foo' in c.__dict__)
+
     def test__property_setter(self):
         class WPS(object):
             foo_get = False
