@@ -20,7 +20,13 @@ class Mongrel2(BaseInterface):
         raw_request -- mongrel2.request.Request() -- the request object retrieved from mongrel2
         """
         r = self.request_class()
-        r.raw_request = raw_request
+        return self.normalize_request(r, raw_request, **kwargs)
+
+    def normalize_request(self, request, raw_request, **kwargs):
+        """This is called by create_request to do the actual combining of the raw_request
+        into the endpoints request instance, this is to make it easier to allow
+        custom creation in child classes that can then use the same combine code"""
+        request.raw_request = raw_request
 
         # separate environ from headers
         environ = {}
@@ -43,19 +49,18 @@ class Mongrel2(BaseInterface):
             else:
                 headers[k] = v
 
-        r.headers = headers
-        r.environ = environ
+        request.headers = headers
+        request.environ = environ
 
-        r.path = environ.get(u'PATH', u"/")
-        r.query = environ.get(u'QUERY', u"")
-        r.method = environ.get(u'METHOD', u"GET")
+        request.path = environ.get(u'PATH', u"/")
+        request.query = environ.get(u'QUERY', u"")
+        request.method = environ.get(u'METHOD', u"GET")
 
         # make sure body is None if it is empty
         body = getattr(raw_request, 'body', None)
         if not body: body = None
-        r.body = body
-
-        return r
+        request.body = body
+        return request
 
 
 class Connection(handler.Connection):

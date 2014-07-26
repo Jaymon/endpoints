@@ -1457,7 +1457,8 @@ class DecoratorsTest(TestCase):
 
 
 try:
-    from endpoints.interface.mongrel2 import Mongrel2 as M2Interface
+    from endpoints.interface.mongrel2 import Mongrel2 as M2Interface, \
+        Request as M2Request
     class MockM2Request(object):
         def __init__(self, **kwargs):
             self.body = kwargs.get('body', '')
@@ -1485,17 +1486,21 @@ try:
 
             self.path = self.headers['PATH']
 
-
     class M2InterfaceTest(TestCase):
         def test_create_request(self):
             m2_req = MockM2Request()
-            i = M2Interface('m2.test.controller')
+            i = M2Interface(
+                'm2.test.controller',
+                request_class=M2Request,
+                response_class=None,
+                call_class=None
+            )
 
-            req = i.create_request(m2_req, request_class=M2Interface.request_class)
+            req = i.create_request(m2_req)
             self.assertEqual({}, req.query_kwargs)
 
             m2_req = MockM2Request(headers={'QUERY': 'foo=bar'})
-            req = i.create_request(m2_req, request_class=M2Interface.request_class)
+            req = i.create_request(m2_req)
             self.assertTrue('foo' in req.query_kwargs)
 
 except ImportError, e:
