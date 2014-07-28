@@ -1,7 +1,11 @@
 import os
+import logger
 
 from ..http import Request, Response
 from ..call import Call
+
+
+logger = logging.getLogger(__name__)
 
 
 class BaseInterface(object):
@@ -93,11 +97,19 @@ class BaseServer(object):
         raise NotImplemented()
 
     def serve_forever(self):
-        while True: self.handle_request()
+        try:
+            while True: self.handle_request()
+        except Exception as e:
+            logger.exception(e)
+            raise
 
     def serve_count(self, count):
-        handle_count = 0
-        while handle_count < count:
-            self.handle_request()
-            handle_count += 1
+        try:
+            handle_count = 0
+            while handle_count < count:
+                self.handle_request()
+                handle_count += 1
+        except Exception as e:
+            logger.exception(e)
+            raise
 
