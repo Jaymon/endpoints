@@ -1,5 +1,5 @@
 import os
-import logger
+import logging
 
 from ..http import Request, Response
 from ..call import Call
