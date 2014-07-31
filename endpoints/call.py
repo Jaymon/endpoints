@@ -271,19 +271,24 @@ class Call(object):
 
         return -- generator -- a body generator"""
         try:
+            body_generated = False
             self.response.headers['Content-Type'] = self.content_type
             callback, callback_args, callback_kwargs = self.get_callback_info()
             body = self.handle_controller(callback, callback_args, callback_kwargs)
             if isinstance(body, types.GeneratorType):
                 for b in body:
+                    body_generated = True
                     yield b
 
             else:
                 yield body
 
-        except Exception, e:
-            body = self.handle_error(e)
-            yield body
+        except Exception as e:
+            if body_generated:
+                raise
+            else:
+                body = self.handle_error(e)
+                yield body
 
     def handle_controller(self, callback, callback_args, callback_kwargs):
         body = callback(*callback_args, **callback_kwargs)

@@ -417,6 +417,46 @@ class RequestTest(TestCase):
         self.assertEqual('are-here-again', v)
 
 class CallTest(TestCase):
+    def test_gbody_yield_errors(self):
+        """there was a bug that caused errors raised after the yield to return another
+        iteration of a body instead of raising them"""
+        controller_prefix = "gbodyerrory"
+        contents = os.linesep.join([
+            "import time",
+            "from endpoints import Controller",
+            "class Before(Controller):",
+            "    def GET(self):",
+            "        raise ValueError('blah')",
+            "        yield None",
+            "",
+            "class After(Controller):",
+            "    def GET(self):",
+            "        yield None",
+            "        raise ValueError('blah')"
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/after'
+        c.request = r
+        res = c.ghandle()
+        body_returned = False
+        with self.assertRaises(ValueError):
+            for i, b in enumerate(res.gbody):
+                body_returned = True
+        self.assertTrue(body_returned)
+
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/before'
+        c.request = r
+        res = c.ghandle()
+        for i, b in enumerate(res.gbody):
+            self.assertEqual(500, res.code)
+
     def test_gbody_none(self):
         """there was a bug in the original response.body getter that would make
         the generator body stall until it was done if you did "yield None"."""
