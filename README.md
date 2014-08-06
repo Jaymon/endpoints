@@ -247,10 +247,26 @@ class Foo(Controller):
             do_something(k, v)
 ```
 
+**NOTE** that this does now work with the WSGI interface and I'm not sure there is a way to make it work :(
 
 ### Built in servers
 
-Endpoints comes with [Mongrel2](http://mongrel2.org/) and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support, I got wsgi working also but we don't use wsgi and so I haven't added it to the repo yet since the code was messy.
+Endpoints comes with WSGI, [Mongrel2](http://mongrel2.org/) and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
+
+#### Sample WSGI script for uWSGI
+
+```python
+import os
+from endpoints.interface.wsgi import Server
+
+os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
+application = Server()
+```
+
+Yup, that's all you need to do to set it up, then you can start a [uWSGI](http://uwsgi-docs.readthedocs.org/) server to test it out:
+
+    uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
+
 
 #### Sample Mongrel2 script
 
