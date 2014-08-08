@@ -5,6 +5,8 @@ import json
 import logging
 from BaseHTTPServer import BaseHTTPRequestHandler
 import time
+import threading
+import subprocess
 
 import testdata
 
@@ -1545,4 +1547,137 @@ try:
 
 except ImportError, e:
     pass
+
+
+try:
+    import requests
+
+    class WSGIClient(object):
+        def __init__(self, controller_prefix, module_body):
+            self.cwd = testdata.create_dir()
+            self.controller_prefix = controller_prefix
+            self.module_body = os.linesep.join(module_body)
+            self.application = "wsgi.py"
+            self.host = "http://localhost:8080"
+            testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
+            f = testdata.create_file(
+                self.application,
+                os.linesep.join([
+                    "import os",
+                    "import sys",
+                    "sys.path.append('{}')".format(os.path.dirname(os.path.realpath(__file__))),
+                    "from endpoints.interface.wsgi import Server",
+                    "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
+                    "application = Server()",
+                    ""
+                ]),
+                self.cwd
+            )
+            self.start()
+
+        def start(slf):
+            subprocess.call("pgrep uwsgi | xargs kill -9", shell=True)
+            class SThread(threading.Thread):
+                """http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python"""
+                def __init__(self):
+                    super(SThread, self).__init__()
+                    self._stop = threading.Event()
+                    self.daemon = True
+
+                def stop(self):
+                    self._stop.set()
+
+                def stopped(self):
+                    return self._stop.isSet()
+
+                def run(self):
+                    process = None
+                    try:
+                        cmd = " ".join([
+                            "uwsgi",
+                            "--http=:8080",
+                            "--master",
+                            "--processes=1",
+                            "--cpu-affinity=1",
+                            "--thunder-lock",
+                            "--chdir={}".format(slf.cwd),
+                            "--wsgi-file={}".format(slf.application),
+                        ])
+
+                        process = subprocess.Popen(
+                            #['sudo', 'tail', '-f', '/var/log/upstart/chat-*.log'],
+                            cmd,
+                            shell=True,
+                            stdout=subprocess.PIPE,
+                            stderr=subprocess.STDOUT,
+                            cwd=slf.cwd
+                        )
+
+                        # Poll process for new output until finished
+                        while not self.stopped():
+                            line = process.stdout.readline()
+                            if line == '' and process.poll() != None:
+                                break
+
+                            sys.stdout.write(line)
+                            sys.stdout.flush()
+
+                    except Exception as e:
+                        print e
+                        raise
+
+                    finally:
+                        count = 0
+                        if process:
+                            process.terminate()
+                            while count < 50:
+                                count += 1
+                                time.sleep(0.1)
+                                if process.poll() != None:
+                                    break
+
+                            if process.poll() == None:
+                                process.kill()
+
+            slf.thread = SThread()
+            slf.thread.start()
+            time.sleep(1)
+
+        def stop(self):
+            self.thread.stop()
+
+        def post(self, uri, body, **kwargs):
+            url = self.host + uri
+            kwargs['data'] = body
+            kwargs.setdefault('timeout', 5)
+            return self.get_response(requests.post(url, **kwargs))
+
+        def get_response(self, requests_response):
+            """just make request's response more endpointy"""
+            requests_response.code = requests_response.status_code
+            requests_response.body = requests_response.content
+            return requests_response
+
+
+    class WSGITest(TestCase):
+        def test_post(self):
+            chdir = testdata.create_dir()
+            controller_prefix = 'wsgi.post'
+            c = WSGIClient(controller_prefix, [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "    def POST(*args, **kwargs): pass",
+                "",
+            ])
+
+            r = c.post('/', {})
+            self.assertEqual(204, r.code)
+
+            r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
+            self.assertEqual(204, r.code)
+
+
+except ImportError, e:
+    print e
 
