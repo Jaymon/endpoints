@@ -28,8 +28,10 @@ class WSGI(BaseInterface):
         if ct:
             r.headers[k] = ct
 
-        if r.is_method('POST'):
-            r.body = raw_request['wsgi.input'].read()
+        if 'wsgi.input' in raw_request:
+            body = raw_request['wsgi.input'].read()
+            if not body: body = None
+            r.body = body
 
         else:
             r.body = None
