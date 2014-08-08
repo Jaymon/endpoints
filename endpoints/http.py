@@ -18,7 +18,7 @@ class Http(object):
 
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
-        header_names = [headers_name, header_name.replace('-', '_')]
+        header_names = [header_name, header_name.replace('-', '_')]
         ret = default_val
         headers = self.headers
         for hn in header_names:
