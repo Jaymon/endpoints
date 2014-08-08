@@ -22,6 +22,12 @@ class WSGI(BaseInterface):
         r.query = raw_request['QUERY_STRING']
         r.raw_request = raw_request
 
+        # handle headers not prefixed with http
+        k = 'CONTENT_TYPE'
+        ct = r.environ.pop(k, None)
+        if ct:
+            r.headers[k] = ct
+
         if r.is_method('POST'):
             r.body = raw_request['wsgi.input'].read()
 

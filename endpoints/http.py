@@ -18,18 +18,25 @@ class Http(object):
 
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
+        header_names = [headers_name, header_name.replace('-', '_')]
         ret = default_val
         headers = self.headers
-        if header_name in headers:
-            ret = headers[header_name]
-        elif header_name.lower() in headers:
-            ret = headers[header_name.lower()]
-        elif header_name.title() in headers:
-            ret = headers[header_name.title()]
-        elif header_name.upper() in headers:
-            ret = headers[header_name.upper()]
-        elif header_name.capitalize() in headers:
-            ret = headers[header_name.capitalize()]
+        for hn in header_names:
+            if hn in headers:
+                ret = headers[header_name]
+                break
+            elif hn.upper() in headers:
+                ret = headers[header_name.upper()]
+                break
+            elif hn.lower() in headers:
+                ret = headers[header_name.lower()]
+                break
+            elif hn.title() in headers:
+                ret = headers[header_name.title()]
+                break
+            elif hn.capitalize() in headers:
+                ret = headers[header_name.capitalize()]
+                break
 
         return ret
 
