@@ -23,19 +23,19 @@ class Http(object):
         headers = self.headers
         for hn in header_names:
             if hn in headers:
-                ret = headers[header_name]
+                ret = headers[hn]
                 break
             elif hn.upper() in headers:
-                ret = headers[header_name.upper()]
+                ret = headers[hn.upper()]
                 break
             elif hn.lower() in headers:
-                ret = headers[header_name.lower()]
+                ret = headers[hn.lower()]
                 break
             elif hn.title() in headers:
-                ret = headers[header_name.title()]
+                ret = headers[hn.title()]
                 break
             elif hn.capitalize() in headers:
-                ret = headers[header_name.capitalize()]
+                ret = headers[hn.capitalize()]
                 break
 
         return ret
