@@ -247,7 +247,7 @@ class Foo(Controller):
             do_something(k, v)
 ```
 
-**NOTE** that this does now work with the WSGI interface and I'm not sure there is a way to make it work :(
+**NOTE** that this does not work with the WSGI interface and I'm not sure there is a way to make it work :(
 
 ### Built in servers
 

@@ -14,6 +14,8 @@ class WSGI(BaseInterface):
         for k, v in raw_request.iteritems():
             if k.startswith('HTTP_'):
                 r.headers[k[5:]] = v
+            else:
+                r.environ[k] = v
 
         r.method = raw_request['REQUEST_METHOD']
         r.path = raw_request['PATH_INFO']
@@ -37,12 +39,13 @@ class Server(BaseServer):
 
     def application(self, environ, start_response):
         res = self.interface.handle(environ)
+        body = res.body # we do this to trigger the generator
 
         start_response(
             '{} {}'.format(res.code, res.status),
             [(k, v) for k, v in res.headers.iteritems()]
         )
-        return [res.body]
+        return [body]
 
     def create_server(self, **kwargs):
         return None
