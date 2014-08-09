@@ -387,8 +387,7 @@ class VersionCall(Call):
             raise ValueError("You are versioning a call with no content_type")
 
         v = None
-        h = self.request.headers
-        accept_header = h.get('accept', u"")
+        accept_header = self.request.get_header('accept', u"")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a.filter(self.content_type):
