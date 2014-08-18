@@ -51,7 +51,7 @@ class Server(BaseServer):
 
         start_response(
             '{} {}'.format(res.code, res.status),
-            [(k, v) for k, v in res.headers.iteritems()]
+            [(k, str(v)) for k, v in res.headers.iteritems()]
         )
         return [body]
 
