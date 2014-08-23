@@ -120,6 +120,7 @@ class param(object):
         default -- mixed -- the value that should be set if query param isn't there
         required -- boolean -- True if param is required, default is true
         choices -- set() -- a set of values to be in tested against (eg, val in choices)
+        matches -- regex -- TODO -- a regular expression that the value needs to match
         allow_empty -- boolean -- True allows values like False, 0, '' through,
             default False, this will also let through any empty value that was set
             via the default flag

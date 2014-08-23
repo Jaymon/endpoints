@@ -979,10 +979,12 @@ class AcceptHeaderTest(TestCase):
 
 
 class ReflectTest(TestCase):
-
     def test_decorators(self):
         testdata.create_modules({
             "controller_reflect.foo": os.linesep.join([
+                "import endpoints",
+                "from endpoints.decorators import param, require_params",
+                "",
                 "def dec_func(f):",
                 "    def wrapped(*args, **kwargs):",
                 "        return f(*args, **kwargs)",
@@ -994,85 +996,62 @@ class ReflectTest(TestCase):
                 "    def __call__(*args, **kwargs):",
                 "        return f(*args, **kwargs)",
                 "",
-                "import endpoints",
                 "class Default(endpoints.Controller):",
                 "    @dec_func",
                 "    def GET(*args, **kwargs): pass",
                 "    @dec_cls",
+                "    @param('foo', default=1, type=int)",
+                "    @param('bar', type=bool, required=False)",
+                "    @param('che_empty', type=dict, default={})",
+                "    @param('che_full', type=dict, default={'key': 'val', 'key2': 2.0})",
+                "    @param('baz_empty', type=list, default=[])",
+                "    @param('baz_full', type=list, default=['val', False, 1])",
+                "    @require_params('a', 'b', 'c')",
+                "    @param('d')",
                 "    def POST(*args, **kwargs): pass",
                 ""
             ])
         })
 
-        r = endpoints.Reflect("controller_reflect")
-        l = r.get_endpoints()
+        rs = endpoints.Reflect("controller_reflect")
+        l = list(rs.get_endpoints())
+        r = l[0]
+
+        params = r.post_params
+        for p in ['a', 'b', 'c', 'd']:
+            self.assertTrue(params[p]['required'])
+
+        for p in ['foo', 'bar', 'che_empty', 'che_full', 'baz_empty', 'baz_full']:
+            self.assertFalse(params[p]['required'])
+
         self.assertEqual(1, len(l))
-        self.assertEqual(u'/foo', l[0]['endpoint'])
-        self.assertEqual(['GET', 'POST'], l[0]['options'])
-
-    def test_walk_files(self):
-
-        tmpdir, ds, fs = testdata.create_file_structure(os.linesep.join([
-            "foo/",
-            "  __init__.py",
-            "  bar/",
-            "    __init__.py",
-            "    che.py",
-            "  baz/",
-            "    __init__.py",
-            "    boom/",
-            "      __init__.py",
-            "      pez.py",
-            ""
-        ]))
-
-        r = endpoints.Reflect("foo")
-        count = 0
-        for f in r.walk_files(tmpdir):
-            count += 1
-            self.assertTrue(f[0] in fs)
-
-        self.assertEqual(len(fs), count)
-
-
-    def test_normalize_controller_module(self):
-
-        r = endpoints.Reflect("controller_reflect")
-        r._controller_path = "/some/long/path/controller_reflect"
-
-        name = r.normalize_controller_module("/some/long/path/controller_reflect/foo/bar.py")
-        self.assertEqual("controller_reflect.foo.bar", name)
-
-        name = r.normalize_controller_module("/some/long/path/controller_reflect/__init__.py")
-        self.assertEqual("controller_reflect", name)
-
-        name = r.normalize_controller_module("/some/long/path/controller_reflect/foo/__init__.py")
-        self.assertEqual("controller_reflect.foo", name)
+        self.assertEqual(u'/foo', r.uri)
+        self.assertEqual(['GET', 'POST'], r.options)
 
     def test_get_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("reflecttest")
         testdata.create_modules(
             {
-                "controller_reflect": os.linesep.join([
+                "controller_reflect_endpoints": os.linesep.join([
                     "import endpoints",
                     "class Default(endpoints.Controller):",
                     "    def GET(*args, **kwargs): pass",
                     ""
                 ]),
-                "controller_reflect.foo": os.linesep.join([
+                "controller_reflect_endpoints.foo": os.linesep.join([
                     "import endpoints",
                     "class Default(endpoints.Controller):",
                     "    def GET(*args, **kwargs): pass",
                     ""
                 ]),
-                "controller_reflect.che": os.linesep.join([
+                "controller_reflect_endpoints.che": os.linesep.join([
                     "from endpoints import Controller",
                     "class Baz(Controller):",
                     "    def POST(*args, **kwargs): pass",
                     ""
                 ]),
-                "controller_reflect.che.bam": os.linesep.join([
+                "controller_reflect_endpoints.che.bam": os.linesep.join([
                     "from endpoints import Controller as Con",
                     "class _Base(Con):",
                     "    def GET(*args, **kwargs): pass",
@@ -1090,24 +1069,24 @@ class ReflectTest(TestCase):
             tmpdir=tmpdir
         )
 
-        r = endpoints.Reflect("controller_reflect")
-        l = r.get_endpoints()
+        r = endpoints.Reflect("controller_reflect_endpoints")
+        l = list(r.get_endpoints())
         self.assertEqual(5, len(l))
 
         def get_match(endpoint, l):
             for d in l:
-                if d['endpoint'] == endpoint:
+                if d.uri == endpoint:
                     return d
 
         d = get_match("/che/bam/bah", l)
-        self.assertEqual(d['options'], ["GET", "HEAD"])
-        self.assertGreater(len(d['doc']), 0)
+        self.assertEqual(d.options, ["GET", "HEAD"])
+        self.assertGreater(len(d.desc), 0)
 
         d = get_match("/", l)
-        self.assertNotEqual(d, {})
+        self.assertNotEqual(d, None)
 
         d = get_match("/foo", l)
-        self.assertNotEqual(d, {})
+        self.assertNotEqual(d, None)
 
 
 class VersionReflectTest(TestCase):
@@ -1133,23 +1112,26 @@ class VersionReflectTest(TestCase):
             tmpdir=tmpdir
         )
 
-        r = endpoints.VersionReflect("controller_vreflect", 'application/json')
-        l = r.get_endpoints()
+        rs = endpoints.VersionReflect("controller_vreflect", 'application/json')
+        l = list(rs.get_endpoints())
 
         self.assertEqual(2, len(l))
         for d in l:
-            self.assertTrue('headers' in d)
-            self.assertTrue("version" in d)
+            self.assertTrue(d.headers)
+            self.assertTrue(d.version)
 
         def get_match(endpoint, l):
             ret = {}
             for d in l:
-                if d['endpoint'] == endpoint:
+                if d.uri == endpoint:
                     ret = d
             return ret
 
         d = get_match("/foo/bar", l)
-        self.assertNotEqual({}, d)
+        self.assertEqual("v1", d.version)
+
+        d = get_match("/che/baz", l)
+        self.assertEqual("v2", d.version)
 
 
 class EndpointsTest(TestCase):

@@ -415,4 +415,9 @@ class Response(Http):
 
         self.headers.update(cors_headers)
 
+    def is_success(self):
+        """return True if this response is considered a "successful" response"""
+        code = self.code
+        return code < 400
+
 

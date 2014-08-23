@@ -251,7 +251,7 @@ class Foo(Controller):
 
 ### Built in servers
 
-Endpoints comes with WSGI, [Mongrel2](http://mongrel2.org/) and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
+Endpoints comes with WSGI, [Mongrel2](http://mongrel2.org/), and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
 
 #### Sample WSGI script for uWSGI
 
@@ -270,6 +270,8 @@ Yup, that's all you need to do to set it up, then you can start a [uWSGI](http:/
 
 #### Sample Mongrel2 script
 
+**NOTE** -- We no longer use Mongrel2, so this interface will most likely not be developed further and might eventually be removed if we make any big changes that would involve us having to modify this interface. You've been warned.
+
 ```python
 import os
 
@@ -282,6 +284,9 @@ os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
 s = Server()
 s.serve_forever()
 ```
+
+
+#### Other
 
 **todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic. The other issue is we use [decorators](https://github.com/firstopinion/decorators) for all those decorators and I'm not sure I want to introduce a dependency.
 

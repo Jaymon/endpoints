@@ -239,15 +239,16 @@ class Call(object):
 
         except (ImportError, AttributeError, TypeError), e:
             r = self.request
-            logger.exception(e)
+            exc_info = sys.exc_info()
+            logger.warning(str(e), exc_info=exc_info)
             raise CallError(
                 404,
                 "{} not found because of {} \"{}\" on {}:{}".format(
                     r.path,
-                    sys.exc_info()[0].__name__,
+                    exc_info[0].__name__,
                     str(e),
-                    os.path.basename(sys.exc_info()[2].tb_frame.f_code.co_filename),
-                    sys.exc_info()[2].tb_lineno
+                    os.path.basename(exc_info[2].tb_frame.f_code.co_filename),
+                    exc_info[2].tb_lineno
                 )
             )
 
@@ -313,9 +314,10 @@ class Call(object):
             self.response.headers.update(e.headers)
             ret = None
 
-        elif isinstance(e, AccessDenied) or isinstance(e, CallError):
+        elif isinstance(e, (AccessDenied, CallError)):
             #logger.debug("Request Path: {}".format(self.request.path))
-            logger.exception(e)
+            exc_info = sys.exc_info()
+            logger.warning(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e
             self.response.headers.update(e.headers)
@@ -324,7 +326,7 @@ class Call(object):
         elif isinstance(e, TypeError):
             # this is raised when there aren't enough args passed to controller
             exc_info = sys.exc_info()
-            logger.info(str(e), exc_info=exc_info)
+            logger.warning(str(e), exc_info=exc_info)
             self.response.code = 404
             #self.response.body = e
             ret = e
