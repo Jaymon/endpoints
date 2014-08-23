@@ -35,7 +35,7 @@ class ReflectEndpoint(object):
         res = {}
         target = self.endpoint_class
 
-        def get_val(na):
+        def get_val(na, default=None):
             ret = None
             if isinstance(na, ast.Num):
                 repr_n = repr(na.n)
@@ -62,14 +62,17 @@ class ReflectEndpoint(object):
                 else:
                     ret = {}
 
-            elif isinstance(na, ast.List):
+            elif isinstance(na, (ast.List, ast.Tuple)):
                 if na.elts:
                     ret = [get_val(na_) for na_ in na.elts]
                 else:
                     ret = []
 
+                if isinstance(na, ast.Tuple):
+                    ret = tuple(ret)
+
             else:
-                raise ValueError("unsupported val")
+                ret = default
 
             return ret
 
@@ -82,7 +85,7 @@ class ReflectEndpoint(object):
                 args = []
                 kwargs = {}
                 if isinstance(n, ast.Call):
-                    name = n.func.id
+                    name = n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id
                     for an in n.args:
                         args.append(get_val(an))
 
@@ -90,7 +93,7 @@ class ReflectEndpoint(object):
                         kwargs[an.arg] = get_val(an.value)
 
                 else:
-                    name = n.id
+                    name = n.attr if isinstance(n, ast.Attribute) else n.id
 
                 res[node.name].append((name, args, kwargs))
 
