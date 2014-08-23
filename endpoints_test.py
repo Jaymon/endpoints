@@ -485,6 +485,8 @@ class CallTest(TestCase):
             stop = time.time()
             self.assertGreater(1, stop - start)
 
+        # right here the after yield will need to finish and take 1 second
+
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to default class
         name if the path bit fails to be a controller class name"""
@@ -1026,7 +1028,7 @@ class ReflectTest(TestCase):
 
         self.assertEqual(1, len(l))
         self.assertEqual(u'/foo', r.uri)
-        self.assertEqual(['GET', 'POST'], r.options)
+        self.assertEqual(set(['GET', 'POST']), r.options)
 
     def test_get_endpoints(self):
         # putting the C back in CRUD
@@ -1079,7 +1081,7 @@ class ReflectTest(TestCase):
                     return d
 
         d = get_match("/che/bam/bah", l)
-        self.assertEqual(d.options, ["GET", "HEAD"])
+        self.assertEqual(set(["GET", "HEAD"]), d.options)
         self.assertGreater(len(d.desc), 0)
 
         d = get_match("/", l)

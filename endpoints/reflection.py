@@ -101,6 +101,13 @@ class ReflectEndpoint(object):
         node_iter.visit_FunctionDef = visit_FunctionDef
         node_iter.visit(ast.parse(inspect.getsource(target)))
 
+
+        # get rid of all the non option methods
+        options = self.options
+        for key in res.keys():
+            if key not in options:
+                res.pop(key)
+
         return res
 
     @_property

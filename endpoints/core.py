@@ -118,7 +118,7 @@ class Controller(object):
         """
         return the supported http method options that this class supports
 
-        return -- list -- the list of http methods (eg, ['GET', 'POST'])
+        return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
         """
         option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
         # won't pick up class decorators
@@ -126,12 +126,12 @@ class Controller(object):
         # won't pick up class decorators that haven't been functools wrapped
         #methods = inspect.getmembers(v, inspect.isroutine)
         methods = inspect.getmembers(cls)
-        v_options = []
+        v_options = set()
         for method_name, method in methods:
             if method_name.startswith(u'_'): continue
 
             if option_regex.match(method_name):
-                v_options.append(method_name)
+                v_options.add(method_name)
 
         return v_options
 
