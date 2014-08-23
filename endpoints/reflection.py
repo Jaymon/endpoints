@@ -182,7 +182,7 @@ class VersionReflectEndpoint(ReflectEndpoint):
     def version(self):
         return self.bits[0]
 
-    @_property
+    @property
     def headers(self):
         headers = {}
         headers['Accept'] = "{};version={}".format(self.content_type, self.version)
