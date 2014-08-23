@@ -26,7 +26,7 @@ setup(
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
     url='http://github.com/firstopinion/{}'.format(name),
-    py_modules=[name],
+    #py_modules=[name],
     packages=find_packages(),
     license="MIT",
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
