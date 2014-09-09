@@ -49,19 +49,11 @@ class _property(object):
         if name in instance.__dict__:
             val = instance.__dict__[name]
 
-        elif self.__name__ in instance.__dict__:
-            # there might be a value that was set directly into the __dict__ that
-            # should override this decorator, so use it
-            val = instance.__dict__[self.__name__]
-            #instance.__dict__[name] = val
-            self.fset(instance, val)
-
         else:
             try:
                 val = self.fget(instance)
                 if val or self.allow_empty:
                     self.fset(instance, val)
-                    #instance.__dict__[name] = val
 
             except Exception:
                 # make sure no value gets set no matter what
@@ -81,7 +73,7 @@ class _property(object):
 
     def default_del(self, instance):
         instance.__dict__.pop(self.name, None)
-        instance.__dict__.pop(self.__name__, None)
+        #instance.__dict__.pop(self.__name__, None)
 
     def __delete__(self, instance, *args):
         if self.read_only:

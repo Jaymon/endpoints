@@ -7,5 +7,5 @@ from .utils import AcceptHeader
 from .core import Controller, CorsMixin
 from . import decorators
 
-__version__ = '0.8.39'
+__version__ = '0.8.40'
 

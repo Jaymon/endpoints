@@ -1202,6 +1202,15 @@ class DecoratorsTest(TestCase):
         self.assertTrue(c.foo_del)
 
     def test__property___dict__direct(self):
+        """
+        this is a no win situation
+
+        if you have a bar _property and a __setattr__ that modifies directly then
+        the other _property values like __set__ will not get called, and you can't
+        have _property.__get__ look for the original name because there are times
+        when you want your _property to override a parent's original value for the
+        property, so I've chosen to just ignore this case and not support it
+        """
         class Foo(object):
             @endpoints.decorators._property
             def bar(self):
@@ -1211,8 +1220,8 @@ class DecoratorsTest(TestCase):
                 #super(Foo, self).__setattr__(field_name, field_val)
 
         f = Foo()
-        f.bar = 2
-        self.assertEqual(2, f.bar)
+        f.bar = 2 # this will be ignored
+        self.assertEqual(1, f.bar)
 
     def test__property(self):
         class WP(object):
