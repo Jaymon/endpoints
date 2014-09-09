@@ -1,4 +1,5 @@
 import types
+import re
 
 from .exception import CallError
 
@@ -48,13 +49,21 @@ class _property(object):
         if name in instance.__dict__:
             val = instance.__dict__[name]
 
+        elif self.__name__ in instance.__dict__:
+            # there might be a value that was set directly into the __dict__ that
+            # should override this decorator, so use it
+            val = instance.__dict__[self.__name__]
+            #instance.__dict__[name] = val
+            self.fset(instance, val)
+
         else:
             try:
                 val = self.fget(instance)
                 if val or self.allow_empty:
-                    instance.__dict__[name] = val
+                    self.fset(instance, val)
+                    #instance.__dict__[name] = val
 
-            except Exception, e:
+            except Exception:
                 # make sure no value gets set no matter what
                 instance.__dict__.pop(name, None)
                 raise
@@ -72,6 +81,7 @@ class _property(object):
 
     def default_del(self, instance):
         instance.__dict__.pop(self.name, None)
+        instance.__dict__.pop(self.__name__, None)
 
     def __delete__(self, instance, *args):
         if self.read_only:
@@ -126,32 +136,42 @@ class param(object):
             via the default flag
         max_size -- int -- the maximum size of the param
         min_size -- int -- the minimum size of the param
+        regex -- regexObject -- if you would like the param to be validated with a regular
+            exception, uses the re.search() method
 
     raises -- 
         CallError -- with 400 status code on any param validation failures
     """
-    def __init__(self, name, **flags):
-        self.name = name
+    def __init__(self, *names, **flags):
+        self.name = names[0]
+        self.names = names
         self.flags = flags
 
-    def find_param(self, pname, prequired, pdefault, request, args, kwargs):
-        return self.get_param(pname, prequired, pdefault, kwargs)
+    def normalize_default(self, default):
+        ret = default
+        if default is None:
+            ret = default
 
-    def get_param(self, name, required, default, params):
-        """actually try to retrieve name key from params dict
+        elif isinstance(default, dict):
+            ret = dict(default)
 
-        this is meant to be used by find_param()
-        """
-        val = None
-        if required:
-            try:
-                val = params[name]
+        elif isinstance(default, list):
+            ret = list(default)
 
-            except KeyError, e:
-                raise CallError(400, "required param {} was not present".format(name))
+        return ret
 
-        else:
-            val = params.get(name, default)
+    def find_param(self, names, required, default, request, args, kwargs):
+        """actually try to retrieve names key from params dict"""
+        val = default
+        found_name = ''
+        for name in names:
+            if name in kwargs:
+                val = kwargs[name]
+                found_name = name
+                break
+
+        if not found_name and required:
+            raise CallError(400, "required param {} was not present".format(self.name))
 
         return val
 
@@ -170,22 +190,23 @@ class param(object):
             flags['default'] = False
             ptype = bool
 
-        pdefault = flags.get('default', None)
+        pdefault = self.normalize_default(flags.get('default', None))
         prequired = False if 'default' in flags else flags.get('required', True)
         pchoices = flags.get('choices', None)
         allow_empty = flags.get('allow_empty', False)
         min_size = flags.get('min_size', None)
         max_size = flags.get('max_size', None)
+        regex = flags.get('regex', None)
 
         request = slf.request
-        val = self.find_param(name, prequired, pdefault, request, args, kwargs)
+        val = self.find_param(self.names, prequired, pdefault, request, args, kwargs)
 
         if paction in set(['store', 'store_list', 'store_false', 'store_true']):
-            if isinstance(val, list):
+            if isinstance(val, list) and val != pdefault:
                 raise CallError(400, "too many values for param {}".format(name))
 
             if paction == 'store_list':
-                if isinstance(val, types.StringTypes):
+                if isinstance(val, basestring):
                     val = val.split(',')
 
                 else:
@@ -198,7 +219,7 @@ class param(object):
             if paction == 'append_list':
                 vs = []
                 for v in val:
-                    if isinstance(v, types.StringTypes):
+                    if isinstance(v, basestring):
                         vs.extend(v.split(','))
                     else:
                         vs.append(v)
@@ -213,7 +234,16 @@ class param(object):
                 val = map(ptype, val)
 
             else:
-                val = ptype(val)
+                if isinstance(ptype, type) and issubclass(ptype, bool):
+                    if val in set(['true', 'True', '1']):
+                        val = True
+                    elif val in set(['false', 'False', '0']):
+                        val = False
+                    else:
+                        val = ptype(val)
+
+                else:
+                    val = ptype(val)
 
         if pchoices:
             if val not in pchoices:
@@ -243,6 +273,16 @@ class param(object):
             if failed:
                 raise CallError(400, "param {} was bigger than {}".format(name, max_size))
 
+        if regex:
+            failed = False
+            if isinstance(regex, basestring):
+                if not re.search(regex, val): failed = True
+            else:
+                if not regex.search(val): failed = True
+
+            if failed:
+                raise CallError(400, "param {} failed regex check".format(name))
+
         kwargs[name] = val
         return slf, args, kwargs
 
@@ -256,28 +296,36 @@ class param(object):
 
 class get_param(param):
     """same as param, but only checks GET params"""
-    def find_param(self, name, prequired, pdefault, request, args, kwargs):
-        val = self.get_param(name, prequired, pdefault, kwargs)
-        body_kwargs = request.body_kwargs
-        if name in body_kwargs:
-            query_kwargs = request.query_kwargs
-            if name not in query_kwargs:
-                raise CallError(400, "required param {} was not present in GET params".format(name))
+    def find_param(self, names, required, default, request, args, kwargs):
+        try:
+            return super(get_param, self).find_param(
+                names,
+                required,
+                default,
+                request,
+                args,
+                request.query_kwargs
+            )
 
-        return val
+        except CallError:
+            raise CallError(400, "required param {} was not present in GET params".format(self.name))
 
 
 class post_param(param):
     """same as param but only checks POST params"""
-    def find_param(self, name, prequired, pdefault, request, args, kwargs):
-        val = self.get_param(name, prequired, pdefault, kwargs)
-        query_kwargs = request.query_kwargs
-        if name in query_kwargs:
-            body_kwargs = request.body_kwargs
-            if name not in body_kwargs:
-                raise CallError(400, "required param {} was not present in POST params".format(name))
+    def find_param(self, names, required, default, request, args, kwargs):
+        try:
+            return super(post_param, self).find_param(
+                names,
+                required,
+                default,
+                request,
+                args,
+                request.body_kwargs
+            )
 
-        return val
+        except CallError:
+            raise CallError(400, "required param {} was not present in POST params".format(self.name))
 
 
 class require_params(object):

@@ -7,6 +7,7 @@ from BaseHTTPServer import BaseHTTPRequestHandler
 import time
 import threading
 import subprocess
+import re
 
 import testdata
 
@@ -1200,6 +1201,19 @@ class DecoratorsTest(TestCase):
         self.assertTrue(c.foo_set)
         self.assertTrue(c.foo_del)
 
+    def test__property___dict__direct(self):
+        class Foo(object):
+            @endpoints.decorators._property
+            def bar(self):
+                return 1
+            def __setattr__(self, field_name, field_val):
+                self.__dict__[field_name] = field_val
+                #super(Foo, self).__setattr__(field_name, field_val)
+
+        f = Foo()
+        f.bar = 2
+        self.assertEqual(2, f.bar)
+
     def test__property(self):
         class WP(object):
             count_foo = 0
@@ -1294,6 +1308,25 @@ class DecoratorsTest(TestCase):
         r = o.bar(**o.request.query_kwargs)
         self.assertEqual(2, r)
 
+    def test_param_multiple_names(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', 'foos', 'foo3', type=int)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+
+        r = foo(c, **{'foo': 1})
+        self.assertEqual(1, r)
+
+        r = foo(c, **{'foos': 2})
+        self.assertEqual(2, r)
+
+        r = foo(c, **{'foo3': 3})
+        self.assertEqual(3, r)
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo4': 0})
+
     def test_param(self):
         c = create_controller()
 
@@ -1356,49 +1389,58 @@ class DecoratorsTest(TestCase):
     def test_get_param(self):
         c = create_controller()
 
+        c.request.query_kwargs = {'foo': '8'}
         @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(c, **{'foo': '8'})
+            r = foo(c, **c.request.query_kwargs)
 
+        c.request.query_kwargs = {'foo': '1'}
         @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(c, **{'foo': '1'})
+        r = foo(c, **c.request.query_kwargs)
         self.assertEqual(1, r)
 
+        c.request.query_kwargs = {'foo': '1', 'bar': '1.5'}
         @endpoints.decorators.get_param('foo', type=int)
         @endpoints.decorators.get_param('bar', type=float)
         def foo(*args, **kwargs):
             return kwargs['foo'], kwargs['bar']
-        r = foo(c, **{'foo': '1', 'bar': '1.5'})
+        r = foo(c, **c.request.query_kwargs)
         self.assertEqual(1, r[0])
         self.assertEqual(1.5, r[1])
 
+        c.request.query_kwargs = {'foo': '1'}
         @endpoints.decorators.get_param('foo', type=int, action='blah')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(ValueError):
-            r = foo(c, **{'foo': '1'})
+            r = foo(c, **c.request.query_kwargs)
 
+        c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
         @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
-            r = foo(c, **{'foo': ['1,2,3,4', '5']})
+            r = foo(c, **c.request.query_kwargs)
 
+        c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
         @endpoints.decorators.get_param('foo', type=int, action='append_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(c, **{'foo': ['1,2,3,4', '5']})
+        r = foo(c, **c.request.query_kwargs)
         self.assertEqual(range(1, 6), r)
 
+        c.request.query_kwargs = {'foo': '1,2,3,4'}
         @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(c, **{'foo': '1,2,3,4'})
+        r = foo(c, **c.request.query_kwargs)
         self.assertEqual(range(1, 5), r)
+
+        c.request.query_kwargs = {}
 
         @endpoints.decorators.get_param('foo', type=int, default=1, required=False)
         def foo(*args, **kwargs):
@@ -1421,14 +1463,15 @@ class DecoratorsTest(TestCase):
         @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        r = foo(c, **{'foo': '1'})
-        self.assertEqual(1, r)
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c)
 
+        c.request.query_kwargs = {'foo': '1'}
         @endpoints.decorators.get_param('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
-        with self.assertRaises(endpoints.CallError):
-            r = foo(c)
+        r = foo(c, **c.request.query_kwargs)
+        self.assertEqual(1, r)
 
     def test_param_size(self):
         c = create_controller()
@@ -1480,6 +1523,80 @@ class DecoratorsTest(TestCase):
             return kwargs.get('foo')
         r = foo(c, **{})
         self.assertEqual(None, r)
+
+    def test_param_reference_default(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', default={})
+        def foo(self, *args, **kwargs):
+            kwargs['foo'][testdata.get_ascii()] = testdata.get_ascii()
+            return kwargs['foo']
+
+        r = foo(c, **{})
+        self.assertEqual(1, len(r))
+
+        r = foo(c, **{})
+        self.assertEqual(1, len(r))
+
+        @endpoints.decorators.param('foo', default=[])
+        def foo(self, *args, **kwargs):
+            kwargs['foo'].append(testdata.get_ascii())
+            return kwargs['foo']
+
+        r = foo(c, **{})
+        self.assertEqual(1, len(r))
+
+        r = foo(c, **{})
+        self.assertEqual(1, len(r))
+
+    def test_param_regex(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', regex="^\S+@\S+$")
+        def foo(self, *args, **kwargs):
+            return kwargs['foo']
+
+        r = foo(c, **{'foo': 'foo@bar.com'})
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': ' foo@bar.com'})
+
+        @endpoints.decorators.param('foo', regex=re.compile("^\S+@\S+$", re.I))
+        def foo(self, *args, **kwargs):
+            return kwargs['foo']
+
+        r = foo(c, **{'foo': 'foo@bar.com'})
+
+        with self.assertRaises(endpoints.CallError):
+            r = foo(c, **{'foo': ' foo@bar.com'})
+
+    def test_param_bool(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', type=bool, allow_empty=True)
+        def foo(self, *args, **kwargs):
+            return kwargs['foo']
+
+        r = foo(c, **{'foo': 'true'})
+        self.assertEqual(True, r)
+
+        r = foo(c, **{'foo': 'True'})
+        self.assertEqual(True, r)
+
+        r = foo(c, **{'foo': '1'})
+        self.assertEqual(True, r)
+
+        r = foo(c, **{'foo': 'false'})
+        self.assertEqual(False, r)
+
+        r = foo(c, **{'foo': 'False'})
+        self.assertEqual(False, r)
+
+        r = foo(c, **{'foo': '0'})
+        self.assertEqual(False, r)
+
+
+
 
 
 try:
