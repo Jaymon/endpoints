@@ -1201,6 +1201,25 @@ class DecoratorsTest(TestCase):
         self.assertTrue(c.foo_set)
         self.assertTrue(c.foo_del)
 
+    def test__property__strange_behavior(self):
+        class BaseFoo(object):
+            def __init__(self):
+                setattr(self, 'bar', None)
+
+            def __setattr__(self, n, v):
+                super(BaseFoo, self).__setattr__(n, v)
+
+        class Foo(BaseFoo):
+            @endpoints.decorators._property(allow_empty=False)
+            def bar(self):
+                return 1
+
+        f = Foo()
+        self.assertEqual(1, f.bar)
+
+        f.bar = 2
+        self.assertEqual(2, f.bar)
+
     def test__property___dict__direct(self):
         """
         this is a no win situation

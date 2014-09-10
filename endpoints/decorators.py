@@ -69,11 +69,11 @@ class _property(object):
         if self.read_only:
             raise AttributeError("can't set attribute {}".format(self.__name__))
 
-        self.fset(instance, val)
+        if val or self.allow_empty:
+            self.fset(instance, val)
 
     def default_del(self, instance):
         instance.__dict__.pop(self.name, None)
-        #instance.__dict__.pop(self.__name__, None)
 
     def __delete__(self, instance, *args):
         if self.read_only:
