@@ -1355,6 +1355,51 @@ class DecoratorsTest(TestCase):
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **{'foo4': 0})
 
+    def test_param_callable_default(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', default=time.time)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+
+        start = time.time()
+        r1 = foo(c, **{})
+        self.assertLess(start, r1)
+
+        time.sleep(0.25)
+        r2 = foo(c, **{})
+        self.assertLess(r1, r2)
+
+
+    def test_param_not_required(self):
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', required=False)
+        def foo(self, *args, **kwargs):
+            return 'foo' in kwargs
+
+        r = foo(c, **{'foo': 1})
+        self.assertTrue(r)
+
+        r = foo(c, **{})
+        self.assertFalse(r)
+
+        @endpoints.decorators.param('foo', required=False, default=5)
+        def foo(self, *args, **kwargs):
+            return 'foo' in kwargs
+
+        r = foo(c, **{})
+        self.assertTrue(r)
+
+        @endpoints.decorators.param('foo', type=int, required=False)
+        def foo(self, *args, **kwargs):
+            return 'foo' in kwargs
+
+        r = foo(c, **{})
+        self.assertFalse(r)
+
+
+
     def test_param(self):
         c = create_controller()
 

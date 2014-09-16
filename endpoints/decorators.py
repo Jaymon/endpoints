@@ -119,7 +119,9 @@ class param(object):
             append -- if multiple param values should be turned into an array
                 eg, foo=1&foo=2 would become foo=[1, 2]
             append_list -- it's store_list + append, so foo=1&foo=2,3 would be foo=[1, 2, 3]
-        default -- mixed -- the value that should be set if query param isn't there
+        default -- mixed -- the value that should be set if query param isn't there, if this is
+            callable (eg, time.time or datetime.utcnow) then it will be called every time the
+            decorated method is called
         required -- boolean -- True if param is required, default is true
         choices -- set() -- a set of values to be in tested against (eg, val in choices)
         matches -- regex -- TODO -- a regular expression that the value needs to match
@@ -141,10 +143,7 @@ class param(object):
 
     def normalize_default(self, default):
         ret = default
-        if default is None:
-            ret = default
-
-        elif isinstance(default, dict):
+        if isinstance(default, dict):
             ret = dict(default)
 
         elif isinstance(default, list):
@@ -165,7 +164,11 @@ class param(object):
         if not found_name and required:
             raise CallError(400, "required param {} was not present".format(self.name))
 
-        return val
+        if not found_name:
+            if required:
+                raise CallError(400, "required param {} was not present".format(self.name))
+
+        return found_name, val
 
     def normalize_param(self, slf, args, kwargs):
         """this is where all the magic happens, this will try and find the param and
@@ -183,6 +186,8 @@ class param(object):
             ptype = bool
 
         pdefault = self.normalize_default(flags.get('default', None))
+        if callable(pdefault): pdefault = pdefault()
+
         prequired = False if 'default' in flags else flags.get('required', True)
         pchoices = flags.get('choices', None)
         allow_empty = flags.get('allow_empty', False)
@@ -190,92 +195,97 @@ class param(object):
         max_size = flags.get('max_size', None)
         regex = flags.get('regex', None)
 
+        normalize = True
         request = slf.request
-        val = self.find_param(self.names, prequired, pdefault, request, args, kwargs)
+        found_name, val = self.find_param(self.names, prequired, pdefault, request, args, kwargs)
+        if not found_name:
+            normalize = 'default' in flags
 
-        if paction in set(['store', 'store_list', 'store_false', 'store_true']):
-            if isinstance(val, list) and val != pdefault:
-                raise CallError(400, "too many values for param {}".format(name))
+        if normalize:
+            if paction in set(['store', 'store_list', 'store_false', 'store_true']):
+                if isinstance(val, list) and val != pdefault:
+                    raise CallError(400, "too many values for param {}".format(name))
 
-            if paction == 'store_list':
-                if isinstance(val, basestring):
-                    val = val.split(',')
+                if paction == 'store_list':
+                    if isinstance(val, basestring):
+                        val = val.split(',')
 
-                else:
-                    val = list(val)
-
-        elif paction in set(['append', 'append_list']):
-            if not isinstance(val, list):
-                val = [val]
-
-            if paction == 'append_list':
-                vs = []
-                for v in val:
-                    if isinstance(v, basestring):
-                        vs.extend(v.split(','))
                     else:
-                        vs.append(v)
+                        val = list(val)
 
-                val = vs
+            elif paction in set(['append', 'append_list']):
+                if not isinstance(val, list):
+                    val = [val]
 
-        else:
-            raise ValueError('unknown param action {}'.format(paction))
+                if paction == 'append_list':
+                    vs = []
+                    for v in val:
+                        if isinstance(v, basestring):
+                            vs.extend(v.split(','))
+                        else:
+                            vs.append(v)
 
-        if ptype:
-            if isinstance(val, list):
-                val = map(ptype, val)
+                    val = vs
 
             else:
-                if isinstance(ptype, type) and issubclass(ptype, bool):
-                    if val in set(['true', 'True', '1']):
-                        val = True
-                    elif val in set(['false', 'False', '0']):
-                        val = False
+                raise ValueError('unknown param action {}'.format(paction))
+
+            if ptype:
+                if isinstance(val, list):
+                    val = map(ptype, val)
+
+                else:
+                    if isinstance(ptype, type) and issubclass(ptype, bool):
+                        if val in set(['true', 'True', '1']):
+                            val = True
+                        elif val in set(['false', 'False', '0']):
+                            val = False
+                        else:
+                            val = ptype(val)
+
                     else:
                         val = ptype(val)
 
+            if pchoices:
+                if val not in pchoices:
+                    raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
+
+            if not allow_empty and not val:
+                if 'default' not in flags:
+                    raise CallError(400, "param {} was empty".format(name))
+
+            if min_size is not None:
+                failed = False
+                if isinstance(val, (int, float)):
+                    if val < min_size: failed = True
                 else:
-                    val = ptype(val)
+                    if len(val) < min_size: failed = True
 
-        if pchoices:
-            if val not in pchoices:
-                raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
+                if failed:
+                    raise CallError(400, "param {} was smaller than {}".format(name, min_size))
 
-        if not allow_empty and not val:
-            if 'default' not in flags:
-                raise CallError(400, "param {} was empty".format(name))
+            if max_size is not None:
+                failed = False
+                if isinstance(val, (int, float)):
+                    if val > max_size: failed = True
+                else:
+                    if len(val) > max_size: failed = True
 
-        if min_size is not None:
-            failed = False
-            if isinstance(val, (int, float)):
-                if val < min_size: failed = True
-            else:
-                if len(val) < min_size: failed = True
+                if failed:
+                    raise CallError(400, "param {} was bigger than {}".format(name, max_size))
 
-            if failed:
-                raise CallError(400, "param {} was smaller than {}".format(name, min_size))
+            if regex:
+                failed = False
+                if isinstance(regex, basestring):
+                    if not re.search(regex, val): failed = True
+                else:
+                    if not regex.search(val): failed = True
 
-        if max_size is not None:
-            failed = False
-            if isinstance(val, (int, float)):
-                if val > max_size: failed = True
-            else:
-                if len(val) > max_size: failed = True
+                if failed:
+                    raise CallError(400, "param {} failed regex check".format(name))
 
-            if failed:
-                raise CallError(400, "param {} was bigger than {}".format(name, max_size))
+            kwargs[name] = val
 
-        if regex:
-            failed = False
-            if isinstance(regex, basestring):
-                if not re.search(regex, val): failed = True
-            else:
-                if not regex.search(val): failed = True
-
-            if failed:
-                raise CallError(400, "param {} failed regex check".format(name))
-
-        kwargs[name] = val
         return slf, args, kwargs
 
     def __call__(slf, func):
