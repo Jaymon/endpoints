@@ -202,17 +202,15 @@ class param(object):
             normalize = 'default' in flags
 
         if normalize:
+            if paction in set(['store_list']):
+                if isinstance(val, list) and len(val) > 1:
+                    raise CallError(400, "too many values for param {}".format(name))
 
-            if paction in set(['store', 'store_list', 'store_false', 'store_true']):
-                if paction == 'store_list':
-                    if isinstance(val, list) and len(val) > 1:
-                        raise CallError(400, "too many values for param {}".format(name))
+                if isinstance(val, basestring):
+                    val = val.split(',')
 
-                    if isinstance(val, basestring):
-                        val = val.split(',')
-
-                    else:
-                        val = list(val)
+                else:
+                    val = list(val)
 
             elif paction in set(['append', 'append_list']):
                 if not isinstance(val, list):
@@ -229,7 +227,8 @@ class param(object):
                     val = vs
 
             else:
-                raise ValueError('unknown param action {}'.format(paction))
+                if paction not in set(['store', 'store_false', 'store_true']):
+                    raise ValueError('unknown param action {}'.format(paction))
 
             if ptype:
                 if isinstance(val, list) and ptype != list:

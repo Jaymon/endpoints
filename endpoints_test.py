@@ -1711,7 +1711,6 @@ class DecoratorsTest(TestCase):
         self.assertEqual(r, ['bar', 'baz'])
 
 
-
 try:
     from endpoints.interface.mongrel2 import Mongrel2 as M2Interface, \
         Request as M2Request
