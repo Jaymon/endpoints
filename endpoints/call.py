@@ -6,7 +6,6 @@ import fnmatch
 import types
 import traceback
 import inspect
-import os
 
 from .utils import AcceptHeader
 from .http import Response, Request
