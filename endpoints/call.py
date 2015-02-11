@@ -333,7 +333,7 @@ class Call(object):
 
             methodname = "handle_controller"
             methodfilename = os.path.splitext(inspect.getfile(type(self)))[0]
-            if funcname == "handle_controller" and filename == methodfilename:
+            if funcname == methodname and filename == methodfilename:
                 self.response.code = 404
                 ret = e
             else:
