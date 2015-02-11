@@ -148,8 +148,8 @@ class ControllerTest(TestCase):
         contents = os.linesep.join([
             "from endpoints import Controller",
             "class Bogus(object):",
-            "    def handle_controller(self):",
-            "        raise TypeError('another test')",
+            "    def handle_controller(self, foo):",
+            "        pass",
             "",
             "class Default(Controller):",
             "    def GET(self):",
