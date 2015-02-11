@@ -164,10 +164,6 @@ class param(object):
         if not found_name and required:
             raise CallError(400, "required param {} was not present".format(self.name))
 
-        if not found_name:
-            if required:
-                raise CallError(400, "required param {} was not present".format(self.name))
-
         return found_name, val
 
     def normalize_param(self, slf, args, kwargs):
