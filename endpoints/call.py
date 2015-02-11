@@ -4,6 +4,8 @@ import os
 import sys
 import fnmatch
 import types
+import traceback
+import inspect
 
 from .utils import AcceptHeader
 from .http import Response, Request
@@ -324,12 +326,19 @@ class Call(object):
             ret = e
 
         elif isinstance(e, TypeError):
-            # this is raised when there aren't enough args passed to controller
             exc_info = sys.exc_info()
-            logger.warning(str(e), exc_info=exc_info)
-            self.response.code = 404
-            #self.response.body = e
-            ret = e
+            tbs = traceback.extract_tb(exc_info[2])
+            filename, linenum, funcname, text = tbs[-1]
+            filename = os.path.splitext(filename)[0]
+
+            methodname = "handle_controller"
+            methodfilename = os.path.splitext(inspect.getfile(type(self)))[0]
+            if funcname == methodname and filename == methodfilename:
+                self.response.code = 404
+                ret = e
+            else:
+                self.response.code = 500
+                ret = e
 
         else:
             logger.exception(e)

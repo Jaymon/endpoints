@@ -124,6 +124,47 @@ class ControllerTest(TestCase):
         for o in ['ABSURD', 'GET', 'POST']:
             self.assertTrue(o in options)
 
+    def test_bad_typeerror(self):
+        """There is a bug that is making the controller method is throw a 404 when it should throw a 500"""
+        controller_prefix = "badtypeerror"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        raise TypeError('This should not cause a 404')"
+        ])
+        testdata.create_module("{}.typerr".format(controller_prefix), contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/typerr'
+        c.request = r
+
+        res = c.handle()
+        self.assertEqual(500, res.code)
+
+        controller_prefix = "badtypeerror2"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Bogus(object):",
+            "    def handle_controller(self, foo):",
+            "        pass",
+            "",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        b = Bogus()",
+            "        b.handle_controller()",
+        ])
+        testdata.create_module("{}.typerr2".format(controller_prefix), contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/typerr2'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(500, res.code)
 
 class ResponseTest(TestCase):
     def test_gbody(self):
@@ -221,7 +262,7 @@ class ResponseTest(TestCase):
 
         r.code = 404
         self.assertEqual(404, r.code)
-
+        
         r.body = "this is the body 2"
         self.assertEqual(404, r.code)
 
