@@ -250,7 +250,7 @@ class param(object):
                 if val not in pchoices:
                     raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
 
-            if not allow_empty and not val:
+            if not allow_empty and not val is False and not val:
                 if 'default' not in flags:
                     raise CallError(400, "param {} was empty".format(name))
 
