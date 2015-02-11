@@ -134,13 +134,35 @@ class ControllerTest(TestCase):
             "        raise TypeError('This should not cause a 404')"
         ])
         testdata.create_module("{}.typerr".format(controller_prefix), contents=contents)
-            
+
         c = endpoints.Call(controller_prefix)
         r = endpoints.Request()
         r.method = 'GET'
         r.path = '/typerr'
         c.request = r
-                                
+
+        res = c.handle()
+        self.assertEqual(500, res.code)
+
+        controller_prefix = "badtypeerror2"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Bogus(object):",
+            "    def handle_controller(self):",
+            "        raise TypeError('another test')",
+            "",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        b = Bogus()",
+            "        b.handle_controller()",
+        ])
+        testdata.create_module("{}.typerr2".format(controller_prefix), contents=contents)
+
+        c = endpoints.Call(controller_prefix)
+        r = endpoints.Request()
+        r.method = 'GET'
+        r.path = '/typerr'
+        c.request = r
         res = c.handle()
         self.assertEqual(500, res.code)
 
