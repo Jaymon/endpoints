@@ -161,7 +161,7 @@ class ControllerTest(TestCase):
         c = endpoints.Call(controller_prefix)
         r = endpoints.Request()
         r.method = 'GET'
-        r.path = '/typerr'
+        r.path = '/typerr2'
         c.request = r
         res = c.handle()
         self.assertEqual(500, res.code)
