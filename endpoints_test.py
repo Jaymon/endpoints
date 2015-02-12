@@ -1741,6 +1741,13 @@ class DecoratorsTest(TestCase):
         r = foo(c, **{'foo': '0'})
         self.assertEqual(False, r)
 
+        @endpoints.decorators.param('bar', type=bool, require=True)
+        def bar(self, *args, **kwargs):
+            return kwargs['bar']
+
+        r = bar(c, **{'bar': 'False'})
+        self.assertEqual(False, r)
+
     def test_param_list(self):
         c = create_controller()
 
