@@ -18,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 _module_cache = {}
 
+
 def get_controllers(controller_prefix):
     """get all the modules in the controller_prefix
 
@@ -68,6 +69,25 @@ class Call(object):
 
     content_type = "application/json"
     """the content type this call is going to represent"""
+
+    @_property
+    def version(self):
+        """
+        versioning is based off of this post 
+        http://urthen.github.io/2013/05/09/ways-to-version-your-api/
+        """
+        v = None
+        accept_header = self.request.get_header('accept', u"")
+        if accept_header:
+            if not self.content_type:
+                raise ValueError("You are versioning a call with no content_type")
+
+            a = AcceptHeader(accept_header)
+            for mt in a.filter(self.content_type):
+                v = mt[2].get("version", None)
+                if v: break
+
+        return v
 
     @_property
     def request(self):
@@ -174,7 +194,7 @@ class Call(object):
         d['class_name'] = u"Default"
         d['module'] = None
         d['class'] = None
-        d['method'] = req.method.upper()
+        d['method'] = self.get_normalized_method()
         d['args'] = []
         d['kwargs'] = {}
 
@@ -263,6 +283,19 @@ class Call(object):
         return -- string -- the full controller module prefix
         """
         return self.controller_prefix
+
+    def get_normalized_method(self):
+        """
+        perform any normalization of the controller's method
+
+        return -- string -- the full method name to be used
+        """
+        method = self.request.method.upper()
+        version = self.version
+        if version:
+            method += "_{}".format(version)
+
+        return method
 
     def generate_body(self):
         """create a generator that returns the body for the given request
@@ -372,43 +405,4 @@ class Call(object):
         '''
         self.response.gbody = self.generate_body()
         return self.response
-
-
-class VersionCall(Call):
-    """
-    versioning is based off of this post: http://urthen.github.io/2013/05/09/ways-to-version-your-api/
-    """
-    default_version = None
-    """set this to the default version if you want a fallback version, if this is None then version check is enforced"""
-
-    def get_normalized_prefix(self):
-        cp = u""
-        if hasattr(self, "controller_prefix"):
-            cp = self.controller_prefix
-        v = self.get_version()
-        if cp:
-            cp += u".{}".format(v)
-        else:
-            cp = v
-
-        return cp
-
-    def get_version(self):
-        if not self.content_type:
-            raise ValueError("You are versioning a call with no content_type")
-
-        v = None
-        accept_header = self.request.get_header('accept', u"")
-        if accept_header:
-            a = AcceptHeader(accept_header)
-            for mt in a.filter(self.content_type):
-                v = mt[2].get(u"version", None)
-                if v: break
-
-        if not v:
-            v = self.default_version
-            if not v:
-                raise CallError(406, "Expected accept header with {};version=N media type".format(self.content_type))
-
-        return v
 

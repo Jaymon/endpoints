@@ -113,26 +113,26 @@ class Controller(object):
         self.response = response
         super(Controller, self).__init__(*args, **kwargs)
 
-    @classmethod
-    def get_methods(cls):
-        """
-        return the supported http method options that this class supports
-
-        return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
-        """
-        option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
-        # won't pick up class decorators
-        #methods = inspect.getmembers(v, inspect.ismethod)
-        # won't pick up class decorators that haven't been functools wrapped
-        #methods = inspect.getmembers(v, inspect.isroutine)
-        methods = inspect.getmembers(cls)
-        v_options = set()
-        for method_name, method in methods:
-            if method_name.startswith(u'_'): continue
-
-            if option_regex.match(method_name):
-                v_options.add(method_name)
-
-        return v_options
-
+#     @classmethod
+#     def get_methods(cls):
+#         """
+#         return the supported http method options that this class supports
+# 
+#         return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
+#         """
+#         option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
+#         # won't pick up class decorators
+#         #methods = inspect.getmembers(v, inspect.ismethod)
+#         # won't pick up class decorators that haven't been functools wrapped
+#         #methods = inspect.getmembers(v, inspect.isroutine)
+#         methods = inspect.getmembers(cls)
+#         v_options = set()
+#         for method_name, method in methods:
+#             if method_name.startswith(u'_'): continue
+# 
+#             if option_regex.match(method_name):
+#                 v_options.add(method_name)
+# 
+#         return v_options
+# 
 

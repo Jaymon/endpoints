@@ -1,6 +1,6 @@
 
-from .reflection import Reflect, VersionReflect
-from .call import Call, VersionCall
+from .reflection import Reflect
+from .call import Call
 from .exception import CallError, Redirect, CallStop, AccessDenied
 from .http import Request, Response
 from .utils import AcceptHeader

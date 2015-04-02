@@ -13,17 +13,64 @@ from .call import get_controllers
 from .decorators import _property
 
 
-class ReflectEndpoint(object):
-    @_property
-    def post_params(self):
-        """return the POST params for this endpoint"""
-        return self.params('POST')
-        #for m in (m[1] for m in inspect.getmembers(self.endpoint_class) if m[0] == 'POST'):
+class ReflectMethod(object):
 
     @_property
-    def get_params(self):
-        """return the GET params for this endpoint"""
-        return self.params('GET')
+    def version(self):
+        bits = self.controller_method_name.split("_", 2)
+        return bits[1] if len(bits) > 1 else None
+
+    @property
+    def headers(self):
+        headers = {}
+        version = self.version
+        if version:
+            headers['Accept'] = "{};version={}".format(self.content_type, version)
+        return headers
+
+    @_property
+    def name(self):
+        """return the method name (GET, POST)"""
+        bits = self.controller_method_name.split("_", 2)
+        return bits[0]
+
+    @_property
+    def decorators(self):
+        decorators = self.endpoint.decorators
+        return decorators[self.controller_method_name]
+
+    @_property
+    def desc(self):
+        """return the description of this endpoint"""
+        doc = inspect.getdoc(self.controller_method)
+        if not doc: doc = u''
+        return doc
+
+    @_property
+    def params(self):
+        """return information about the params that the given http option takes"""
+        ret = {}
+        for name, args, kwargs in self.decorators:
+            if name == 'param':
+                is_required =  kwargs.get('required', 'default' not in kwargs)
+                ret[args[0]] = {'required': is_required, 'other_names': args[1:], 'options': kwargs}
+
+            if name == 'require_params':
+                for a in args:
+                    ret[a] = {'required': True, 'other_names': [], 'options': {}}
+
+        return ret
+
+    def __init__(self, controller_method_name, controller_method, *args, **kwargs):
+        self.controller_method_name = controller_method_name
+        self.controller_method = controller_method
+        self.endpoint = kwargs.get("endpoint", None)
+        self.content_type = kwargs.get("content_type", None)
+
+
+class ReflectEndpoint(object):
+
+    method_class = ReflectMethod
 
     @_property
     def decorators(self):
@@ -33,7 +80,7 @@ class ReflectEndpoint(object):
         answer http://stackoverflow.com/a/9580006
         """
         res = {}
-        target = self.endpoint_class
+        target = self.controller_class
 
         def get_val(na, default=None):
             ret = None
@@ -101,22 +148,15 @@ class ReflectEndpoint(object):
         node_iter.visit_FunctionDef = visit_FunctionDef
         node_iter.visit(ast.parse(inspect.getsource(target)))
 
-
-        # get rid of all the non option methods
-        options = self.options
-        for key in res.keys():
-            if key not in options:
-                res.pop(key)
-
         return res
 
     @_property
     def class_name(self):
-        return self.endpoint_class.__name__
+        return self.controller_class.__name__
 
     @_property
     def module_name(self):
-        return self.endpoint_module.__name__
+        return self.controller_module.__name__
 
     @_property
     def bits(self):
@@ -136,87 +176,66 @@ class ReflectEndpoint(object):
     @_property
     def desc(self):
         """return the description of this endpoint"""
-        doc = inspect.getdoc(self.endpoint_class)
+        doc = inspect.getdoc(self.controller_class)
         if not doc: doc = u''
         return doc
 
     @_property
-    def options(self):
-        """return what http method options this endpoint supports (eg, POST, GET)"""
-        return self.endpoint_class.get_methods()
+    def methods(self):
+        """
+        return the supported http method options that this class supports
+        return what http method options this endpoint supports (eg, POST, GET)
 
-    def __init__(self, controller_prefix, endpoint_module, endpoint_class, **kwargs):
-        self.controller_prefix = controller_prefix
-        self.endpoint_module = endpoint_module
-        self.endpoint_class = endpoint_class
+        link -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
-    def params(self, option):
-        """return information about the params that the given http option takes"""
-        option = option.upper()
+        return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
+        """
         ret = {}
-        decs = self.decorators
-        if option in decs:
-            for name, args, kwargs in decs[option]:
-                if name == 'param':
-                    is_required =  kwargs.get('required', 'default' not in kwargs)
-                    ret[args[0]] = {'required': is_required, 'other_names': args[1:], 'options': kwargs}
+        method_regex = re.compile(ur"^[A-Z][A-Z0-9]+(_|$)")
+        # won't pick up class decorators
+        #methods = inspect.getmembers(v, inspect.ismethod)
+        # won't pick up class decorators that haven't been functools wrapped
+        #methods = inspect.getmembers(v, inspect.isroutine)
+        controller_methods = inspect.getmembers(self.controller_class)
+        for controller_method_name, controller_method in controller_methods:
+            if controller_method_name.startswith(u'_'): continue
 
-                if name == 'require_params':
-                    for a in args:
-                        ret[a] = {'required': True, 'other_names': [], 'options': {}}
+            if method_regex.match(controller_method_name):
+                method = self.method_class(
+                    controller_method_name,
+                    controller_method,
+                    content_type=self.content_type,
+                    endpoint=self
+                )
+                ret.setdefault(method.name, [])
+                ret[method.name].append(method)
 
         return ret
 
+    def __init__(self, controller_prefix, controller_module, controller_class, **kwargs):
+        self.controller_prefix = controller_prefix
+        self.controller_module = controller_module
+        self.controller_class = controller_class
+        self.content_type = kwargs.get('content_type', None)
 
     def is_private(self):
         """return True if this endpoint is considered private"""
-        return self.class_name.startswith(u'_') or getattr(self.endpoint_class, 'private', False)
-
-
-class VersionReflectEndpoint(ReflectEndpoint):
-    @_property
-    def uri(self):
-        return "/" + "/".join(self.bits[1:])
-
-    @_property
-    def version(self):
-        return self.bits[0]
-
-    @property
-    def headers(self):
-        headers = {}
-        headers['Accept'] = "{};version={}".format(self.content_type, self.version)
-        return headers
-
-    def __init__(self, *args, **kwargs):
-        self.content_type = kwargs.pop('content_type')
-        super(VersionReflectEndpoint, self).__init__(*args, **kwargs)
+        return self.class_name.startswith('_') or getattr(self.controller_class, 'private', False)
 
 
 class Reflect(object):
     """
     Reflect the controllers to reveal information about what endpoints are live
     """
-    controller_prefix = u''
+    controller_prefix = ''
 
-    info_class = ReflectEndpoint
+    endpoint_class = ReflectEndpoint
 
-    def __init__(self, controller_prefix):
+    def __init__(self, controller_prefix, content_type='*/*'):
         self.controller_prefix = controller_prefix
+        self.content_type = content_type
         if not controller_prefix:
             raise ValueError("controller_prefix was empty")
-
-    def normalize_endpoint(self, *args, **kwargs):
-        """
-        handy for adding any args, or kwargs accumulated through all the calls to the endpoint
-
-        endpoint -- dict -- the endpoint information dict
-        """
-        return self.info_class(
-            self.controller_prefix,
-            *args,
-            **kwargs
-        )
 
     def get_controller_modules(self):
         """
@@ -235,6 +254,7 @@ class Reflect(object):
             controller_module = importlib.import_module(controller_name)
             yield controller_module
 
+            # leave no trace, if the module wasn't there previously, get rid of it now
             if remove:
                 sys.modules.pop(controller_name, None)
 
@@ -245,15 +265,20 @@ class Reflect(object):
         return -- list -- a list of dicts with information about each endpoint in the controller
         """
         classes = inspect.getmembers(controller_module, inspect.isclass)
-        for class_name, v in classes:
-            if not issubclass(v, Controller): continue
-            if class_name.startswith(u'_'): continue
+        for controller_class_name, controller_class in classes:
+            if not issubclass(controller_class, Controller): continue
+            if controller_class_name.startswith(u'_'): continue
 
-            info = self.normalize_endpoint(controller_module, v)
+            endpoint = self.endpoint_class(
+                self.controller_prefix,
+                controller_module,
+                controller_class,
+                content_type=self.content_type
+            )
 
             # filter out base classes like endpoints.Controller
-            if info.options:
-                yield info
+            if endpoint.methods:
+                yield endpoint
 
     def get_endpoints(self):
         """
@@ -263,30 +288,6 @@ class Reflect(object):
         """
 
         for controller_module in self.get_controller_modules():
-            for endpoint_info in self.get_controller_classes(controller_module):
-                yield endpoint_info
-
-
-class VersionReflect(Reflect):
-    """
-    same as Reflect, but for VersionCall
-    """
-    info_class = VersionReflectEndpoint
-
-    def __init__(self, controller_prefix, content_type='*/*'):
-        self.content_type = content_type
-        super(VersionReflect, self).__init__(controller_prefix)
-
-    def normalize_endpoint(self, *args, **kwargs):
-        """
-        handy for adding any args, or kwargs accumulated through all the calls to the endpoint
-
-        endpoint -- dict -- the endpoint information dict
-        """
-        return self.info_class(
-            self.controller_prefix,
-            content_type=self.content_type,
-            *args,
-            **kwargs
-        )
+            for endpoint in self.get_controller_classes(controller_module):
+                yield endpoint
 
