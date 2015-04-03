@@ -1,7 +1,74 @@
+from __future__ import absolute_import
 import types
 import re
 
-from .exception import CallError
+from .exception import CallError, AccessDenied
+
+from decorators import FuncDecorator
+
+
+class nocache(FuncDecorator):
+    """
+    sets all the no cache headers so the response won't be cached by the client
+    """
+    def decorate(self, func):
+        def decorated(self, *args, **kwargs):
+            self.response.set_headers({
+                "Cache-Control": "no-cache, no-store, must-revalidate",
+                "Pragma": "no-cache", 
+                "Expires": "0"
+            })
+            return func(self, *args, **kwargs)
+
+        return decorated
+
+
+class auth(FuncDecorator):
+    """
+    handy auth decorator that makes doing basic or token auth easy peasy
+
+    the request get_auth_client(), get_auth_basic(), and get_auth_bearer() methods
+    and access_token property should come in real handy here
+
+    example --
+
+    # create a token auth decorator
+    from endpoints import Controller
+    from endpoints.decorators import auth
+
+    def target(request):
+        if request.access_token != "foo":
+            raise ValueError("invalid access token")
+
+    class Default(Controller):
+        @auth("Bearer", target=target)
+        def GET(self):
+            return "hello world"
+    """
+    def target(self, request):
+        if self.target_callback:
+            try:
+                self.target_callback(request)
+
+            except CallError:
+                raise
+
+            except Exception as e:
+                raise AccessDenied(self.realm, e.message)
+
+        else:
+            raise CallError(403, "You need to pass in a target callback to use authentication")
+
+    def decorate(self, func, realm='', target=None):
+        self.target_callback = target
+        self.realm = realm
+
+        slf = self
+        def decorated(self, *args, **kwargs):
+            slf.target(self.request)
+            return func(self, *args, **kwargs)
+
+        return decorated
 
 
 class _property(object):
@@ -231,11 +298,22 @@ class param(object):
                     val = map(ptype, val)
 
                 else:
-                    if isinstance(ptype, type) and issubclass(ptype, bool):
-                        if val in set(['true', 'True', '1']):
-                            val = True
-                        elif val in set(['false', 'False', '0']):
-                            val = False
+                    if isinstance(ptype, type):
+                        if issubclass(ptype, bool):
+                            if val in set(['true', 'True', '1']):
+                                val = True
+                            elif val in set(['false', 'False', '0']):
+                                val = False
+                            else:
+                                val = ptype(val)
+
+                        elif issubclass(ptype, str):
+                            charset = request.charset
+                            if charset and isinstance(val, unicode):
+                                val = val.encode(charset)
+                            else:
+                                val = ptype(val)
+
                         else:
                             val = ptype(val)
 

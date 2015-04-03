@@ -96,21 +96,21 @@ class ControllerTest(TestCase):
         self.assertTrue(c.OPTIONS)
         self.assertFalse('Access-Control-Allow-Origin' in c.response.headers)
 
-        req.headers['Origin'] = 'http://example.com'
+        req.set_header('Origin', 'http://example.com')
         c = Cors(req, res)
-        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
+        self.assertEqual(req.get_header('Origin'), c.response.get_header('Access-Control-Allow-Origin')) 
 
-        req.headers['Access-Control-Request-Method'] = 'POST'
-        req.headers['Access-Control-Request-Headers'] = 'xone, xtwo'
+        req.set_header('Access-Control-Request-Method', 'POST')
+        req.set_header('Access-Control-Request-Headers', 'xone, xtwo')
         c = Cors(req, res)
         c.OPTIONS()
-        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin'])
-        self.assertEqual(req.headers['Access-Control-Request-Method'], c.response.headers['Access-Control-Allow-Methods']) 
-        self.assertEqual(req.headers['Access-Control-Request-Headers'], c.response.headers['Access-Control-Allow-Headers']) 
+        self.assertEqual(req.get_header('Origin'), c.response.get_header('Access-Control-Allow-Origin'))
+        self.assertEqual(req.get_header('Access-Control-Request-Method'), c.response.get_header('Access-Control-Allow-Methods')) 
+        self.assertEqual(req.get_header('Access-Control-Request-Headers'), c.response.get_header('Access-Control-Allow-Headers')) 
 
         c = Cors(req, res)
         c.POST()
-        self.assertEqual(req.headers['Origin'], c.response.headers['Access-Control-Allow-Origin']) 
+        self.assertEqual(req.get_header('Origin'), c.response.get_header('Access-Control-Allow-Origin')) 
 
     def test_bad_typeerror(self):
         """There is a bug that is making the controller method is throw a 404 when it should throw a 500"""
@@ -124,6 +124,7 @@ class ControllerTest(TestCase):
         testdata.create_module("{}.typerr".format(controller_prefix), contents=contents)
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
         r = endpoints.Request()
         r.method = 'GET'
         r.path = '/typerr'
@@ -147,6 +148,7 @@ class ControllerTest(TestCase):
         testdata.create_module("{}.typerr2".format(controller_prefix), contents=contents)
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
         r = endpoints.Request()
         r.method = 'GET'
         r.path = '/typerr2'
@@ -250,7 +252,7 @@ class ResponseTest(TestCase):
 
         r.code = 404
         self.assertEqual(404, r.code)
-        
+
         r.body = "this is the body 2"
         self.assertEqual(404, r.code)
 
@@ -270,19 +272,29 @@ class ResponseTest(TestCase):
 
 
 class RequestTest(TestCase):
+    def test_charset(self):
+        r = endpoints.Request()
+        r.set_header("content-type", "application/json;charset=UTF-8")
+        charset = r.charset
+        self.assertEqual("UTF-8", charset)
+
+        r = endpoints.Request()
+        r.set_header("content-type", "application/json")
+        charset = r.charset
+        self.assertEqual(None, charset)
 
     def test_ip(self):
         r = endpoints.Request()
-        r.headers['x-forwarded-for'] = '54.241.34.107'
+        r.set_header('x-forwarded-for', '54.241.34.107')
         ip = r.ip
         self.assertEqual('54.241.34.107', ip)
 
-        r.headers['x-forwarded-for'] = '127.0.0.1, 54.241.34.107'
+        r.set_header('x-forwarded-for', '127.0.0.1, 54.241.34.107')
         ip = r.ip
         self.assertEqual('54.241.34.107', ip)
 
-        r.headers['x-forwarded-for'] = '127.0.0.1'
-        r.headers['client-ip'] = '54.241.34.107'
+        r.set_header('x-forwarded-for', '127.0.0.1')
+        r.set_header('client-ip', '54.241.34.107')
         ip = r.ip
         self.assertEqual('54.241.34.107', ip)
 
@@ -422,11 +434,11 @@ class RequestTest(TestCase):
     def test_get_header(self):
         r = endpoints.Request()
 
-        r.headers = {
+        r.set_headers({
             'foo': 'bar',
             'Content-Type': 'application/json',
             'Happy-days': 'are-here-again'
-        }
+        })
         v = r.get_header('foo', 'che')
         self.assertEqual('bar', v)
 
@@ -447,6 +459,34 @@ class RequestTest(TestCase):
 
         v = r.get_header('happy-days')
         self.assertEqual('are-here-again', v)
+
+
+class RouterTest(TestCase):
+    def test_routing(self):
+        """there was a bug that caused errors raised after the yield to return another
+        iteration of a body instead of raising them"""
+        controller_prefix = "routing1"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self): pass",
+            "",
+            "class Foo(Controller):",
+            "    def GET(self): pass",
+            "",
+            "class Bar(Controller):",
+            "    def GET(self): pass",
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+
+        r = endpoints.call.Router(controller_prefix, [])
+        self.assertEqual(r.controller_module_name, controller_prefix)
+        self.assertEqual(r.controller_class_name, "Default")
+
+        r = endpoints.call.Router(controller_prefix, ["foo", "che", "baz"])
+        self.assertEqual(2, len(r.controller_method_args))
+        self.assertEqual(r.controller_class_name, "Foo")
+
 
 class CallTest(TestCase):
     def test_gbody_yield_errors(self):
@@ -469,6 +509,7 @@ class CallTest(TestCase):
         testdata.create_module(controller_prefix, contents=contents)
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
 
         r = endpoints.Request()
         r.method = 'GET'
@@ -504,6 +545,8 @@ class CallTest(TestCase):
         testdata.create_module(controller_prefix, contents=contents)
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
+
         r = endpoints.Request()
         r.method = 'GET'
         r.path = '/'
@@ -534,6 +577,7 @@ class CallTest(TestCase):
         r.method = 'GET'
         r.path = '/nmcon/8'
         c.request = r
+        c.response = endpoints.Response()
 
         res = c.handle()
         self.assertEqual('"8"', res.body)
@@ -750,6 +794,7 @@ class CallTest(TestCase):
         r.query_kwargs = {}
         r.method = u"GET"
         c = endpoints.Call("controllerhr")
+        c.response = endpoints.Response()
         c.request = r
 
         res = c.handle()
@@ -766,6 +811,7 @@ class CallTest(TestCase):
         r.path = u'/foo/boom'
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
         c.request = r
 
         res = c.handle()
@@ -787,6 +833,7 @@ class CallTest(TestCase):
         r.path = u'/'
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
         c.request = r
         res = c.handle()
         res.body # we need to cause the body to be handled
@@ -807,6 +854,7 @@ class CallTest(TestCase):
         r.path = u'/'
 
         c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
         c.request = r
 
         res = c.handle()
@@ -832,6 +880,7 @@ class CallTest(TestCase):
         r.query_kwargs = {}
         r.method = u"GET"
         c = endpoints.Call("controllerhcs")
+        c.response = endpoints.Response()
         c.request = r
 
         res = c.handle()
@@ -1199,15 +1248,37 @@ class EndpointsTest(TestCase):
         controller_prefix = "get_controllers"
         s = create_modules(controller_prefix)
 
-        controllers = endpoints.call.get_controllers(controller_prefix)
+        r = endpoints.call.Router(controller_prefix)
+        controllers = r.controllers
         self.assertEqual(s, controllers)
 
         # just making sure it always returns the same list
-        controllers = endpoints.call.get_controllers(controller_prefix)
+        controllers = r.controllers
         self.assertEqual(s, controllers)
 
 
 class DecoratorsTest(TestCase):
+    def test_auth(self):
+        def target(request):
+            if request.body_kwargs["foo"] != "bar":
+                raise ValueError()
+
+        class TARA(object):
+            @endpoints.decorators.auth("Basic", target=target)
+            def foo(self): pass
+
+        r = endpoints.Request()
+        r.body_kwargs = {"foo": "che"}
+
+        c = TARA()
+        c.request = r
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        r.body_kwargs = {"foo": "bar"}
+        c.foo()
+
+
     def test__property_allow_empty(self):
         class PAE(object):
             foo_val = None
@@ -1456,6 +1527,21 @@ class DecoratorsTest(TestCase):
         self.assertFalse(r)
 
 
+    def test_param_unicode(self):
+        c = create_controller()
+        r = endpoints.Request()
+        r.set_header("content-type", "application/json;charset=UTF-8")
+        charset = r.charset
+        c.request = r
+        #self.assertEqual("UTF-8", charset)
+
+        @endpoints.decorators.param('foo', type=str)
+        def foo(self, *args, **kwargs):
+            return kwargs.get('foo')
+
+        words = testdata.get_unicode_words()
+        ret = foo(c, **{"foo": words})
+        self.assertEqual(ret, words.encode("UTF-8"))
 
     def test_param(self):
         c = create_controller()

@@ -9,7 +9,7 @@ import ast
 import __builtin__
 
 from .core import Controller
-from .call import get_controllers
+from .call import Router
 from .decorators import _property
 
 
@@ -245,8 +245,9 @@ class Reflect(object):
 
         return -- generator of tuples -- module, dict
         """
+        router = Router(self.controller_prefix)
         controller_prefix = self.controller_prefix
-        for controller_name in get_controllers(self.controller_prefix):
+        for controller_name in router.controllers:
             if controller_name.startswith(u'_'): continue
 
             remove = controller_name in sys.modules

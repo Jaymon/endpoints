@@ -38,7 +38,7 @@ class CorsMixin(object):
         for req_header, res_header in call_headers:
             v = req.get_header(req_header)
             if v:
-                self.response.headers[res_header] = v
+                self.response.set_header(res_header, v)
             else:
                 raise CallError(400, 'Need {} header'.format(req_header))
 
@@ -46,7 +46,7 @@ class CorsMixin(object):
             'Access-Control-Allow-Credentials': 'true',
             'Access-Control-Max-Age': 3600
         }
-        self.response.headers.update(other_headers)
+        self.response.set_headers(other_headers)
 
     def set_cors_common_headers(self):
         """
@@ -55,7 +55,7 @@ class CorsMixin(object):
         req = self.request
         origin = req.get_header('origin')
         if origin:
-            self.response.headers['Access-Control-Allow-Origin'] = origin
+            self.response.set_header('Access-Control-Allow-Origin', origin)
 
 
 class Controller(object):
@@ -112,27 +112,4 @@ class Controller(object):
         self.request = request
         self.response = response
         super(Controller, self).__init__(*args, **kwargs)
-
-#     @classmethod
-#     def get_methods(cls):
-#         """
-#         return the supported http method options that this class supports
-# 
-#         return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
-#         """
-#         option_regex = re.compile(ur"[A-Z][A-Z0-9_]+")
-#         # won't pick up class decorators
-#         #methods = inspect.getmembers(v, inspect.ismethod)
-#         # won't pick up class decorators that haven't been functools wrapped
-#         #methods = inspect.getmembers(v, inspect.isroutine)
-#         methods = inspect.getmembers(cls)
-#         v_options = set()
-#         for method_name, method in methods:
-#             if method_name.startswith(u'_'): continue
-# 
-#             if option_regex.match(method_name):
-#                 v_options.add(method_name)
-# 
-#         return v_options
-# 
 

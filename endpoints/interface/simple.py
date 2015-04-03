@@ -19,7 +19,7 @@ class Simple(BaseInterface):
         r.path = path
         r.query = query
         r.method = raw_request.command
-        r.headers = raw_request.headers.dict
+        r.set_headers(raw_request.headers.dict)
 
         if r.is_method('POST'):
             content_length = int(r.get_header('content-length', 0))
@@ -48,7 +48,7 @@ class SimpleHandler(BaseHTTPRequestHandler):
             res = self.interface.handle(self)
             for b in res.gbody:
                 self.send_response(res.code)
-                for h, hv in res.headers.iteritems():
+                for h, hv in res.headers.items():
                     self.send_header(h, hv)
 
                 #self.send_header('Connection', 'close')

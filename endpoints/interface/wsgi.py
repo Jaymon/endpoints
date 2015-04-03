@@ -13,7 +13,7 @@ class WSGI(BaseInterface):
         r = self.request_class()
         for k, v in raw_request.iteritems():
             if k.startswith('HTTP_'):
-                r.headers[k[5:]] = v
+                r.set_header(k[5:], v)
             else:
                 r.environ[k] = v
 
@@ -26,7 +26,7 @@ class WSGI(BaseInterface):
         k = 'CONTENT_TYPE'
         ct = r.environ.pop(k, None)
         if ct:
-            r.headers[k] = ct
+            r.set_header(k, ct)
 
         if 'wsgi.input' in raw_request:
             body = raw_request['wsgi.input'].read()
@@ -51,7 +51,7 @@ class Server(BaseServer):
 
         start_response(
             '{} {}'.format(res.code, res.status),
-            [(k, str(v)) for k, v in res.headers.iteritems()]
+            [(k, str(v)) for k, v in res.headers.items()]
         )
         return [body]
 
@@ -59,11 +59,11 @@ class Server(BaseServer):
         return None
 
     def handle_request(self):
-        raise NotImplemented("WSGI is used through application() method")
+        raise NotImplemented("WSGI is handled through application() method")
 
     def serve_forever(self):
-        raise NotImplemented("WSGI is used through application() method")
+        raise NotImplemented("WSGI is handled through application() method")
 
     def serve_count(self, count):
-        raise NotImplemented("WSGI is used through application() method")
+        raise NotImplemented("WSGI is handled through application() method")
 

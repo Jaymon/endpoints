@@ -89,7 +89,7 @@ class AcceptHeader(object):
         for x in self.__iter__():
             # all the params have to match to make the media type valid
             matched = True
-            for k, v in params.iteritems():
+            for k, v in params.items():
                 if x[2].get(k, None) != v:
                     matched = False
                     break

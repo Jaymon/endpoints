@@ -7,36 +7,36 @@ import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
 
 from .decorators import _property
+from .utils import AcceptHeader
 
 
 class Http(object):
-    headers = None
-    """all the http request headers in header: val format"""
-
     def __init__(self):
         self.headers = {}
+        self._headers_normalized = {}
+
+    def set_headers(self, headers):
+        """go through and add all the headers"""
+        for header_name, header_val in headers.items():
+            self.set_header(header_name, header_val)
+
+    def set_header(self, header_name, val):
+        """all header setting should go through this method, because it will create
+        a normalized key mapping so you don't need to worry about case or anything
+        if you want to change the header at a later time"""
+        header_name_normalized = header_name.replace('-', '_').upper() 
+        self._headers_normalized[header_name_normalized] = header_name
+        self.headers[header_name] = val
 
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
-        header_names = [header_name, header_name.replace('-', '_')]
+        header_name_normalized = header_name.replace('-', '_').upper() 
         ret = default_val
-        headers = self.headers
-        for hn in header_names:
-            if hn in headers:
-                ret = headers[hn]
-                break
-            elif hn.upper() in headers:
-                ret = headers[hn.upper()]
-                break
-            elif hn.lower() in headers:
-                ret = headers[hn.lower()]
-                break
-            elif hn.title() in headers:
-                ret = headers[hn.title()]
-                break
-            elif hn.capitalize() in headers:
-                ret = headers[hn.capitalize()]
-                break
+        if header_name_normalized in self._headers_normalized:
+            ret = self.headers[self._headers_normalized[header_name_normalized]]
+
+        elif header_name in self.headers:
+            ret = self.headers[header_name]
 
         return ret
 
@@ -119,6 +119,31 @@ class Request(Http):
 
     method = None
     """the http method (GET, POST)"""
+
+    @_property
+    def charset(self):
+        """the character encoding of the request, usually only set in POST type requests"""
+        charset = None
+        ct = self.get_header('content-type')
+        if ct:
+            ah = AcceptHeader(ct)
+            if ah.media_types:
+                charset = ah.media_types[0][2].get("charset", None)
+
+        return charset
+
+    @property
+    def access_token(self):
+        """return an Oauth 2.0 Bearer access token if it can be found"""
+        access_token = self.get_auth_bearer()
+        if not access_token:
+            if 'access_token' in self.query_kwargs:
+                access_token = self.query_kwargs['access_token']
+
+            elif 'access_token' in self.body_kwargs:
+                access_token = self.body_kwargs['access_token']
+
+        return access_token
 
     @_property(read_only=True)
     def ips(self):
@@ -270,6 +295,22 @@ class Request(Http):
 
         return username, password
 
+    def get_auth_client(self):
+        """try and get client id and secret first from basic auth header, then from
+        GET or POST parameters
+
+        return -- tuple -- client_id, client_secret
+        """
+        client_id, client_secret = self.request.get_auth_basic()
+        if not client_id and not client_secret:
+            client_id = self.query_kwargs.get('client_id', '')
+            client_secret = self.query_kwargs.get('client_secret', '')
+            if not client_id and not client_secret:
+                client_id = self.body_kwargs.get('client_id', '')
+                client_secret = self.body_kwargs.get('client_secret', '')
+
+        return client_id, client_secret
+
 
 class Response(Http):
     """
@@ -413,7 +454,8 @@ class Response(Http):
         if custom_response_headers:
             cors_headers.update(custom_response_headers)
 
-        self.headers.update(cors_headers)
+        self.set_headers(cors_headers)
+        #self.headers.update(cors_headers)
 
     def is_success(self):
         """return True if this response is considered a "successful" response"""

@@ -16,129 +16,78 @@ from .decorators import _property
 
 logger = logging.getLogger(__name__)
 
-_module_cache = {}
 
+class Router(object):
 
-def get_controllers(controller_prefix):
-    """get all the modules in the controller_prefix
+    _module_cache = {}
 
-    returns -- set -- a set of string module names"""
-    global _module_cache
-    if not controller_prefix:
-        raise ValueError("controller prefix is empty")
-    if controller_prefix in _module_cache:
-        return _module_cache[controller_prefix]
+    @property
+    def controllers(self):
+        """get all the modules in the controller_prefix
 
-    module = importlib.import_module(controller_prefix)
-    basedir = os.path.dirname(module.__file__)
-    modules = set()
+        returns -- set -- a set of string module names"""
+        controller_prefix = self.controller_prefix
+        _module_cache = type(self)._module_cache
+        if controller_prefix in _module_cache:
+            return _module_cache[controller_prefix]
 
-    for root, dirs, files in os.walk(basedir, topdown=True):
-        dirs[:] = [d for d in dirs if d[0] != '.' or d[0] != '_']
+        module = importlib.import_module(controller_prefix)
+        basedir = os.path.dirname(module.__file__)
+        modules = set()
 
-        module_name = root.replace(basedir, '', 1)
-        module_name = [controller_prefix] + filter(None, module_name.split('/'))
-        for f in fnmatch.filter(files, '*.py'):
-            if f.startswith('__init__'):
-                modules.add('.'.join(module_name))
-            else:
-                # we want to ignore any "private" modules
-                if not f.startswith('_'):
-                    file_name = os.path.splitext(f)[0]
-                    modules.add('.'.join(module_name + [file_name]))
+        for root, dirs, files in os.walk(basedir, topdown=True):
+            dirs[:] = [d for d in dirs if d[0] != '.' or d[0] != '_']
 
-    _module_cache.setdefault(controller_prefix, {})
-    _module_cache[controller_prefix] = modules
-    return modules
+            module_name = root.replace(basedir, '', 1)
+            module_name = [controller_prefix] + filter(None, module_name.split('/'))
+            for f in fnmatch.filter(files, '*.py'):
+                if f.startswith('__init__'):
+                    modules.add('.'.join(module_name))
+                else:
+                    # we want to ignore any "private" modules
+                    if not f.startswith('_'):
+                        file_name = os.path.splitext(f)[0]
+                        modules.add('.'.join(module_name + [file_name]))
 
+        _module_cache.setdefault(controller_prefix, {})
+        _module_cache[controller_prefix] = modules
+        return modules
 
-class Call(object):
-    """
-    Where all the routing magic happens
-
-    we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
-
-    GET /foo -> controller_prefix.version.foo.Default.get
-    POST /foo/bar -> controller_prefix.version.foo.Bar.post
-    GET /foo/bar/che -> controller_prefix.version.foo.Bar.get(che)
-    POST /foo/bar/che?baz=foo -> controller_prefix.version.foo.Bar.post(che, baz=foo)
-    """
-
-    controller_prefix = u""
-    """since endpoints interprets requests as /module/class, you can use this to do: controller_prefix.module.class"""
-
-    content_type = "application/json"
-    """the content type this call is going to represent"""
-
-    @_property
-    def version(self):
-        """
-        versioning is based off of this post 
-        http://urthen.github.io/2013/05/09/ways-to-version-your-api/
-        """
-        v = None
-        accept_header = self.request.get_header('accept', u"")
-        if accept_header:
-            if not self.content_type:
-                raise ValueError("You are versioning a call with no content_type")
-
-            a = AcceptHeader(accept_header)
-            for mt in a.filter(self.content_type):
-                v = mt[2].get("version", None)
-                if v: break
-
-        return v
-
-    @_property
-    def request(self):
-        '''
-        Call.request, this request object is used to decide how to route the client request
-
-        a Request instance to be used to translate the request to a controller
-        '''
-        return Request()
-
-    @_property
-    def response(self):
-        '''
-        Call.response, this object is used to decide how to answer the client
-
-        a Response instance to be returned from handle populated with info from controller
-        '''
-        return Response()
-
-    def __init__(self, controller_prefix, *args, **kwargs):
-        '''
-        create the instance
-
-        controller_prefix -- string -- the module path where all your controller modules live
-        *args -- tuple -- convenience, in case you extend and need something in another method
-        **kwargs -- dict -- convenience, in case you extend
-        '''
-        if not controller_prefix:
-            raise ValueError("controller_prefix was empty")
-
+    def __init__(self, controller_prefix, path_args=None):
         self.controller_prefix = controller_prefix
-        self.args = args
-        self.kwargs = kwargs
+        if not controller_prefix:
+            raise ValueError("controller prefix is empty")
 
-    def get_controllers(self, controller_prefix):
-        """return a set of string controllers that includes controller_prefix and
-        any sub modules underneath it
+        if not path_args: path_args = []
+        self.load(path_args)
 
-        controller_prefix -- string -- you pass this in because it can be different
-            values (not just self.controller_prefix) depending on if a Versioned call
-            is being used, etc.
-        """
-        cset = get_controllers(controller_prefix)
-        return cset
+    def load(self, path_args):
+        self.controller_class_name = u"Default"
+        module_name, args = self.get_module_name(path_args)
+        self.controller_module_name = module_name
+        self.controller_module = self.get_module(module_name)
+
+        class_object = None
+        if args:
+            class_object = self.get_class(self.controller_module, args[0].capitalize())
+
+        if class_object:
+            args.pop(0)
+
+        else:
+            class_object = self.get_class(self.controller_module, self.controller_class_name)
+
+        if class_object:
+            self.controller_class_name = class_object.__name__
+        self.controller_class = class_object
+        self.controller_method_args = args
 
     def get_module_name(self, path_args):
         """returns the module_name and remaining path args.
 
         return -- tuple -- (module_name, path_args)"""
-        controller_prefix = self.get_normalized_prefix()
-        cset = self.get_controllers(controller_prefix)
+        controller_prefix = self.controller_prefix
+        cset = self.controllers
         module_name = controller_prefix
         mod_name = module_name
         while path_args:
@@ -165,6 +114,67 @@ class Call(object):
 
         return class_object
 
+
+class Call(object):
+    """
+    Where all the routing magic happens
+
+    we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
+
+    GET /foo -> controller_prefix.version.foo.Default.get
+    POST /foo/bar -> controller_prefix.version.foo.Bar.post
+    GET /foo/bar/che -> controller_prefix.version.foo.Bar.get(che)
+    POST /foo/bar/che?baz=foo -> controller_prefix.version.foo.Bar.post(che, baz=foo)
+    """
+    router_class = Router
+
+    controller_prefix = u""
+    """since endpoints interprets requests as /module/class, you can use this to do: controller_prefix.module.class"""
+
+    content_type = "application/json"
+    """the content type this call is going to represent"""
+
+    charset = 'UTF-8'
+    """the default charset of the call, this will be passed down in the response"""
+
+    @_property
+    def version(self):
+        """
+        versioning is based off of this post 
+        http://urthen.github.io/2013/05/09/ways-to-version-your-api/
+        """
+        v = None
+        accept_header = self.request.get_header('accept', u"")
+        if accept_header:
+            if not self.content_type:
+                raise ValueError("You are versioning a call with no content_type")
+
+            a = AcceptHeader(accept_header)
+            for mt in a.filter(self.content_type):
+                v = mt[2].get("version", None)
+                if v: break
+
+        return v
+
+    def __init__(self, controller_prefix, *args, **kwargs):
+        '''
+        create the instance
+
+        controller_prefix -- string -- the module path where all your controller modules live
+        *args -- tuple -- convenience, in case you extend and need something in another method
+        **kwargs -- dict -- convenience, in case you extend
+        '''
+        if not controller_prefix:
+            raise ValueError("controller_prefix was empty")
+
+        self.controller_prefix = controller_prefix
+        self.args = args
+        self.kwargs = kwargs
+
+        self.router = None
+        self.request = None
+        self.response = None
+
     def get_kwargs(self):
         """combine GET and POST params to be passed to the controller"""
         req = self.request
@@ -190,41 +200,26 @@ class Call(object):
         d = {}
         req = self.request
         path_args = list(req.path_args)
-        d['module_name'] = u""
-        d['class_name'] = u"Default"
-        d['module'] = None
-        d['class'] = None
+        router = self.router_class(self.controller_prefix, req.path_args)
+
+        d['module'] = router.controller_module
+        d['module_name'] = router.controller_module_name
+
+        d['class'] = router.controller_class
+        d['class_name'] = router.controller_class_name
+
         d['method'] = self.get_normalized_method()
-        d['args'] = []
-        d['kwargs'] = {}
-
-        module_name, path_args = self.get_module_name(path_args)
-        d['module_name'] = module_name
-        d['module'] = self.get_module(d['module_name'])
-
-        class_object = None
-        if path_args:
-            class_object = self.get_class(d['module'], path_args[0].capitalize())
-
-        if class_object:
-            path_args.pop(0)
-
-        else:
-            class_object = self.get_class(d['module'], d['class_name'])
-            if not class_object:
-                class_object = None
-                raise TypeError(
-                    "could not find a valid controller with {}.{}.{}".format(
-                        d['module_name'],
-                        d['class_name'],
-                        d['method']
-                    )
-                )
-
-        d['class'] = class_object
-        d['class_name'] = class_object.__name__
-        d['args'] = path_args
+        d['args'] = router.controller_method_args
         d['kwargs'] = self.get_kwargs()
+
+        if not d['class']:
+            raise TypeError(
+                "could not find a valid controller with {}.{}.{}".format(
+                    d['module_name'],
+                    d['class_name'],
+                    d['method']
+                )
+            )
 
         return d
 
@@ -301,14 +296,16 @@ class Call(object):
         """create a generator that returns the body for the given request
 
         this is wrapped like this so that a controller can use yield result and then
-        have it pick up right where it left off after resturning back to the client
+        have it pick up right where it left off after returning back to the client
         what yield returned, it's just a tricksy way of being able to defer some
         processing until after responding to the client
 
         return -- generator -- a body generator"""
         try:
             body_generated = False
-            self.response.headers['Content-Type'] = self.content_type
+            self.response.set_header('Content-Type', "{};charset={}".format(self.content_type, self.charset))
+
+            self.response.charset = self.charset
             callback, callback_args, callback_kwargs = self.get_callback_info()
             body = self.handle_controller(callback, callback_args, callback_kwargs)
             if isinstance(body, types.GeneratorType):
@@ -337,7 +334,7 @@ class Call(object):
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e.body
-            self.response.headers.update(e.headers)
+            self.response.set_headers(e.headers)
             ret = e.body
 
         elif isinstance(e, Redirect):
@@ -346,7 +343,7 @@ class Call(object):
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = None
-            self.response.headers.update(e.headers)
+            self.response.set_headers(e.headers)
             ret = None
 
         elif isinstance(e, (AccessDenied, CallError)):
@@ -355,7 +352,7 @@ class Call(object):
             logger.warning(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e
-            self.response.headers.update(e.headers)
+            self.response.set_headers(e.headers)
             ret = e
 
         elif isinstance(e, TypeError):

@@ -28,6 +28,8 @@ setup(
     url='http://github.com/firstopinion/{}'.format(name),
     packages=find_packages(),
     license="MIT",
+    install_requires=['decorators'],
+    tests_require=['testdata'],
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',

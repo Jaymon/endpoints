@@ -136,9 +136,11 @@ Post requests are also merged with the `**params` on the controller method, with
     POST /foo?param1=GET1&param2=GET2 body: param1=POST1&param3=val3 -> prefix.Foo.POST(param1="POST1", param2="GET2", param3="val3")
 
 
-#### Fun with parameters
+### Handy decorators
 
 The `endpoints.decorators` module gives you some handy decorators to make parameter handling and error checking easier:
+
+#### Fun with parameters
 
 ```python
 from endpoints import Controller
@@ -165,22 +167,42 @@ class Foo(Controller):
 
 That will make sure `param1`, `param2`, and `param3` were all present in the `**params` dict.
 
+#### Authentication
+
+The `auth` decorator tries to make user authentication easier, it takes a **realm** and a **target** callback in order to perform the authentication.
+
+```python
+from endpoints import Controller
+from endpoints.decorators import auth
+
+def target(request):
+  username, password = request.get_auth_basic()
+  if username != "foo" or password != "bar":
+    raise ValueError("authentication failed")
+
+class Foo(Controller):
+  @auth("Basic", target)
+  def GET(self, **params): pass
+```
+
+The `auth` decorator can also be subclassed and customized.
+
 
 ### Versioning requests
 
 Endpoints has support for `Accept` [header](http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html) versioning, inspired by this [series of blog posts](http://urthen.github.io/2013/05/09/ways-to-version-your-api/).
 
-If you are using versioning, then the prefix for each controller would be `prefix.version`. Let's say you've set up your versioned site like this:
+You can activate versioning just by adding a new method to your controller using the format:
+
+    METHOD_VERSION
+
+So, let's say you have your controllers set up like this:
 
     site/
       controllers/
         __init__.py
-        v1/
-          __init__.py
-        v2/
-          __init__.py
 
-and `controllers.v1.__init__.py` contained:
+and `controllers.__init__.py` contained:
 
 ```python
 from endpoints import Controller
@@ -188,33 +210,23 @@ from endpoints import Controller
 class Default(Controller):
     def GET(self):
         return "called version 1 /"
-
-class Foo(Controller):
-    def GET(self):
-        return "called version 1 /foo"
-```
-
-And `controllers.v2.__init__.py` contained:
-
-```python
-from endpoints import Controller
-
-class Default(Controller):
-    def GET(self):
+    def GET_v2(self):
         return "called version 2 /"
 
 class Foo(Controller):
     def GET(self):
+        return "called version 1 /foo"
+    def GET_v2(self):
         return "called version 2 /foo"
 ```
 
 Then, your call requests would be translated like this:
 
-    GET / with Accept: */*;version=v1 -> controllers.v1.Default.GET()
-    GET /foo with Accept: */*;version=v1 -> controllers.v1.Foo.GET()
+    GET / with Accept: */*;version=v1 -> controllers.Default.GET()
+    GET /foo with Accept: */*;version=v1 -> controllers.Foo.GET()
 
-    GET / with Accept: */*;version=v2 -> controllers.v2.Default.GET()
-    GET /foo with Accept: */*;version=v2 -> controllers.v2.Foo.GET()
+    GET / with Accept: */*;version=v2 -> controllers.Default.GET_v2()
+    GET /foo with Accept: */*;version=v2 -> controllers.Foo.GET_v2()
 
 
 ### CORS support
@@ -230,7 +242,6 @@ class Default(Controller, CorsMixin):
 ```
 
 The `CorsMixin` will handle all the `OPTION` requests, and setting all the headers, so you don't have to worry about them (unless you want to).
-
 
 ### Yield support (experimental)
 
@@ -249,11 +260,13 @@ class Foo(Controller):
 
 **NOTE** that this does not work with the WSGI interface and I'm not sure there is a way to make it work :(
 
+
 ### Built in servers
 
-Endpoints comes with WSGI, [Mongrel2](http://mongrel2.org/), and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
+Endpoints comes with wsgi and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
 
-#### Sample WSGI script for uWSGI
+
+#### Sample wsgi script for uWSGI
 
 ```python
 import os
@@ -266,29 +279,6 @@ application = Server()
 Yup, that's all you need to do to set it up, then you can start a [uWSGI](http://uwsgi-docs.readthedocs.org/) server to test it out:
 
     uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
-
-
-#### Sample Mongrel2 script
-
-**NOTE** -- We no longer use Mongrel2, so this interface will most likely not be developed further and might eventually be removed if we make any big changes that would involve us having to modify this interface. You've been warned.
-
-```python
-import os
-
-from endpoints.interface.mongrel2 import Server
-
-os.environ['ENDPOINTS_MONGREL2_SUB'] = "tcp://127.0.0.1:9001"
-os.environ['ENDPOINTS_MONGREL2_PUB'] = "tcp://127.0.0.1:9002"
-os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
-
-s = Server()
-s.serve_forever()
-```
-
-
-#### Other
-
-**todo, move our auth_basic, and auth_oauth decorators into a decorators sub module?** Only problem I see with this is doing the actual authentication, so there needs to be a way for the module to call another method and return if it is valid, not sure how we would want to make that generic or if it is worth trying to make that generic. The other issue is we use [decorators](https://github.com/firstopinion/decorators) for all those decorators and I'm not sure I want to introduce a dependency.
 
 
 ## Install
