@@ -264,12 +264,9 @@ class Request(Http):
         if ct:
             ct = ct.lower()
             if ct.rfind("json") >= 0:
-                if self.body_input:
-                    body_kwargs = json.loads(self.body_input.read())
-                else:
-                    body = self.body
-                    if body:
-                        body_kwargs = json.loads(body)
+                body = self.body_input.read() if self.body_input else self.body
+                if body:
+                    body_kwargs = json.loads(body)
 
             else:
             #elif ct.rfind(u"x-www-form-urlencoded") >= 0:

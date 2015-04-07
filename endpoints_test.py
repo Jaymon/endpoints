@@ -1933,7 +1933,8 @@ class WSGIClient(object):
 
     def post(self, uri, body, **kwargs):
         url = self.host + uri
-        kwargs['data'] = body
+        if body is not None:
+            kwargs['data'] = body
         kwargs.setdefault('timeout', 5)
         filepath = kwargs.pop("filepath", None)
         if filepath:
@@ -1972,8 +1973,15 @@ class WSGITest(TestCase):
             "class Default(Controller):",
             "    def GET(*args, **kwargs): pass",
             "    def POST(*args, **kwargs): pass",
+            "    def POST_v2(*args, **kwargs): return kwargs['foo']",
             "",
         ])
+
+        r = c.post('/', None)
+        self.assertEqual(204, r.code)
+
+        r = c.post('/', None, headers={"content-type": "application/json"})
+        self.assertEqual(204, r.code)
 
         r = c.post('/', {})
         self.assertEqual(204, r.code)
@@ -1981,4 +1989,10 @@ class WSGITest(TestCase):
         r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
+        r = c.post('/', json.dumps({"foo": "bar"}), headers={"content-type": "application/json", "Accept": "application/json;version=v2"})
+        self.assertEqual(200, r.code)
+        self.assertEqual('"bar"', r.body)
 
+        r = c.post('/', {"foo": "bar"}, headers={"Accept": "application/json;version=v2"})
+        self.assertEqual(200, r.code)
+        self.assertEqual('"bar"', r.body)
