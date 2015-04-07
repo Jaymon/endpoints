@@ -1,4 +1,4 @@
-from unittest import TestCase
+from unittest import TestCase, skipIf
 import os
 import urlparse
 import json
@@ -8,11 +8,17 @@ import time
 import threading
 import subprocess
 import re
+import StringIO
 
 import testdata
 
 import endpoints
 import endpoints.call
+
+try:
+    import requests
+except ImportError as e:
+    requests = None
 
 
 #logging.basicConfig()
@@ -313,36 +319,38 @@ class RequestTest(TestCase):
             br = r.body_kwargs
 
     def test_body_kwargs(self):
-        body = u"foo=bar&che=baz&foo=che"
-        body_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
-        body_json = '{"foo": ["bar", "che"], "che": "baz"}'
+        #body = u"foo=bar&che=baz&foo=che"
+        #body_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        #body_json = '{"foo": ["bar", "che"], "che": "baz"}'
         cts = {
             u"application/x-www-form-urlencoded": (
                 u"foo=bar&che=baz&foo=che",
                 {u'foo': [u'bar', u'che'], u'che': u'baz'}
             ),
-            u'application/json': (
-                '{"foo": ["bar", "che"], "che": "baz"}',
-                {u'foo': [u'bar', u'che'], u'che': u'baz'}
-            ),
+#             u'application/json': (
+#                 '{"foo": ["bar", "che"], "che": "baz"}',
+#                 {u'foo': [u'bar', u'che'], u'che': u'baz'}
+#             ),
         }
 
         for ct, bodies in cts.iteritems():
-            r = endpoints.Request()
-            r.body = bodies[0]
-            r.headers = {'content-type': ct}
-            self.assertTrue(isinstance(r.body_kwargs, dict))
-            self.assertEqual(r.body_kwargs, body_kwargs)
+            ct_body, ct_body_kwargs = bodies
 
             r = endpoints.Request()
-            r.headers = {'content-type': ct}
+            r.body = ct_body
+            r.set_header('content-type', ct)
+            self.assertTrue(isinstance(r.body_kwargs, dict))
+            self.assertEqual(r.body_kwargs, ct_body_kwargs)
+
+            r = endpoints.Request()
+            r.set_header('content-type', ct)
             self.assertEqual(r.body_kwargs, {})
             self.assertEqual(r.body, None)
 
             r = endpoints.Request()
-            r.headers = {'content-type': ct}
-            r.body_kwargs = bodies[1]
-            self.assertEqual(r._parse_body_str(r.body), r._parse_body_str(bodies[0]))
+            r.set_header('content-type', ct)
+            r.body_kwargs = ct_body_kwargs
+            self.assertEqual(r._parse_query_str(r.body), r._parse_query_str(ct_body))
 
     def test_properties(self):
 
@@ -377,7 +385,7 @@ class RequestTest(TestCase):
         r = endpoints.Request()
         r.method = 'GET'
         r.body = ""
-        r.headers = {
+        r.set_headers({
             'PATTERN': u"/",
             'x-forwarded-for': u"127.0.0.1",
             'URI': u"/",
@@ -388,34 +396,31 @@ class RequestTest(TestCase):
             'PATH': u"/",
             'METHOD': u"GET",
             'authorization': u"Basic SOME_HASH_THAT_DOES_NOT_MATTER="
-        }
+        })
         self.assertEqual("", r.body)
 
         r = endpoints.Request()
         r.method = 'POST'
 
-        r.headers = {
-            'content-type': u"application/x-www-form-urlencoded",
-        }
+        r.set_header('content-type', u"application/x-www-form-urlencoded")
         r.body = u"foo=bar&che=baz&foo=che"
         body_r = {u'foo': [u'bar', u'che'], u'che': u'baz'}
         self.assertEqual(body_r, r.body_kwargs)
 
+
         r.body = None
-        del(r._body_kwargs)
+        #del(r._body_kwargs)
         body_r = {}
         self.assertEqual(body_r, r.body_kwargs)
 
-        r.headers = {
-            'content-type': u"application/json",
-        }
+        r.set_header('content-type', u"application/json")
         r.body = '{"person":{"name":"bob"}}'
-        del(r._body_kwargs)
+        #del(r._body_kwargs)
         body_r = {u'person': {"name":"bob"}}
         self.assertEqual(body_r, r.body_kwargs)
 
         r.body = u''
-        del(r._body_kwargs)
+        #del(r._body_kwargs)
         body_r = u''
         self.assertEqual(body_r, r.body)
 
@@ -425,9 +430,7 @@ class RequestTest(TestCase):
         self.assertEqual(body, r.body)
 
         r.method = 'GET'
-        r.headers = {
-            'content-type': u"application/json",
-        }
+        r.set_header('content-type', u"application/json")
         r.body = None
         self.assertEqual(None, r.body)
 
@@ -1829,186 +1832,153 @@ class DecoratorsTest(TestCase):
         self.assertEqual(r, ['bar', 'baz'])
 
 
-try:
-    from endpoints.interface.mongrel2 import Mongrel2 as M2Interface, \
-        Request as M2Request
-    class MockM2Request(object):
-        def __init__(self, **kwargs):
-            self.body = kwargs.get('body', '')
-            self.sender = kwargs.get('sender', 'm2-interface-test')
-            self.conn_id = kwargs.get('conn_id', '1')
+###############################################################################
+# WSGI support
+###############################################################################
+class WSGIClient(object):
+    def __init__(self, controller_prefix, module_body):
+        self.cwd = testdata.create_dir()
+        self.controller_prefix = controller_prefix
+        self.module_body = os.linesep.join(module_body)
+        self.application = "wsgi.py"
+        self.host = "http://localhost:8080"
+        testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
+        f = testdata.create_file(
+            self.application,
+            os.linesep.join([
+                "import os",
+                "import sys",
+                "import logging",
+                "logging.basicConfig()",
+                "sys.path.append('{}')".format(os.path.dirname(os.path.realpath(__file__))),
+                "from endpoints.interface.wsgi import Server",
+                "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
+                "application = Server()",
+                ""
+            ]),
+            self.cwd
+        )
+        self.start()
 
-            self.data = kwargs.get('data', {})
-            self.data = kwargs.get('msg', 'this is the raw zeromq message')
+    def start(slf):
+        subprocess.call("pgrep uwsgi | xargs kill -9", shell=True)
+        class SThread(threading.Thread):
+            """http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python"""
+            def __init__(self):
+                super(SThread, self).__init__()
+                self._stop = threading.Event()
+                self.daemon = True
 
-            self.headers = {
-                'REMOTE_ADDR': u"10.0.2.2",
-                'PATTERN': u"/",
-                'x-forwarded-for': u"10.0.2.2",
-                'URL_SCHEME': u"http",
-                'URI': u"/",
-                'accept': u"*/*",
-                'user-agent': u"m2-interface-test",
-                'host': u"localhost:1234",
-                'VERSION': u"HTTP/1.1",
-                'PATH': u"/",
-                'METHOD': u"GET"
-            }
-            for hk, hv in kwargs.get('headers', {}).iteritems():
-                self.headers[hk] = hv
+            def stop(self):
+                self._stop.set()
 
-            self.path = self.headers['PATH']
+            def stopped(self):
+                return self._stop.isSet()
 
-    class M2InterfaceTest(TestCase):
-        def test_create_request(self):
-            m2_req = MockM2Request()
-            i = M2Interface(
-                'm2.test.controller',
-                request_class=M2Request,
-                response_class=None,
-                call_class=None
-            )
+            def run(self):
+                process = None
+                try:
+                    cmd = " ".join([
+                        "uwsgi",
+                        "--http=:8080",
+                        "--master",
+                        "--processes=1",
+                        "--cpu-affinity=1",
+                        "--thunder-lock",
+                        "--chdir={}".format(slf.cwd),
+                        "--wsgi-file={}".format(slf.application),
+                    ])
 
-            req = i.create_request(m2_req)
-            self.assertEqual({}, req.query_kwargs)
+                    process = subprocess.Popen(
+                        #['sudo', 'tail', '-f', '/var/log/upstart/chat-*.log'],
+                        cmd,
+                        shell=True,
+                        stdout=subprocess.PIPE,
+                        stderr=subprocess.STDOUT,
+                        cwd=slf.cwd
+                    )
 
-            m2_req = MockM2Request(headers={'QUERY': 'foo=bar'})
-            req = i.create_request(m2_req)
-            self.assertTrue('foo' in req.query_kwargs)
+                    # Poll process for new output until finished
+                    while not self.stopped():
+                        line = process.stdout.readline()
+                        if line == '' and process.poll() != None:
+                            break
 
-except ImportError, e:
-    pass
+                        sys.stdout.write(line)
+                        sys.stdout.flush()
 
+                except Exception as e:
+                    print e
+                    raise
 
-try:
-    import requests
-
-    class WSGIClient(object):
-        def __init__(self, controller_prefix, module_body):
-            self.cwd = testdata.create_dir()
-            self.controller_prefix = controller_prefix
-            self.module_body = os.linesep.join(module_body)
-            self.application = "wsgi.py"
-            self.host = "http://localhost:8080"
-            testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
-            f = testdata.create_file(
-                self.application,
-                os.linesep.join([
-                    "import os",
-                    "import sys",
-                    "sys.path.append('{}')".format(os.path.dirname(os.path.realpath(__file__))),
-                    "from endpoints.interface.wsgi import Server",
-                    "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
-                    "application = Server()",
-                    ""
-                ]),
-                self.cwd
-            )
-            self.start()
-
-        def start(slf):
-            subprocess.call("pgrep uwsgi | xargs kill -9", shell=True)
-            class SThread(threading.Thread):
-                """http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python"""
-                def __init__(self):
-                    super(SThread, self).__init__()
-                    self._stop = threading.Event()
-                    self.daemon = True
-
-                def stop(self):
-                    self._stop.set()
-
-                def stopped(self):
-                    return self._stop.isSet()
-
-                def run(self):
-                    process = None
-                    try:
-                        cmd = " ".join([
-                            "uwsgi",
-                            "--http=:8080",
-                            "--master",
-                            "--processes=1",
-                            "--cpu-affinity=1",
-                            "--thunder-lock",
-                            "--chdir={}".format(slf.cwd),
-                            "--wsgi-file={}".format(slf.application),
-                        ])
-
-                        process = subprocess.Popen(
-                            #['sudo', 'tail', '-f', '/var/log/upstart/chat-*.log'],
-                            cmd,
-                            shell=True,
-                            stdout=subprocess.PIPE,
-                            stderr=subprocess.STDOUT,
-                            cwd=slf.cwd
-                        )
-
-                        # Poll process for new output until finished
-                        while not self.stopped():
-                            line = process.stdout.readline()
-                            if line == '' and process.poll() != None:
+                finally:
+                    count = 0
+                    if process:
+                        process.terminate()
+                        while count < 50:
+                            count += 1
+                            time.sleep(0.1)
+                            if process.poll() != None:
                                 break
 
-                            sys.stdout.write(line)
-                            sys.stdout.flush()
+                        if process.poll() == None:
+                            process.kill()
 
-                    except Exception as e:
-                        print e
-                        raise
+        slf.thread = SThread()
+        slf.thread.start()
+        time.sleep(1)
 
-                    finally:
-                        count = 0
-                        if process:
-                            process.terminate()
-                            while count < 50:
-                                count += 1
-                                time.sleep(0.1)
-                                if process.poll() != None:
-                                    break
+    def stop(self):
+        self.thread.stop()
 
-                            if process.poll() == None:
-                                process.kill()
+    def post(self, uri, body, **kwargs):
+        url = self.host + uri
+        kwargs['data'] = body
+        kwargs.setdefault('timeout', 5)
+        filepath = kwargs.pop("filepath", None)
+        if filepath:
+            files = {'file': open(filepath, 'rb')}
+            kwargs.setdefault("files", files)
+        return self.get_response(requests.post(url, **kwargs))
 
-            slf.thread = SThread()
-            slf.thread.start()
-            time.sleep(1)
-
-        def stop(self):
-            self.thread.stop()
-
-        def post(self, uri, body, **kwargs):
-            url = self.host + uri
-            kwargs['data'] = body
-            kwargs.setdefault('timeout', 5)
-            return self.get_response(requests.post(url, **kwargs))
-
-        def get_response(self, requests_response):
-            """just make request's response more endpointy"""
-            requests_response.code = requests_response.status_code
-            requests_response.body = requests_response.content
-            return requests_response
+    def get_response(self, requests_response):
+        """just make request's response more endpointy"""
+        requests_response.code = requests_response.status_code
+        requests_response.body = requests_response.content
+        return requests_response
 
 
-    class WSGITest(TestCase):
-        def test_post(self):
-            chdir = testdata.create_dir()
-            controller_prefix = 'wsgi.post'
-            c = WSGIClient(controller_prefix, [
-                "from endpoints import Controller",
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "    def POST(*args, **kwargs): pass",
-                "",
-            ])
+@skipIf(requests is None, "Skipping WSGI Test because no reqests module")
+class WSGITest(TestCase):
+    def test_post_file(self):
+        filepath = testdata.create_file("filename.txt", "this is a text file to upload")
+        controller_prefix = 'wsgi.post_file'
+        c = WSGIClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def POST(self, *args, **kwargs):",
+            "        return kwargs['file'].filename",
+            "",
+        ])
 
-            r = c.post('/', {})
-            self.assertEqual(204, r.code)
+        r = c.post('/', {"foo": "bar", "baz": "che"}, filepath=filepath)
+        self.assertEqual(200, r.code)
+        self.assertTrue("filename.txt" in r.body)
 
-            r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
-            self.assertEqual(204, r.code)
+    def test_post(self):
+        controller_prefix = 'wsgi.post'
+        c = WSGIClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(*args, **kwargs): pass",
+            "    def POST(*args, **kwargs): pass",
+            "",
+        ])
 
+        r = c.post('/', {})
+        self.assertEqual(204, r.code)
 
-except ImportError, e:
-    print e
+        r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
+        self.assertEqual(204, r.code)
+
 

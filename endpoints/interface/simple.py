@@ -20,10 +20,18 @@ class Simple(BaseInterface):
         r.query = query
         r.method = raw_request.command
         r.set_headers(raw_request.headers.dict)
+        r.raw_request = raw_request
 
         if r.is_method('POST'):
-            content_length = int(r.get_header('content-length', 0))
-            r.body = raw_request.rfile.read(content_length)
+            r.body_input = raw_request.rfile
+#             r.body_kwargs = self.normalize_body_kwargs(
+#                 r.get_header("content-type"),
+#                 raw_request.rfile,
+#                 raw_request
+#             )
+
+            #content_length = int(r.get_header('content-length', 0))
+            #r.body = raw_request.rfile.read(content_length)
 
         return r
 

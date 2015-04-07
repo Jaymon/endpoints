@@ -29,7 +29,7 @@ setup(
     packages=find_packages(),
     license="MIT",
     install_requires=['decorators'],
-    tests_require=['testdata'],
+    tests_require=['testdata', 'requests'],
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 4 - Beta',
         'Environment :: Web Environment',

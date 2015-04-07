@@ -2,6 +2,7 @@ import urlparse
 import urllib
 import json
 import types
+import cgi
 import re
 import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
@@ -40,24 +41,24 @@ class Http(object):
 
         return ret
 
-    def _parse_body_str(self, b):
-        # we are returning the string, let's try and be smart about it and match content type
-        ct = self.get_header('content-type')
-        if ct:
-            ct = ct.lower()
-            if ct.rfind(u"json") >= 0:
-                if b:
-                    b = json.loads(b)
-                else:
-                    b = None
+#     def _parse_body_str(self, b):
+#         # we are returning the string, let's try and be smart about it and match content type
+#         ct = self.get_header('content-type')
+#         if ct:
+#             ct = ct.lower()
+#             if ct.rfind(u"json") >= 0:
+#                 if b:
+#                     b = json.loads(b)
+#                 else:
+#                     b = None
+# 
+#             elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+#                 b = self._parse_query_str(b)
+# 
+#         return b
 
-            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-                b = self._parse_query_str(b)
-
-        return b
-
-    def _parse_json_str(self, query):
-        return json.loads(query)
+#     def _parse_json_str(self, query):
+#         return json.loads(query)
 
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
@@ -70,8 +71,8 @@ class Http(object):
 
         return d
 
-    def _build_json_str(self, query):
-        return json.dumps(query)
+#     def _build_json_str(self, query):
+#         return json.dumps(query)
 
     def _build_body_str(self, b):
         # we are returning the body, let's try and be smart about it and match content type
@@ -85,12 +86,12 @@ class Http(object):
                     b = None
 
             elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-                b = self._build_query_str(b)
+                b = urllib.urlencode(b, doseq=True)
 
         return b
 
-    def _build_query_str(self, query_kwargs):
-        return urllib.urlencode(query_kwargs, doseq=True)
+#     def _build_query_str(self, query_kwargs):
+#         return urllib.urlencode(query_kwargs, doseq=True)
 
 
 class Request(Http):
@@ -119,6 +120,9 @@ class Request(Http):
 
     method = None
     """the http method (GET, POST)"""
+
+    body_input = None
+    """the request body input, if this is a POST request"""
 
     @_property
     def charset(self):
@@ -230,10 +234,15 @@ class Request(Http):
     @_property
     def body(self):
         """return the raw version of the body"""
-        self._body = body = None
-        body_kwargs = self.body_kwargs
-        if body_kwargs: body = self._build_body_str(body_kwargs)
-        return body
+        return self.body_input.read() if self.body_input else None
+
+    @body.setter
+    def body(self, body):
+        if hasattr(self, "_body_kwargs"):
+            del(self._body_kwargs)
+
+        self.body_input = None
+        self._body = body
 
     @_property
     def body_kwargs(self):
@@ -250,16 +259,46 @@ class Request(Http):
             b = self.body_kwargs # dict with: {"foo": { "name": "bar"}}
             print self.body # string with: u'{"foo":{"name":"bar"}}'
         """
-        self._body_kwargs = {}
-        b = self.body
-        if b is None:
-            b = {}
+        body_kwargs = {}
+        ct = self.get_header("content-type")
+        if ct:
+            ct = ct.lower()
+            if ct.rfind("json") >= 0:
+                if self.body_input:
+                    body_kwargs = json.loads(self.body_input.read())
+                else:
+                    body = self.body
+                    if body:
+                        body_kwargs = json.loads(body)
 
-        else:
-            # we are returning the body, let's try and be smart about it and match content type
-            b = self._parse_body_str(b)
+            else:
+            #elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+                if self.body_input:
+                    body_fields = cgi.FieldStorage(
+                        fp=self.body_input,
+                        environ=self.raw_request,
+                        keep_blank_values=True
+                    )
+                    for field_name in body_fields.keys():
+                        body_field = body_fields[field_name]
+                        if body_field.filename:
+                            body_kwargs[field_name] = body_field
+                        else:
+                            body_kwargs[field_name] = body_field.value
 
-        return b
+                else:
+                    body = self.body
+                    if body:
+                        body_kwargs = self._parse_query_str(body)
+
+        # elif ct.rfind(u"multipart/form-data") >= 0:
+        return body_kwargs
+
+    @body_kwargs.setter
+    def body_kwargs(self, body_kwargs):
+        self.body_input = None
+        self._body_kwargs = body_kwargs
+        self._body = self._build_body_str(body_kwargs)
 
     def __init__(self):
         self.environ = {}

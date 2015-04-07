@@ -120,7 +120,12 @@ class _property(object):
             try:
                 val = self.fget(instance)
                 if val or self.allow_empty:
-                    self.fset(instance, val)
+                    # We don't do fset here because that causes unexpected bahavior
+                    # if you ever override setter, causing the setter to be fired
+                    # every time the getter is called, which confused my for about
+                    # an hour before I figured out what was happening
+                    self.default_set(instance, val)
+                    #self.fset(instance, val)
 
             except Exception:
                 # make sure no value gets set no matter what

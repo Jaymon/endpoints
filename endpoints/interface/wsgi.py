@@ -29,12 +29,15 @@ class WSGI(BaseInterface):
             r.set_header(k, ct)
 
         if 'wsgi.input' in raw_request:
-            body = raw_request['wsgi.input'].read()
-            if not body: body = None
-            r.body = body
+            r.body_input = raw_request['wsgi.input']
+            #r.body_kwargs = self.normalize_body_kwargs(ct, raw_request['wsgi.input'], raw_request)
+
+#             body = raw_request['wsgi.input'].read()
+#             if not body: body = None
+#             r.body = body
 
         else:
-            r.body = None
+            r.body_kwargs = {}
 
         return r
 

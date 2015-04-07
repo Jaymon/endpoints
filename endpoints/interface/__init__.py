@@ -1,5 +1,7 @@
 import os
 import logging
+import cgi
+import json
 
 from ..http import Request, Response
 from ..call import Call
@@ -32,6 +34,29 @@ class BaseInterface(object):
     def handle(self, raw_request=None, **kwargs):
         c = self.create_call(raw_request=raw_request, **kwargs)
         return c.ghandle()
+
+    def normalize_body_kwargs(self, content_type, body, raw_request):
+        body_kwargs = {}
+        ct = content_type.lower()
+        if ct.rfind("json") >= 0:
+            body_kwargs = json.loads(body)
+
+        else:
+        #elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+            body_fields = cgi.FieldStorage(
+                fp=body,
+                environ=raw_request,
+                keep_blank_values=True
+            )
+            for field_name in body_fields.keys():
+                body_field = body_fields[field_name]
+                if body_field.filename:
+                    body_kwargs[field_name] = body_field
+                else:
+                    body_kwargs[field_name] = body_field.value
+
+        # elif ct.rfind(u"multipart/form-data") >= 0:
+        return body_kwargs
 
 
 class BaseServer(object):
