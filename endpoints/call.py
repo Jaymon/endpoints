@@ -200,7 +200,7 @@ class Call(object):
         d = {}
         req = self.request
         path_args = list(req.path_args)
-        router = self.router_class(self.controller_prefix, req.path_args)
+        router = self.router_class(self.controller_prefix, path_args)
 
         d['module'] = router.controller_module
         d['module_name'] = router.controller_module_name
