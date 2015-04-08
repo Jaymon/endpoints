@@ -37,7 +37,7 @@ class ReflectMethod(object):
     @_property
     def decorators(self):
         decorators = self.endpoint.decorators
-        return decorators[self.controller_method_name]
+        return decorators.get(self.controller_method_name, [])
 
     @_property
     def desc(self):

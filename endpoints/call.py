@@ -19,7 +19,7 @@ logger = logging.getLogger(__name__)
 
 class Router(object):
 
-    _module_cache = {}
+    _module_name_cache = {}
 
     @property
     def controllers(self):
@@ -27,9 +27,9 @@ class Router(object):
 
         returns -- set -- a set of string module names"""
         controller_prefix = self.controller_prefix
-        _module_cache = type(self)._module_cache
-        if controller_prefix in _module_cache:
-            return _module_cache[controller_prefix]
+        _module_name_cache = type(self)._module_name_cache
+        if controller_prefix in _module_name_cache:
+            return _module_name_cache[controller_prefix]
 
         module = importlib.import_module(controller_prefix)
         basedir = os.path.dirname(module.__file__)
@@ -49,8 +49,8 @@ class Router(object):
                         file_name = os.path.splitext(f)[0]
                         modules.add('.'.join(module_name + [file_name]))
 
-        _module_cache.setdefault(controller_prefix, {})
-        _module_cache[controller_prefix] = modules
+        _module_name_cache.setdefault(controller_prefix, {})
+        _module_name_cache[controller_prefix] = modules
         return modules
 
     def __init__(self, controller_prefix, path_args=None):
