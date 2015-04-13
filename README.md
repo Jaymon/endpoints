@@ -222,11 +222,13 @@ class Foo(Controller):
 
 Then, your call requests would be translated like this:
 
-    GET / with Accept: */*;version=v1 -> controllers.Default.GET()
-    GET /foo with Accept: */*;version=v1 -> controllers.Foo.GET()
+    GET / with Accept: */* -> controllers.Default.GET()
+    GET /foo with Accept: */* -> controllers.Foo.GET()
 
     GET / with Accept: */*;version=v2 -> controllers.Default.GET_v2()
     GET /foo with Accept: */*;version=v2 -> controllers.Foo.GET_v2()
+
+Notice how attaching the `;version=v2` to the `Accept` header changes the method that is called to handle the request.
 
 
 ### CORS support
