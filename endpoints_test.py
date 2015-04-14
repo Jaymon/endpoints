@@ -1467,6 +1467,18 @@ class DecoratorsTest(TestCase):
         r = o.bar(**o.request.query_kwargs)
         self.assertEqual(2, r)
 
+    def test_param_dest(self):
+        """make sure the dest=... argument works"""
+        # https://docs.python.org/2/library/argparse.html#dest
+        c = create_controller()
+
+        @endpoints.decorators.param('foo', dest='bar')
+        def foo(self, *args, **kwargs):
+            return kwargs.get('bar')
+
+        r = foo(c, **{'foo': 1})
+        self.assertEqual(1, r)
+
     def test_param_multiple_names(self):
         c = create_controller()
 
@@ -1831,6 +1843,20 @@ class DecoratorsTest(TestCase):
         r = foo(c, **{'foo': ['bar', 'baz']})
         self.assertEqual(r, ['bar', 'baz'])
 
+    def test_param_arg(self):
+        # TODO -- make this work or do something or remove
+        c = create_controller()
+
+        @endpoints.decorators.param('foo')
+        @endpoints.decorators.param('bar')
+        @endpoints.decorators.param('che')
+        @endpoints.decorators.param('baz')
+        def foo(self, *args, **kwargs):
+            return 100
+
+        r = foo(c, **{'foo': 1, 'bar': 2, 'che': 3, 'baz': 4})
+        self.assertEqual(100, r)
+
 
 ###############################################################################
 # WSGI support
@@ -1966,6 +1992,23 @@ class WSGITest(TestCase):
         self.assertEqual(200, r.code)
         self.assertTrue("filename.txt" in r.body)
 
+    def test_post_file_with_param(self):
+        """make sure specifying a param for the file upload works as expected"""
+        filepath = testdata.create_file("post_file_with_param.txt", "post_file_with_param")
+        controller_prefix = 'wsgi.post_file_with_param'
+        c = WSGIClient(controller_prefix, [
+            "from endpoints import Controller, decorators",
+            "class Default(Controller):",
+            "    @decorators.param('file')",
+            "    def POST(self, *args, **kwargs):",
+            "        return kwargs['file'].filename",
+            "",
+        ])
+
+        r = c.post('/', {"foo": "bar", "baz": "che"}, filepath=filepath)
+        self.assertEqual(200, r.code)
+        self.assertTrue("post_file_with_param.txt" in r.body)
+
     def test_post(self):
         controller_prefix = 'wsgi.post'
         c = WSGIClient(controller_prefix, [
@@ -1996,3 +2039,4 @@ class WSGITest(TestCase):
         r = c.post('/', {"foo": "bar"}, headers={"Accept": "application/json;version=v2"})
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
+

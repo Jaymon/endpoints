@@ -1,6 +1,7 @@
 from __future__ import absolute_import
 import types
 import re
+import cgi
 
 from .exception import CallError, AccessDenied
 
@@ -241,8 +242,9 @@ class param(object):
     def normalize_param(self, slf, args, kwargs):
         """this is where all the magic happens, this will try and find the param and
         put its value in kwargs if it has a default and stuff"""
-        name = self.name
         flags = self.flags
+        name = self.name
+        dest_name = flags.get('dest', name)
         ptype = flags.get('type', None)
         paction = flags.get('action', 'store')
         if paction == 'store_false':
@@ -266,7 +268,9 @@ class param(object):
         normalize = True
         request = slf.request
         found_name, val = self.find_param(self.names, prequired, pdefault, request, args, kwargs)
-        if not found_name:
+        if found_name:
+            kwargs.pop(found_name)
+        else:
             normalize = 'default' in flags
 
         if normalize:
@@ -329,7 +333,9 @@ class param(object):
                 if val not in pchoices:
                     raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
 
-            if not allow_empty and not val is False and not val:
+            # at some point this if statement is just going to be too ridiculous
+            # FieldStorage check is because of this bug https://bugs.python.org/issue19097
+            if not allow_empty and val is not False and not val and not isinstance(val, cgi.FieldStorage):
                 if 'default' not in flags:
                     raise CallError(400, "param {} was empty".format(name))
 
@@ -363,15 +369,18 @@ class param(object):
                 if failed:
                     raise CallError(400, "param {} failed regex check".format(name))
 
-            kwargs[name] = val
+            kwargs[dest_name] = val
 
         return slf, args, kwargs
 
     def __call__(slf, func):
+        position = func.__dict__.get('param_position', 0)
         def wrapper(self, *args, **kwargs):
+            slf.position = wrapper.__dict__.get('param_position', 0)
             self, args, kwargs = slf.normalize_param(self, args, kwargs)
             return func(self, *args, **kwargs)
 
+        position = wrapper.__dict__.setdefault('param_position', position + 1)
         return wrapper
 
 
