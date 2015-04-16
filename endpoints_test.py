@@ -288,6 +288,22 @@ class UrlTest(TestCase):
 
 
 class RequestTest(TestCase):
+    def test_url(self):
+        """make sure the .url attribute is correctly populated"""
+        # this is wsgi configuration
+        r = endpoints.Request()
+        r.set_headers({
+            "Host": "localhost",
+        })
+        r.query = "foo=bar"
+        r.path = "/baz/che"
+        r.environ['wsgi.url_scheme'] = "http"
+        r.environ['SERVER_PORT'] = "80"
+        u = r.url
+        self.assertEqual("http://localhost:80/baz/che?foo=bar", r.url.geturl())
+
+        # TODO -- simple server configuration
+
     def test_charset(self):
         r = endpoints.Request()
         r.set_header("content-type", "application/json;charset=UTF-8")

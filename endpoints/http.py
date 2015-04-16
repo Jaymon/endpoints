@@ -64,6 +64,9 @@ class Url(object):
         for k, v in kwargs.items():
             setattr(self, k, v)
 
+        if not self.netloc:
+            self.netloc = self.hostloc
+
     def modify(self, *paths, **query_kwargs):
         """return a new Url instance with paths and query_kwargs changed, basically
         this will update the current information with the passed in information and
@@ -315,13 +318,19 @@ class Request(Http):
         return scheme
 
     @_property
+    def port(self):
+        """return the server port"""
+        return int(self.environ.get('SERVER_PORT', 0))
+
+    @_property
     def url(self):
         """return the full request url as an Url() instance"""
         scheme = self.scheme
         host = self.host
         path = self.path
         query = self.query
-        u = Url(scheme=scheme, hostname=host, path=path, query=query)
+        port = self.port
+        u = Url(scheme=scheme, hostname=host, path=path, query=query, port=self.port)
         return u
 
     @_property
