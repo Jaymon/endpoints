@@ -361,19 +361,19 @@ class Call(object):
             filename, linenum, funcname, text = tbs[-1]
             filename = os.path.splitext(filename)[0]
 
+            ret = e
             methodname = "handle_controller"
             methodfilename = os.path.splitext(inspect.getfile(type(self)))[0]
             if funcname == methodname and filename == methodfilename:
                 self.response.code = 404
-                ret = e
+
             else:
+                logger.exception(e)
                 self.response.code = 500
-                ret = e
 
         else:
             logger.exception(e)
             self.response.code = 500
-            #self.response.body = e
             ret = e
 
         return ret

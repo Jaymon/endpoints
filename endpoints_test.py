@@ -277,6 +277,16 @@ class ResponseTest(TestCase):
         self.assertEqual(200, r.code)
 
 
+class UrlTest(TestCase):
+    def test_create(self):
+        u = endpoints.Url("http://example.com/path/part/?query1=val1")
+        self.assertEqual("http://example.com/path/part/", u.base)
+        self.assertEqual({"query1": "val1"}, u.query_kwargs)
+
+        u2 = u.modify("/foo/bar", query1="val2")
+        self.assertEqual("http://example.com/foo/bar?query1=val2", u2.geturl())
+
+
 class RequestTest(TestCase):
     def test_charset(self):
         r = endpoints.Request()

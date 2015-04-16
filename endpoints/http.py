@@ -11,6 +11,131 @@ from .decorators import _property
 from .utils import AcceptHeader
 
 
+class Url(object):
+    """a url object on steriods, this is here to make it easy to manipulate urls"""
+
+    @property
+    def base(self):
+        """the full url without the query or fragment"""
+        return urlparse.urlunsplit((
+            self.scheme,
+            self.netloc,
+            self.path,
+            "",
+            ""
+        ))
+
+    @property
+    def hostloc(self):
+        """return just the host:port, basically netloc without username and pass info"""
+        hostloc = self.hostname
+        if self.port:
+            hostloc = '{}:{}'.format(hostloc, self.port)
+        return hostloc
+
+    @property
+    def host(self):
+        """just another way to get just the host, I like this better than hostname"""
+        return self.hostname
+
+    @property
+    def anchor(self):
+        """alternative name for fragment"""
+        return self.fragment
+
+    @property
+    def uri(self):
+        """return the uri, which is everything but base (no scheme, host, etc)"""
+        uristring = self.path
+        if self.query:
+            uristring += "?{}".format(self.query)
+        if self.fragment:
+            uristring += "#{}".format(self.fragment)
+
+        return uristring
+
+    @property
+    def query_kwargs(self):
+        """return the query arguments as a dictionary"""
+        return self._parse_query(self.query) if self.query else {}
+
+    def __init__(self, urlstring=None, **kwargs):
+        self._update_url(urlstring)
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def modify(self, *paths, **query_kwargs):
+        """return a new Url instance with paths and query_kwargs changed, basically
+        this will update the current information with the passed in information and
+        return a whole new instance"""
+        urlstring = self.base
+        if paths:
+            path = "/".join(paths)
+            urlstring = urlparse.urljoin(urlstring, path)
+
+        url_query_kwargs = self.query_kwargs
+        url_query_kwargs.update(query_kwargs)
+        query = self._unparse_query(url_query_kwargs)
+        return type(self)(urlstring, query=query, fragment=self.fragment)
+
+    def update(self, *paths, **query_kwargs):
+        """similar to modify, but updates this instance internally"""
+        o = self.modify(*paths, **query_kwargs)
+        self._update_url(o.geturl())
+
+    def geturl(self):
+        """return the dsn back into url form"""
+        return urlparse.urlunsplit((
+            self.scheme,
+            self.netloc,
+            self.path,
+            self.query,
+            self.fragment,
+        ))
+
+    def __str__(self):
+        return self.geturl()
+
+    def _update_url(self, urlstring):
+        """update the internal information with that of urlstring"""
+        urlparse_attributes = {
+            "scheme": "",
+            "netloc": "",
+            "path": "",
+            "query": "",
+            "fragment": "",
+            "username": None,
+            "password": None,
+            "hostname": None,
+            "port": None,
+        }
+
+
+        o = None
+        if urlstring:
+            o = urlparse.urlsplit(urlstring)
+
+        for k, v in urlparse_attributes.items():
+            if o:
+                setattr(self, k, getattr(o, k, v))
+            else:
+                setattr(self, k, v)
+
+    def _parse_query(self, query):
+        """return name=val&name2=val2 strings into {name: val} dict"""
+        d = {}
+        for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).iteritems():
+            if len(kv) > 1:
+                d[k] = kv
+            else:
+                d[k] = kv[0]
+
+        return d
+
+    def _unparse_query(self, query_kwargs):
+        return urllib.urlencode(query_kwargs, doseq=True)
+
+
 class Http(object):
     def __init__(self):
         self.headers = {}
@@ -48,14 +173,8 @@ class Http(object):
 
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
-        d = {}
-        for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).iteritems():
-            if len(kv) > 1:
-                d[k] = kv
-            else:
-                d[k] = kv[0]
-
-        return d
+        u = Url(query=query)
+        return u.query_kwargs
 
     def _build_body_str(self, b):
         # we are returning the body, let's try and be smart about it and match content type
@@ -72,9 +191,6 @@ class Http(object):
                 b = urllib.urlencode(b, doseq=True)
 
         return b
-
-#     def _build_query_str(self, query_kwargs):
-#         return urllib.urlencode(query_kwargs, doseq=True)
 
 
 class Request(Http):
@@ -180,6 +296,27 @@ class Request(Http):
                 break
 
         return r
+
+    @_property
+    def host(self):
+        """return the request host"""
+        return self.get_header("host")
+
+    @_property
+    def scheme(self):
+        """return the request scheme (eg, http, https)"""
+        scheme = self.environ.get('wsgi.url_scheme', "http")
+        return scheme
+
+    @_property
+    def url(self):
+        """return the full request url as an Url() instance"""
+        scheme = self.scheme
+        host = self.host
+        path = self.path
+        query = self.query
+        u = Url(scheme=scheme, hostname=host, path=path, query=query)
+        return u
 
     @_property
     def path(self):
