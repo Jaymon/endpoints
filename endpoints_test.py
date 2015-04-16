@@ -300,7 +300,10 @@ class RequestTest(TestCase):
         r.environ['wsgi.url_scheme'] = "http"
         r.environ['SERVER_PORT'] = "80"
         u = r.url
-        self.assertEqual("http://localhost:80/baz/che?foo=bar", r.url.geturl())
+        self.assertEqual("http://localhost/baz/che?foo=bar", r.url.geturl())
+        r.port = 555
+        u = r.url
+        self.assertEqual("http://localhost:555/baz/che?foo=bar", r.url.geturl())
 
         # TODO -- simple server configuration
 

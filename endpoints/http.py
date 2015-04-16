@@ -322,7 +322,7 @@ class Request(Http):
         """return the server port"""
         return int(self.environ.get('SERVER_PORT', 0))
 
-    @_property
+    @property
     def url(self):
         """return the full request url as an Url() instance"""
         scheme = self.scheme
@@ -333,7 +333,7 @@ class Request(Http):
         if port in [80, 443]:
             port = None
 
-        u = Url(scheme=scheme, hostname=host, path=path, query=query, port=self.port)
+        u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
         return u
 
     @_property
