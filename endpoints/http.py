@@ -16,14 +16,14 @@ class Url(object):
 
     @property
     def base(self):
-        """the full url without the query or fragment"""
-        return urlparse.urlunsplit((
+        """the full url without the query or fragment, returns new Url() instance"""
+        return self._create(urlparse.urlunsplit((
             self.scheme,
             self.netloc,
             self.path,
             "",
             ""
-        ))
+        )))
 
     @property
     def hostloc(self):
@@ -68,7 +68,7 @@ class Url(object):
         """return a new Url instance with paths and query_kwargs changed, basically
         this will update the current information with the passed in information and
         return a whole new instance"""
-        urlstring = self.base
+        urlstring = self.base.geturl()
         if paths:
             path = "/".join(paths)
             urlstring = urlparse.urljoin(urlstring, path)
@@ -76,7 +76,7 @@ class Url(object):
         url_query_kwargs = self.query_kwargs
         url_query_kwargs.update(query_kwargs)
         query = self._unparse_query(url_query_kwargs)
-        return type(self)(urlstring, query=query, fragment=self.fragment)
+        return self._create(urlstring, query=query, fragment=self.fragment)
 
     def update(self, *paths, **query_kwargs):
         """similar to modify, but updates this instance internally"""
@@ -113,7 +113,10 @@ class Url(object):
 
         o = None
         if urlstring:
-            o = urlparse.urlsplit(urlstring)
+            if isinstance(urlstring, type(self)):
+                o = urlparse.urlsplit(urlstring.geturl())
+            else:
+                o = urlparse.urlsplit(urlstring)
 
         for k, v in urlparse_attributes.items():
             if o:
@@ -134,6 +137,9 @@ class Url(object):
 
     def _unparse_query(self, query_kwargs):
         return urllib.urlencode(query_kwargs, doseq=True)
+
+    def _create(self, *args, **kwargs):
+        return type(self)(*args, **kwargs)
 
 
 class Http(object):
