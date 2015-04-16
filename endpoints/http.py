@@ -330,6 +330,9 @@ class Request(Http):
         path = self.path
         query = self.query
         port = self.port
+        if port in [80, 443]:
+            port = None
+
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=self.port)
         return u
 
