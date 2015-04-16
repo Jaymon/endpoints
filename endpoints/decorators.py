@@ -3,12 +3,32 @@ import types
 import re
 import cgi
 
-from .exception import CallError, AccessDenied
-
 from decorators import FuncDecorator
 
+from .exception import CallError, AccessDenied
 
-class nocache(FuncDecorator):
+
+class httpcache(FuncDecorator):
+    """
+    sets the cache headers so the response can be cached by the client
+
+    link -- https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching
+
+    ttl -- integer -- how many seconds to have the client cache the request
+    """
+    def decorate(self, func, ttl):
+        def decorated(self, *args, **kwargs):
+            self.response.set_headers({
+                "Cache-Control": "max-age={}".format(ttl),
+            })
+            return func(self, *args, **kwargs)
+            # TODO -- figure out how to set ETag
+            #if not self.response.has_header('ETag')
+
+        return decorated
+
+
+class nohttpcache(FuncDecorator):
     """
     sets all the no cache headers so the response won't be cached by the client
     """

@@ -16,6 +16,11 @@ class Http(object):
         self.headers = {}
         self._headers_normalized = {}
 
+    def has_header(self, header_name):
+        """return true if the header is set"""
+        header_name_normalized = header_name.replace('-', '_').upper() 
+        return header_name_normalized in self._headers_normalize or header_name in self.headers
+
     def set_headers(self, headers):
         """go through and add all the headers"""
         for header_name, header_val in headers.items():
@@ -41,25 +46,6 @@ class Http(object):
 
         return ret
 
-#     def _parse_body_str(self, b):
-#         # we are returning the string, let's try and be smart about it and match content type
-#         ct = self.get_header('content-type')
-#         if ct:
-#             ct = ct.lower()
-#             if ct.rfind(u"json") >= 0:
-#                 if b:
-#                     b = json.loads(b)
-#                 else:
-#                     b = None
-# 
-#             elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-#                 b = self._parse_query_str(b)
-# 
-#         return b
-
-#     def _parse_json_str(self, query):
-#         return json.loads(query)
-
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
         d = {}
@@ -70,9 +56,6 @@ class Http(object):
                 d[k] = kv[0]
 
         return d
-
-#     def _build_json_str(self, query):
-#         return json.dumps(query)
 
     def _build_body_str(self, b):
         # we are returning the body, let's try and be smart about it and match content type
