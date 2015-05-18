@@ -1891,13 +1891,14 @@ class DecoratorsTest(TestCase):
 # WSGI support
 ###############################################################################
 class WSGIClient(object):
-    def __init__(self, controller_prefix, module_body):
+    def __init__(self, controller_prefix, module_body, config_module_body=''):
         self.cwd = testdata.create_dir()
         self.controller_prefix = controller_prefix
         self.module_body = os.linesep.join(module_body)
         self.application = "wsgi.py"
         self.host = "http://localhost:8080"
         testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
+
         f = testdata.create_file(
             self.application,
             os.linesep.join([
@@ -1907,6 +1908,10 @@ class WSGIClient(object):
                 "logging.basicConfig()",
                 "sys.path.append('{}')".format(os.path.dirname(os.path.realpath(__file__))),
                 "from endpoints.interface.wsgi import Server",
+                "",
+                "##############################################################",
+                os.linesep.join(config_module_body),
+                "##############################################################",
                 "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
                 "application = Server()",
                 ""
@@ -2068,4 +2073,44 @@ class WSGITest(TestCase):
         r = c.post('/', {"foo": "bar"}, headers={"Accept": "application/json;version=v2"})
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
+
+    def test_post_ioerror(self):
+        """turns out this is pretty common, a client will make a request and disappear, 
+        but now that we lazy load the body these errors are showing up in our logs where
+        before they were silent because they failed, causing the process to be restarted,
+        before they ever made it really into our logging system"""
+
+        controller_prefix = 'wsgi.post_ioerror'
+        c = WSGIClient(
+            controller_prefix,
+            [
+                "from endpoints import Controller",
+                "",
+                "class Default(Controller):",
+                "    def POST(*args, **kwargs):",
+                "        pass",
+                "",
+            ],
+            [
+                "from endpoints import Request as EReq",
+                "from endpoints.interface.wsgi import Server",
+                "",
+                "class Request(EReq):",
+                "    @property",
+                "    def body_kwargs(self):",
+                "        raise IOError('timeout during read(0) on wsgi.input')",
+                "",
+                "Server.request_class = Request",
+                "",
+            ],
+        )
+
+        r = c.post(
+            '/',
+            json.dumps({"foo": "bar"}),
+            headers={
+                "content-type": "application/json",
+            }
+        )
+        self.assertEqual(408, r.code)
 

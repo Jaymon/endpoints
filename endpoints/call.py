@@ -238,7 +238,7 @@ class Call(object):
                 controller_info['method'])
             )
 
-        except AttributeError, e:
+        except AttributeError as e:
             r = self.request
             raise CallError(405, "{} {} not supported".format(r.method, r.path))
 
@@ -254,7 +254,15 @@ class Call(object):
         try:
             d = self.get_controller_info()
 
-        except (ImportError, AttributeError, TypeError), e:
+        except IOError as e:
+            exc_info = sys.exc_info()
+            logger.warning(str(e), exc_info=exc_info)
+            raise CallError(
+                408,
+                "The client went away before the request body was retrieved."
+            )
+
+        except (ImportError, AttributeError, TypeError) as e:
             r = self.request
             exc_info = sys.exc_info()
             logger.warning(str(e), exc_info=exc_info)

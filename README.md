@@ -296,13 +296,11 @@ If you want the latest and greatest, you can also install from source:
 
 ### To run tests
 
-To run the tests, you'll also need to install the `testdata` module: 
-
-    pip install testdata
-
 To run the tests:
 
     python -m unittest endpoints_test
+
+Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests.
 
 
 ## License
