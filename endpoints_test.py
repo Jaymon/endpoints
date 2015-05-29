@@ -854,22 +854,60 @@ class CallTest(TestCase):
         """make sure 404 works when a path bit is missing"""
         controller_prefix = "h404te2"
         contents = os.linesep.join([
-            "from endpoints import Controller",
+            "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    def GET(self, needed_bit, **kwargs):",
-            "       return ''"
+            "       return ''",
+            "",
+            "    def POST(self, needed_bit, **kwargs):",
+            "       return ''",
+            "",
+            "class Htype(Controller):",
+            "    def POST(self, needed_bit, **kwargs):",
+            "       return ''",
+            "",
+            "class Hdec(Controller):",
+            "    @decorators.param('foo', default='bar')",
+            "    def POST(self, needed_bit, **kwargs):",
+            "       return ''",
+            "",
         ])
         testdata.create_module(controller_prefix, contents=contents)
-        r = endpoints.Request()
-        r.method = u'GET'
-        r.path = u'/'
-
         c = endpoints.Call(controller_prefix)
         c.response = endpoints.Response()
+
+        r = endpoints.Request()
+        r.method = u'POST'
+        r.path = u'/hdec'
         c.request = r
         res = c.handle()
         res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
+
+        r = endpoints.Request()
+        r.method = u'POST'
+        r.path = u'/htype'
+        c.request = r
+        res = c.handle()
+        res.body # we need to cause the body to be handled
+        self.assertEqual(404, res.code)
+
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/'
+        c.request = r
+        res = c.handle()
+        res.body # we need to cause the body to be handled
+        self.assertEqual(404, res.code)
+
+        r = endpoints.Request()
+        r.method = u'POST'
+        r.path = u'/'
+        c.request = r
+        res = c.handle()
+        res.body # we need to cause the body to be handled
+        self.assertEqual(404, res.code)
+
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct header"""
@@ -2009,7 +2047,7 @@ class WSGIClient(object):
         return requests_response
 
 
-@skipIf(requests is None, "Skipping WSGI Test because no reqests module")
+@skipIf(requests is None, "Skipping WSGI Test because no requests module")
 class WSGITest(TestCase):
     def test_post_file(self):
         filepath = testdata.create_file("filename.txt", "this is a text file to upload")

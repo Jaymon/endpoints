@@ -364,15 +364,9 @@ class Call(object):
             ret = e
 
         elif isinstance(e, TypeError):
-            exc_info = sys.exc_info()
-            tbs = traceback.extract_tb(exc_info[2])
-            filename, linenum, funcname, text = tbs[-1]
-            filename = os.path.splitext(filename)[0]
 
-            ret = e
-            methodname = "handle_controller"
-            methodfilename = os.path.splitext(inspect.getfile(type(self)))[0]
-            if funcname == methodname and filename == methodfilename:
+            e_msg = unicode(e)
+            if e_msg.startswith(self.request.method) and 'arguments' in e_msg:
                 self.response.code = 404
 
             else:

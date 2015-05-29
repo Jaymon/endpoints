@@ -2,6 +2,7 @@ from __future__ import absolute_import
 import types
 import re
 import cgi
+from functools import wraps
 
 from decorators import FuncDecorator
 
@@ -83,8 +84,9 @@ class auth(FuncDecorator):
     def decorate(self, func, realm='', target=None):
         self.target_callback = target
         self.realm = realm
-
         slf = self
+
+        @wraps(func)
         def decorated(self, *args, **kwargs):
             slf.target(self.request)
             return func(self, *args, **kwargs)
@@ -395,6 +397,7 @@ class param(object):
 
     def __call__(slf, func):
         position = func.__dict__.get('param_position', 0)
+        @wraps(func)
         def wrapper(self, *args, **kwargs):
             slf.position = wrapper.__dict__.get('param_position', 0)
             self, args, kwargs = slf.normalize_param(self, args, kwargs)
@@ -459,11 +462,12 @@ class require_params(object):
         self.req_param_names = req_param_names
         self.param_options = param_options
 
-    def __call__(slf, f):
+    def __call__(slf, func):
         param_options = slf.param_options
         req_param_names = slf.req_param_names
         not_empty = not param_options.pop('allow_empty', False)
 
+        @wraps(func)
         def decorated(self, *args, **kwargs):
             for req_param_name in req_param_names:
                 if req_param_name not in kwargs:
@@ -472,7 +476,7 @@ class require_params(object):
                 if not_empty and not kwargs[req_param_name]:
                     raise CallError(400, "required param {} was empty".format(req_param_name))
 
-            return f(self, *args, **kwargs)
+            return func(self, *args, **kwargs)
 
         return decorated
 
