@@ -1625,6 +1625,10 @@ class DecoratorsTest(TestCase):
         ret = foo(c, **{"foo": words})
         self.assertEqual(ret, words.encode("UTF-8"))
 
+    #def test_param_append_list(self):
+        # TODO -- make this work
+
+
     def test_param(self):
         c = create_controller()
 
@@ -1911,7 +1915,6 @@ class DecoratorsTest(TestCase):
         self.assertEqual(r, ['bar', 'baz'])
 
     def test_param_arg(self):
-        # TODO -- make this work or do something or remove
         c = create_controller()
 
         @endpoints.decorators.param('foo')
@@ -2029,6 +2032,11 @@ class WSGIClient(object):
     def stop(self):
         self.thread.stop()
 
+    def get(self, uri, **kwargs):
+        url = self.host + uri
+        kwargs.setdefault('timeout', 5)
+        return self.get_response(requests.get(url, **kwargs))
+
     def post(self, uri, body, **kwargs):
         url = self.host + uri
         if body is not None:
@@ -2049,6 +2057,22 @@ class WSGIClient(object):
 
 @skipIf(requests is None, "Skipping WSGI Test because no requests module")
 class WSGITest(TestCase):
+
+    def test_list_param_decorator(self):
+        controller_prefix = "lpdcontroller"
+        c = WSGIClient(controller_prefix, [
+            "from endpoints import Controller, decorators",
+            "class Listparamdec(Controller):",
+            "    @decorators.param('user_ids', 'user_ids[]', type=int, action='append_list')",
+            "    def GET(self, **kwargs):",
+            "        return int(''.join(map(str, kwargs['user_ids'])))",
+            ""
+        ])
+
+        r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
+        self.assertEqual("1234", r.body)
+
+
     def test_post_file(self):
         filepath = testdata.create_file("filename.txt", "this is a text file to upload")
         controller_prefix = 'wsgi.post_file'
