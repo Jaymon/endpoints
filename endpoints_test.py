@@ -1150,6 +1150,30 @@ class ReflectTest(TestCase):
         for o in ['ABSURD', 'GET', 'POST']:
             self.assertTrue(o in options)
 
+    def test_docblock(self):
+        tmpdir = testdata.create_dir("reflectdoc")
+        testdata.create_modules(
+            {
+                "doc.block": os.linesep.join([
+                    "import endpoints",
+                    "class Foo(endpoints.Controller):",
+                    "    '''this is a multiline docblock",
+                    "",
+                    "    this means it has...",
+                    "    ",
+                    "    multiple lines",
+                    "    '''",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        rs = endpoints.Reflect("doc", 'application/json')
+        for endpoint in rs:
+            self.assertTrue("\n" in endpoint.desc)
+
     def test_get_versioned_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("versionreflecttest")

@@ -292,3 +292,6 @@ class Reflect(object):
             for endpoint in self.get_controller_classes(controller_module):
                 yield endpoint
 
+    def __iter__(self):
+        return self.get_endpoints()
+
