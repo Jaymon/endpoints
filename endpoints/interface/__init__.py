@@ -33,7 +33,7 @@ class BaseInterface(object):
 
     def handle(self, raw_request=None, **kwargs):
         c = self.create_call(raw_request=raw_request, **kwargs)
-        return c.ghandle()
+        return c.handle()
 
     def normalize_body_kwargs(self, content_type, body, raw_request):
         body_kwargs = {}

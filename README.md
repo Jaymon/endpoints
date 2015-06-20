@@ -68,6 +68,7 @@ And make some requests:
 
 Congratulations, you've created a webservice.
 
+
 ## How does it work?
 
 Endpoints translates requests to python modules without any configuration. It uses the convention:
@@ -244,23 +245,6 @@ class Default(Controller, CorsMixin):
 ```
 
 The `CorsMixin` will handle all the `OPTION` requests, and setting all the headers, so you don't have to worry about them (unless you want to).
-
-### Yield support (experimental)
-
-Want to defer some processing until after you have responded to the client? Then use yield in your controller:
-
-```python
-class Foo(Controller):
-    def POST(self, **kwargs):
-        # let the client know you got the stuff
-        yield {'success': True}
-
-        # do some other stuff with the received input
-        for k, v in kwargs:
-            do_something(k, v)
-```
-
-**NOTE** that this does not work with the WSGI interface and I'm not sure there is a way to make it work :(
 
 
 ### Built in servers

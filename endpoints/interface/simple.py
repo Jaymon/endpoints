@@ -6,6 +6,20 @@ import sys
 from . import BaseInterface, BaseServer
 
 
+class InputWrapper(object):
+    """make the Simple body input act like the WSGI input and not block
+    on no content"""
+    def __init__(self, fp, length):
+        self.fp = fp
+        self.length = int(length)
+
+    def read(self, *args, **kwargs):
+        if not self.length:
+            return ""
+
+        return self.fp.read(*args, **kwargs)
+
+
 class Simple(BaseInterface):
     def create_request(self, raw_request, **kwargs):
         if '?' in raw_request.path:
@@ -21,8 +35,13 @@ class Simple(BaseInterface):
         r.method = raw_request.command
         r.set_headers(raw_request.headers.dict)
         r.raw_request = raw_request
+        r.environ = {
+            "REQUEST_METHOD": r.method,
+            "QUERY_STRING": r.query
+        }
 
         if r.is_method('POST'):
+            #r.body_input = InputWrapper(raw_request.rfile, r.get_header('content-length', 0))
             r.body_input = raw_request.rfile
 #             r.body_kwargs = self.normalize_body_kwargs(
 #                 r.get_header("content-type"),
@@ -54,28 +73,21 @@ class SimpleHandler(BaseHTTPRequestHandler):
                 return
 
             res = self.interface.handle(self)
-            for b in res.gbody:
-                self.send_response(res.code)
-                for h, hv in res.headers.items():
-                    self.send_header(h, hv)
 
-                #self.send_header('Connection', 'close')
-                self.end_headers()
+            # send headers
+            self.send_response(res.code)
+            for h, hv in res.headers.items():
+                self.send_header(h, hv)
+            self.end_headers()
 
-                if res.has_body():
-                    self.wfile.write(b)
-                    self.wfile.flush()
-                    self.wfile.close()
-                    # HACK
-                    # this allows the yield trick to work when there is a body :)
-                    # but honestly I'm not sure how safe it is, but it works
-                    try:
-                        self.request.shutdown(socket.SHUT_WR)
-                    except socket.error:
-                        pass
-                    self.request.close()
+            # send body if one was generated
+            if res.has_body():
+                self.wfile.write(res.body)
+                self.wfile.flush()
+                self.wfile.close()
+                self.request.close()
 
-        except socket.timeout, e:
+        except socket.timeout as e:
             self.log_error("Request timed out: %r", e)
             self.close_connection = 1
             return

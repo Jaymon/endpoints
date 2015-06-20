@@ -14,6 +14,7 @@ import testdata
 
 import endpoints
 import endpoints.call
+from endpoints.http import Headers
 
 try:
     import requests
@@ -163,15 +164,6 @@ class ControllerTest(TestCase):
         self.assertEqual(500, res.code)
 
 class ResponseTest(TestCase):
-    def test_gbody(self):
-        r = endpoints.Response()
-        r.headers['Content-Type'] = 'application/json'
-        gbody = (v for v in [{'foo': 'bar'}])
-        r.gbody = gbody
-
-        for b in r.gbody:
-            self.assertTrue(isinstance(b, str))
-
     def test_headers(self):
         """make sure headers don't persist between class instantiations"""
         r = endpoints.Response()
@@ -521,77 +513,6 @@ class RouterTest(TestCase):
 
 
 class CallTest(TestCase):
-    def test_gbody_yield_errors(self):
-        """there was a bug that caused errors raised after the yield to return another
-        iteration of a body instead of raising them"""
-        controller_prefix = "gbodyerrory"
-        contents = os.linesep.join([
-            "import time",
-            "from endpoints import Controller",
-            "class Before(Controller):",
-            "    def GET(self):",
-            "        raise ValueError('blah')",
-            "        yield None",
-            "",
-            "class After(Controller):",
-            "    def GET(self):",
-            "        yield None",
-            "        raise ValueError('blah')"
-        ])
-        testdata.create_module(controller_prefix, contents=contents)
-
-        c = endpoints.Call(controller_prefix)
-        c.response = endpoints.Response()
-
-        r = endpoints.Request()
-        r.method = 'GET'
-        r.path = '/after'
-        c.request = r
-        res = c.ghandle()
-        body_returned = False
-        with self.assertRaises(ValueError):
-            for i, b in enumerate(res.gbody):
-                body_returned = True
-        self.assertTrue(body_returned)
-
-        r = endpoints.Request()
-        r.method = 'GET'
-        r.path = '/before'
-        c.request = r
-        res = c.ghandle()
-        for i, b in enumerate(res.gbody):
-            self.assertEqual(500, res.code)
-
-    def test_gbody_none(self):
-        """there was a bug in the original response.body getter that would make
-        the generator body stall until it was done if you did "yield None"."""
-        controller_prefix = "gbodynonecontroller"
-        contents = os.linesep.join([
-            "import time",
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        yield None",
-            "        time.sleep(1)"
-        ])
-        testdata.create_module(controller_prefix, contents=contents)
-
-        c = endpoints.Call(controller_prefix)
-        c.response = endpoints.Response()
-
-        r = endpoints.Request()
-        r.method = 'GET'
-        r.path = '/'
-        c.request = r
-
-        start = time.time()
-        res = c.ghandle()
-        for b in res.gbody:
-            stop = time.time()
-            self.assertGreater(1, stop - start)
-
-        # right here the after yield will need to finish and take 1 second
-
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to default class
         name if the path bit fails to be a controller class name"""
@@ -908,6 +829,27 @@ class CallTest(TestCase):
         res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
+    def test_handle_404_typeerror_3(self):
+        """there was an error when there was only one expected argument, turns out
+        the call was checking for "arguments" when the message just had "argument" """
+        controller_prefix = "h404te3"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self): pass",
+            "",
+        ])
+        testdata.create_module(controller_prefix, contents=contents)
+        c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
+
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/foo/bar/baz'
+        r.query = 'che=1&boo=2'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(404, res.code)
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct header"""
@@ -1952,16 +1894,51 @@ class DecoratorsTest(TestCase):
         self.assertEqual(100, r)
 
 
+class HeadersTest(TestCase):
+    def test_normalization(self):
+
+        keys = [
+            "Content-Type",
+            "content-type",
+            "content_type",
+            "CONTENT_TYPE"
+        ]
+
+        v = "foo"
+        d = {
+            "CONTENT_TYPE": v,
+            "CONTENT_LENGTH": 1234
+        }
+        headers = Headers(d)
+
+        for k in keys:
+            self.assertEqual(v, headers["Content-Type"])
+
+        headers = Headers()
+        headers["CONTENT_TYPE"] = v
+
+        for k in keys:
+            self.assertEqual(v, headers["Content-Type"])
+
+        with self.assertRaises(KeyError):
+            headers["foo-bar"]
+
+        for k in keys:
+            self.assertTrue(k in headers)
+
+
 ###############################################################################
 # WSGI support
 ###############################################################################
 class WSGIClient(object):
+
+    application = "server_script.py"
+
     def __init__(self, controller_prefix, module_body, config_module_body=''):
         self.cwd = testdata.create_dir()
         self.controller_prefix = controller_prefix
         self.module_body = os.linesep.join(module_body)
-        self.application = "wsgi.py"
-        self.host = "http://localhost:8080"
+        self.host = "localhost:8080"
         testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
 
         f = testdata.create_file(
@@ -1972,21 +1949,54 @@ class WSGIClient(object):
                 "import logging",
                 "logging.basicConfig()",
                 "sys.path.append('{}')".format(os.path.dirname(os.path.realpath(__file__))),
-                "from endpoints.interface.wsgi import Server",
+                "",
+                self.get_script_imports(),
+                ""
+                "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
                 "",
                 "##############################################################",
                 os.linesep.join(config_module_body),
                 "##############################################################",
-                "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
-                "application = Server()",
+                self.get_script_body(),
                 ""
             ]),
             self.cwd
         )
         self.start()
 
+    def get_url(self, uri):
+        return "http://" + self.host + uri
+
+    def get_script_imports(self):
+        return "from endpoints.interface.wsgi import *"
+
+    def get_script_body(self):
+        """returns the script body that is used to start the server"""
+        return os.linesep.join([
+            "application = Server()",
+        ])
+
+    @classmethod
+    def get_kill_cmd(cls):
+        return "pkill -9 -f {}".format(cls.application)
+
+    @classmethod
+    def kill(cls):
+        subprocess.call("{} > /dev/null 2>&1".format(cls.get_kill_cmd()), shell=True)
+
+    def get_start_cmd(self):
+        return " ".join([
+            "uwsgi",
+            "--http=:8080",
+            "--master",
+            "--processes=1",
+            "--cpu-affinity=1",
+            "--thunder-lock",
+            "--chdir={}".format(self.cwd),
+            "--wsgi-file={}".format(self.application),
+        ])
+
     def start(slf):
-        subprocess.call("pgrep uwsgi | xargs kill -9", shell=True)
         class SThread(threading.Thread):
             """http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python"""
             def __init__(self):
@@ -2003,24 +2013,13 @@ class WSGIClient(object):
             def run(self):
                 process = None
                 try:
-                    cmd = " ".join([
-                        "uwsgi",
-                        "--http=:8080",
-                        "--master",
-                        "--processes=1",
-                        "--cpu-affinity=1",
-                        "--thunder-lock",
-                        "--chdir={}".format(slf.cwd),
-                        "--wsgi-file={}".format(slf.application),
-                    ])
-
+                    cmd = slf.get_start_cmd()
                     process = subprocess.Popen(
-                        #['sudo', 'tail', '-f', '/var/log/upstart/chat-*.log'],
                         cmd,
                         shell=True,
                         stdout=subprocess.PIPE,
                         stderr=subprocess.STDOUT,
-                        cwd=slf.cwd
+                        cwd=slf.cwd,
                     )
 
                     # Poll process for new output until finished
@@ -2039,15 +2038,19 @@ class WSGIClient(object):
                 finally:
                     count = 0
                     if process:
-                        process.terminate()
-                        while count < 50:
-                            count += 1
-                            time.sleep(0.1)
-                            if process.poll() != None:
-                                break
+                        try:
+                            process.terminate()
+                        except OSError:
+                            pass
+                        else:
+                            while count < 50:
+                                count += 1
+                                time.sleep(0.1)
+                                if process.poll() != None:
+                                    break
 
-                        if process.poll() == None:
-                            process.kill()
+                            if process.poll() == None:
+                                process.kill()
 
         slf.thread = SThread()
         slf.thread.start()
@@ -2055,14 +2058,15 @@ class WSGIClient(object):
 
     def stop(self):
         self.thread.stop()
+        self.kill()
 
     def get(self, uri, **kwargs):
-        url = self.host + uri
+        url = self.get_url(uri)
         kwargs.setdefault('timeout', 5)
         return self.get_response(requests.get(url, **kwargs))
 
     def post(self, uri, body, **kwargs):
-        url = self.host + uri
+        url = self.get_url(uri)
         if body is not None:
             kwargs['data'] = body
         kwargs.setdefault('timeout', 5)
@@ -2082,9 +2086,24 @@ class WSGIClient(object):
 @skipIf(requests is None, "Skipping WSGI Test because no requests module")
 class WSGITest(TestCase):
 
+    client_class = WSGIClient
+    #client_instance = None
+
+    def setUp(self):
+        self.client_class.kill()
+
+    def tearDown(self):
+        self.client_class.kill()
+
+    def create_client(self, *args, **kwargs):
+        return self.client_class(*args, **kwargs)
+#         if not self.client_instance:
+#             self.client_instance = self.client_class(*args, **kwargs)
+#         return self.client_instance
+
     def test_list_param_decorator(self):
         controller_prefix = "lpdcontroller"
-        c = WSGIClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller, decorators",
             "class Listparamdec(Controller):",
             "    @decorators.param('user_ids', 'user_ids[]', type=int, action='append_list')",
@@ -2100,7 +2119,7 @@ class WSGITest(TestCase):
     def test_post_file(self):
         filepath = testdata.create_file("filename.txt", "this is a text file to upload")
         controller_prefix = 'wsgi.post_file'
-        c = WSGIClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
@@ -2116,7 +2135,7 @@ class WSGITest(TestCase):
         """make sure specifying a param for the file upload works as expected"""
         filepath = testdata.create_file("post_file_with_param.txt", "post_file_with_param")
         controller_prefix = 'wsgi.post_file_with_param'
-        c = WSGIClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    @decorators.param('file')",
@@ -2129,9 +2148,9 @@ class WSGITest(TestCase):
         self.assertEqual(200, r.code)
         self.assertTrue("post_file_with_param.txt" in r.body)
 
-    def test_post(self):
+    def test_post_basic(self):
         controller_prefix = 'wsgi.post'
-        c = WSGIClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(*args, **kwargs): pass",
@@ -2140,10 +2159,10 @@ class WSGITest(TestCase):
             "",
         ])
 
-        r = c.post('/', None)
+        r = c.post('/', None, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
-        r = c.post('/', None, headers={"content-type": "application/json"})
+        r = c.post('/', None)
         self.assertEqual(204, r.code)
 
         r = c.post('/', {})
@@ -2167,7 +2186,7 @@ class WSGITest(TestCase):
         before they ever made it really into our logging system"""
 
         controller_prefix = 'wsgi.post_ioerror'
-        c = WSGIClient(
+        c = self.create_client(
             controller_prefix,
             [
                 "from endpoints import Controller",
@@ -2179,7 +2198,6 @@ class WSGITest(TestCase):
             ],
             [
                 "from endpoints import Request as EReq",
-                "from endpoints.interface.wsgi import Server",
                 "",
                 "class Request(EReq):",
                 "    @property",
@@ -2199,4 +2217,54 @@ class WSGITest(TestCase):
             }
         )
         self.assertEqual(408, r.code)
+
+    def test_404_request(self):
+        controller_prefix = 'wsgi404.request404'
+        c = SimpleClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self): pass",
+            "",
+        ])
+
+        r = c.get('/foo/bar/baz?che=1&boo=2')
+        self.assertEqual(404, r.code)
+
+
+###############################################################################
+# Simple Server support
+###############################################################################
+class SimpleClient(WSGIClient):
+    def get_script_imports(self):
+        return "from endpoints.interface.simple import *"
+
+    def get_script_body(self):
+        """returns the script body that is used to start the server"""
+        return os.linesep.join([
+            "os.environ['ENDPOINTS_SIMPLE_HOST'] = '{}'".format(self.host),
+            "s = Server()",
+            "s.serve_forever()"
+        ])
+
+    def get_start_cmd(self):
+        return "python {}/{}".format(self.cwd, self.application)
+
+
+@skipIf(requests is None, "Skipping Simple server Test because no requests module")
+class SimpleTest(WSGITest):
+    client_class = SimpleClient
+
+    def test_simple_post(self):
+        controller_prefix = 'simple.post_file'
+        c = SimpleClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def POST(self, *args, **kwargs):",
+            "        return kwargs['foo']",
+            "",
+        ])
+
+        r = c.post('/', {"foo": "bar", "baz": "che"})
+        self.assertEqual(200, r.code)
+        self.assertTrue("bar" in r.body)
 

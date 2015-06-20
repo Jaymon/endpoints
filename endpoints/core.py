@@ -46,7 +46,7 @@ class CorsMixin(object):
             'Access-Control-Allow-Credentials': 'true',
             'Access-Control-Max-Age': 3600
         }
-        self.response.set_headers(other_headers)
+        self.response.add_headers(other_headers)
 
     def set_cors_common_headers(self):
         """

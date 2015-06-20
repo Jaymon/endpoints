@@ -300,37 +300,6 @@ class Call(object):
 
         return method
 
-    def generate_body(self):
-        """create a generator that returns the body for the given request
-
-        this is wrapped like this so that a controller can use yield result and then
-        have it pick up right where it left off after returning back to the client
-        what yield returned, it's just a tricksy way of being able to defer some
-        processing until after responding to the client
-
-        return -- generator -- a body generator"""
-        try:
-            body_generated = False
-            self.response.set_header('Content-Type', "{};charset={}".format(self.content_type, self.charset))
-
-            self.response.charset = self.charset
-            callback, callback_args, callback_kwargs = self.get_callback_info()
-            body = self.handle_controller(callback, callback_args, callback_kwargs)
-            if isinstance(body, types.GeneratorType):
-                for b in body:
-                    body_generated = True
-                    yield b
-
-            else:
-                yield body
-
-        except Exception as e:
-            if body_generated:
-                raise
-            else:
-                body = self.handle_error(e)
-                yield body
-
     def handle_controller(self, callback, callback_args, callback_kwargs):
         body = callback(*callback_args, **callback_kwargs)
         return body
@@ -342,7 +311,7 @@ class Call(object):
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e.body
-            self.response.set_headers(e.headers)
+            self.response.add_headers(e.headers)
             ret = e.body
 
         elif isinstance(e, Redirect):
@@ -351,7 +320,7 @@ class Call(object):
             logger.info(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = None
-            self.response.set_headers(e.headers)
+            self.response.add_headers(e.headers)
             ret = None
 
         elif isinstance(e, (AccessDenied, CallError)):
@@ -360,13 +329,13 @@ class Call(object):
             logger.warning(str(e), exc_info=exc_info)
             self.response.code = e.code
             #self.response.body = e
-            self.response.set_headers(e.headers)
+            self.response.add_headers(e.headers)
             ret = e
 
         elif isinstance(e, TypeError):
 
             e_msg = unicode(e)
-            if e_msg.startswith(self.request.method) and 'arguments' in e_msg:
+            if e_msg.startswith(self.request.method) and 'argument' in e_msg:
                 self.response.code = 404
 
             else:
@@ -384,24 +353,18 @@ class Call(object):
         """returns a response where the controller is already evaluated
 
         return -- Response() -- the response object with a body already"""
-        self.ghandle()
-        for b in self.response.gbody: pass
-        return self.response
+        body = None
+        try:
+            self.response.set_header('Content-Type', "{};charset={}".format(self.content_type, self.charset))
+            self.response.charset = self.charset
+            callback, callback_args, callback_kwargs = self.get_callback_info()
+            body = self.handle_controller(callback, callback_args, callback_kwargs)
 
-    def ghandle(self):
-        '''
-        return a response that is ready to have the controller evaluated, you can
-        trigger the controller being called and everything by just calling the body
+        except Exception as e:
+            body = self.handle_error(e)
 
-            response.body
+        finally:
+            self.response.body = body
 
-        or by iterating through the generator
-
-            for b in response.gbody: pass
-
-        return -- Response() -- the response object, ready to be populated with
-            information once the body is called
-        '''
-        self.response.gbody = self.generate_body()
         return self.response
 

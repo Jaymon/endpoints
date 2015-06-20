@@ -30,11 +30,6 @@ class WSGI(BaseInterface):
 
         if 'wsgi.input' in raw_request:
             r.body_input = raw_request['wsgi.input']
-            #r.body_kwargs = self.normalize_body_kwargs(ct, raw_request['wsgi.input'], raw_request)
-
-#             body = raw_request['wsgi.input'].read()
-#             if not body: body = None
-#             r.body = body
 
         else:
             r.body_kwargs = {}
@@ -50,13 +45,12 @@ class Server(BaseServer):
 
     def application(self, environ, start_response):
         res = self.interface.handle(environ)
-        body = res.body # we do this to trigger the generator
 
         start_response(
             '{} {}'.format(res.code, res.status),
             [(k, str(v)) for k, v in res.headers.items()]
         )
-        return [body]
+        return [res.body]
 
     def create_server(self, **kwargs):
         return None

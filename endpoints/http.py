@@ -11,6 +11,109 @@ from .decorators import _property
 from .utils import AcceptHeader
 
 
+class Headers(dict):
+    """Handles normalizing of header names, the problem with headers is they can
+    be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
+    so this handles normalizing the header names so you can request Content-Type
+    or CONTENT_TYPE and get the same value"""
+
+    def genkeys(self, k):
+        """here is where all the magic happens, this will generate all the different
+        variations of the header name looking for one that is set"""
+        yield k
+
+        kupper = k.upper()
+        yield kupper.replace('-', '_')
+        yield kupper.replace('_', '-')
+
+        klower = k.lower()
+        klower_norm = klower.replace('-', '_')
+        yield klower_norm
+
+        yield klower.replace('_', '-')
+
+        bits = klower_norm.split('_')
+        yield "-".join((bit.title() for bit in bits))
+
+        yield "{}-{}".format(bits[0].title(), "-".join(bits[1:]))
+        yield "{}_{}".format(bits[0].title(), "_".join(bits[1:]))
+
+    def __getitem__(self, k):
+
+        v = None
+        for nk in self.genkeys(k):
+            try:
+                v = super(Headers, self).__getitem__(nk)
+            except KeyError as e:
+                pass
+            else:
+                break
+
+        # raise a key error if we couldn't find the header
+        if v is None:
+            v = super(Headers, self).__getitem__(k)
+
+        return v
+
+    def __setitem__(self, k, v):
+        knorm = k.upper().replace('-', '_')
+        super(Headers, self).__setitem__(knorm, v)
+
+    def __contains__(self, k):
+        ret = False
+        for nk in self.genkeys(k):
+            ret = super(Headers, self).__contains__(nk)
+            if ret: break
+
+        return ret
+
+    def get(self, k, dv=None):
+        try:
+            v = self[k]
+        except KeyError:
+            v = dv
+
+        return v
+
+    def update(self, d):
+        for k, v in d.items():
+            self[k] = v
+
+
+class Body(object):
+    """this is the normalized request environment that every interface needs to
+    conform to, it primarily acts like a wsgi environment, which is compatible with
+    python's internal cgi.FieldStorage stuff"""
+
+    # https://hg.python.org/cpython/file/2.7/Lib/cgi.py#l325
+
+    def __init__(self, fp, headers, environ):
+        self.headers = headers
+        self.environ = environ
+        self.fp = fp
+
+        # make sure environ has the bare minimum to work
+        for k in ["REQUEST_METHOD", "QUERY_STRING"]:
+            if k not in self.environ:
+                raise ValueError("environ dict does not contain {}".format(k))
+
+    def __iter__(self):
+        body_fields = cgi.FieldStorage(
+            fp=self.fp,
+            headers=self.headers,
+            environ=self.environ,
+            keep_blank_values=True
+        )
+
+        for field_name in body_fields.keys():
+            body_field = body_fields[field_name]
+            if body_field.filename:
+                yield field_name, body_field
+
+            else:
+                yield field_name, body_field.value
+
+
 class Url(object):
     """a url object on steriods, this is here to make it easy to manipulate urls"""
 
@@ -148,38 +251,26 @@ class Url(object):
 
 class Http(object):
     def __init__(self):
-        self.headers = {}
-        self._headers_normalized = {}
+        self.headers = Headers()
 
     def has_header(self, header_name):
         """return true if the header is set"""
-        header_name_normalized = header_name.replace('-', '_').upper() 
-        return header_name_normalized in self._headers_normalize or header_name in self.headers
+        return header_name in self.headers
 
     def set_headers(self, headers):
-        """go through and add all the headers"""
-        for header_name, header_val in headers.items():
-            self.set_header(header_name, header_val)
+        """replace all headers with passed in headers"""
+        self.headers = Headers(headers)
+
+    def add_headers(self, headers):
+        self.headers.update(headers)
 
     def set_header(self, header_name, val):
-        """all header setting should go through this method, because it will create
-        a normalized key mapping so you don't need to worry about case or anything
-        if you want to change the header at a later time"""
-        header_name_normalized = header_name.replace('-', '_').upper() 
-        self._headers_normalized[header_name_normalized] = header_name
         self.headers[header_name] = val
 
     def get_header(self, header_name, default_val=None):
-        """try as hard as possible to get a a response header of header_name, return default_val if it can't be found"""
-        header_name_normalized = header_name.replace('-', '_').upper() 
-        ret = default_val
-        if header_name_normalized in self._headers_normalized:
-            ret = self.headers[self._headers_normalized[header_name_normalized]]
-
-        elif header_name in self.headers:
-            ret = self.headers[header_name]
-
-        return ret
+        """try as hard as possible to get a a response header of header_name,
+        rreturn default_val if it can't be found"""
+        return self.headers.get(header_name, default_val)
 
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
@@ -373,7 +464,11 @@ class Request(Http):
     @_property
     def body(self):
         """return the raw version of the body"""
-        return self.body_input.read() if self.body_input else None
+        body = None
+        if self.body_input:
+            body = self.body_input.read(int(self.get_header('content-length', 0)))
+
+        return body
 
     @body.setter
     def body(self, body):
@@ -403,31 +498,26 @@ class Request(Http):
         if ct:
             ct = ct.lower()
             if ct.rfind("json") >= 0:
-                body = self.body_input.read() if self.body_input else self.body
+                body = self.body
                 if body:
                     body_kwargs = json.loads(body)
 
             else:
-            #elif ct.rfind(u"x-www-form-urlencoded") >= 0:
                 if self.body_input:
-                    body_fields = cgi.FieldStorage(
+                    body = Body(
                         fp=self.body_input,
-                        environ=self.raw_request,
-                        keep_blank_values=True
+                        headers=self.headers,
+                        environ=self.environ
+                        #environ=self.raw_request
                     )
-                    for field_name in body_fields.keys():
-                        body_field = body_fields[field_name]
-                        if body_field.filename:
-                            body_kwargs[field_name] = body_field
-                        else:
-                            body_kwargs[field_name] = body_field.value
+
+                    body_kwargs = dict(body)
 
                 else:
                     body = self.body
                     if body:
                         body_kwargs = self._parse_query_str(body)
 
-        # elif ct.rfind(u"multipart/form-data") >= 0:
         return body_kwargs
 
     @body_kwargs.setter
@@ -524,42 +614,11 @@ class Response(Http):
         self._status = v
 
     @property
-    def gbody(self):
-        """yield the body, formatted to the appropriate content type"""
-        gb = getattr(self, '_gbody', None)
-        if gb is None:
-            b = getattr(self, '_body', None)
-            if b:
-                self.body = b
-                yield self.body
-
-            else:
-                self.body = None
-                yield self.body
-
-        else:
-            for b in gb:
-                self.body = b
-                yield self.body
-
-    @gbody.setter
-    def gbody(self, v):
-        if isinstance(v, types.GeneratorType):
-            self._gbody = v
-        else:
-            self._gbody = (b for b in [v])
-
-    @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
         b = None
         if hasattr(self, '_body'):
             b = self._body
-
-        else:
-            gb = getattr(self, '_gbody', None)
-            if gb:
-                for b in gb: self._body = b
 
         return self.normalize_body(b)
 
@@ -629,8 +688,7 @@ class Response(Http):
         if custom_response_headers:
             cors_headers.update(custom_response_headers)
 
-        self.set_headers(cors_headers)
-        #self.headers.update(cors_headers)
+        self.add_headers(cors_headers)
 
     def is_success(self):
         """return True if this response is considered a "successful" response"""

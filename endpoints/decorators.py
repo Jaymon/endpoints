@@ -19,7 +19,7 @@ class httpcache(FuncDecorator):
     """
     def decorate(self, func, ttl):
         def decorated(self, *args, **kwargs):
-            self.response.set_headers({
+            self.response.add_headers({
                 "Cache-Control": "max-age={}".format(ttl),
             })
             return func(self, *args, **kwargs)
@@ -35,7 +35,7 @@ class nohttpcache(FuncDecorator):
     """
     def decorate(self, func):
         def decorated(self, *args, **kwargs):
-            self.response.set_headers({
+            self.response.add_headers({
                 "Cache-Control": "no-cache, no-store, must-revalidate",
                 "Pragma": "no-cache", 
                 "Expires": "0"
