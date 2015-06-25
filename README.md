@@ -2,20 +2,28 @@
 
 Quickest api builder in the west! Lovingly crafted for [First Opinion](http://firstopinionapp.com/).
 
-## 1 Minute getting started
+## 5 Minutes getting started
 
-First, install endpoints:
+First, install endpoints with the below command.
 
-    $ pip install endpoints
+ 	$ pip install endpoints
 
-Then create a controller file:
+*Note:* if you get the following error
+
+    $ pip: command not found
+    
+you will need to install pip using the command
+
+	$ sudo easy_install pip
+ 
+ 
+### Set Up Your Controller File
+
+Create a *controller* file with the following command
 
     $ touch mycontroller.py
 
-And add some controller classes:
-
-```python
-# mycontroller.py
+Add the following code to your new Controller file. These classes are examples of *endpoints*. 
 
 from endpoints import Controller
 
