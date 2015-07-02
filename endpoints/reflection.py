@@ -14,6 +14,7 @@ from .decorators import _property
 
 
 class ReflectMethod(object):
+    """This encompasses the http verbs like POST and GET"""
 
     @_property
     def version(self):
@@ -69,6 +70,8 @@ class ReflectMethod(object):
 
 
 class ReflectEndpoint(object):
+    """This will encompass an entire Controller and have information on all the verbs
+    (eg, GET and POST)"""
 
     method_class = ReflectMethod
 
@@ -270,16 +273,19 @@ class Reflect(object):
             if not issubclass(controller_class, Controller): continue
             if controller_class_name.startswith(u'_'): continue
 
-            endpoint = self.endpoint_class(
-                self.controller_prefix,
-                controller_module,
-                controller_class,
+            endpoint = self.create_endpoint(
+                controller_prefix=self.controller_prefix,
+                controller_module=controller_module,
+                controller_class=controller_class,
                 content_type=self.content_type
             )
 
             # filter out base classes like endpoints.Controller
             if endpoint.methods:
                 yield endpoint
+
+    def create_endpoint(self, *args, **kwargs):
+        return self.endpoint_class(*args, **kwargs)
 
     def get_endpoints(self):
         """

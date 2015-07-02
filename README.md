@@ -275,7 +275,7 @@ Use PIP
 
 If you want the latest and greatest, you can also install from source:
 
-    pip install git+https://github.com/firstopinion/endpoints#egg=endpoints
+    pip install "git+https://github.com/firstopinion/endpoints#egg=endpoints"
 
 
 ### To run tests

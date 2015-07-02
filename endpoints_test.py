@@ -1116,6 +1116,28 @@ class ReflectTest(TestCase):
         for endpoint in rs:
             self.assertTrue("\n" in endpoint.desc)
 
+    def test_method_docblock(self):
+        tmpdir = testdata.create_dir("reflectdoc")
+        testdata.create_modules(
+            {
+                "mdoc.mblock": os.linesep.join([
+                    "import endpoints",
+                    "class Foo(endpoints.Controller):",
+                    "    '''controller docblock'''",
+                    "    def GET(*args, **kwargs):",
+                    "        '''method docblock'''",
+                    "        pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        rs = endpoints.Reflect("mdoc", 'application/json')
+        for endpoint in rs:
+            desc = endpoint.methods['GET'][0].desc
+            self.assertEqual("method docblock", desc)
+ 
     def test_get_versioned_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("versionreflecttest")
@@ -1217,6 +1239,28 @@ class ReflectTest(TestCase):
         self.assertEqual(1, len(l))
         self.assertEqual(u'/foo', r.uri)
         self.assertSetEqual(set(['GET', 'POST']), set(r.methods.keys()))
+
+    def test_decorators_param_help(self):
+        testdata.create_modules({
+            "dec_param_help.foo": os.linesep.join([
+                "import endpoints",
+                "from endpoints.decorators import param, require_params",
+                "class Default(endpoints.Controller):",
+                "    @param('baz_full', type=list, default=['val', False, 1], help='baz_full')",
+                "    @param('d', help='d')",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ])
+        })
+
+        rs = endpoints.Reflect("dec_param_help")
+        l = list(rs.get_endpoints())
+        r = l[0]
+
+        methods = r.methods
+        params = methods['POST'][0].params
+        for k, v in params.items():
+            self.assertEqual(k, v['options']['help'])
 
     def test_get_endpoints(self):
         # putting the C back in CRUD
