@@ -51,7 +51,7 @@ class ReflectMethod(object):
                     return
 
                 doc = ast.get_docstring(node)
-                raise StopIteration(doc)
+                raise StopIteration(doc if doc else u"")
 
             target = self.endpoint.controller_class
             try:
@@ -65,7 +65,7 @@ class ReflectMethod(object):
         else:
             doc = inspect.getdoc(self.controller_method)
 
-        if not doc: doc = u''
+        if not doc: doc = u""
         return doc
 
     @_property
