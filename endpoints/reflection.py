@@ -43,7 +43,28 @@ class ReflectMethod(object):
     @_property
     def desc(self):
         """return the description of this endpoint"""
-        doc = inspect.getdoc(self.controller_method)
+        doc = None
+        if self.endpoint:
+            def visit_FunctionDef(node):
+                """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
+                if node.name != self.name:
+                    return
+
+                doc = ast.get_docstring(node)
+                raise StopIteration(doc)
+
+            target = self.endpoint.controller_class
+            try:
+                node_iter = ast.NodeVisitor()
+                node_iter.visit_FunctionDef = visit_FunctionDef
+                node_iter.visit(ast.parse(inspect.getsource(target)))
+
+            except StopIteration as e:
+                doc = str(e)
+
+        else:
+            doc = inspect.getdoc(self.controller_method)
+
         if not doc: doc = u''
         return doc
 

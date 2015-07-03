@@ -1138,6 +1138,39 @@ class ReflectTest(TestCase):
             desc = endpoint.methods['GET'][0].desc
             self.assertEqual("method docblock", desc)
  
+    def test_method_docblock_bad_decorator(self):
+        tmpdir = testdata.create_dir("reflectdoc2")
+        testdata.create_modules(
+            {
+                "mdoc2.mblock": os.linesep.join([
+                    "import endpoints",
+                    "",
+                    "def bad_dec(func):",
+                    "    def wrapper(*args, **kwargs):",
+                    "        return func(*args, **kwargs)",
+                    "    return wrapper",
+                    "",
+                    "class Foo(endpoints.Controller):",
+                    "    '''controller docblock'''",
+                    "    @bad_dec",
+                    "    def GET(*args, **kwargs):",
+                    "        '''method docblock'''",
+                    "        pass",
+                    "",
+                    "    def POST(*args, **kwargs):",
+                    "        '''should not return this docblock'''",
+                    "        pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        rs = endpoints.Reflect("mdoc2", 'application/json')
+        for endpoint in rs:
+            desc = endpoint.methods['GET'][0].desc
+            self.assertEqual("method docblock", desc)
+ 
     def test_get_versioned_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("versionreflecttest")
