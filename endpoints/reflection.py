@@ -47,7 +47,7 @@ class ReflectMethod(object):
         if self.endpoint:
             def visit_FunctionDef(node):
                 """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
-                if node.name != self.name:
+                if node.name != self.controller_method_name:
                     return
 
                 doc = ast.get_docstring(node)
