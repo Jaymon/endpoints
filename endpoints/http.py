@@ -17,7 +17,15 @@ class Headers(dict):
     so this handles normalizing the header names so you can request Content-Type
     or CONTENT_TYPE and get the same value"""
 
-    def genkeys(self, k):
+    @classmethod
+    def normalize_name(cls, k):
+        """converts things like FOO_BAR to Foo-Bar which is the normal form"""
+        klower = k.lower().replace('_', '-')
+        bits = klower.split('_')
+        return "-".join((bit.title() for bit in bits))
+
+    @classmethod
+    def derive_names(cls, k):
         """here is where all the magic happens, this will generate all the different
         variations of the header name looking for one that is set"""
         yield k
@@ -41,7 +49,7 @@ class Headers(dict):
     def __getitem__(self, k):
 
         v = None
-        for nk in self.genkeys(k):
+        for nk in self.derive_names(k):
             try:
                 v = super(Headers, self).__getitem__(nk)
             except KeyError as e:
@@ -61,7 +69,7 @@ class Headers(dict):
 
     def __contains__(self, k):
         ret = False
-        for nk in self.genkeys(k):
+        for nk in self.derive_names(k):
             ret = super(Headers, self).__contains__(nk)
             if ret: break
 
@@ -78,6 +86,27 @@ class Headers(dict):
     def update(self, d):
         for k, v in d.items():
             self[k] = v
+
+    def items(self):
+        items = []
+        for k, v in super(Headers, self).items():
+            items.append((Headers.normalize_name(k), v))
+        return items
+
+    def keys(self):
+        return map(Headers.normalize_name, super(Headers, self).keys())
+
+    def iteritems(self):
+        for k, v in self.items():
+            yield k, v
+
+    def iterkeys(self):
+        for k in self.keys():
+            yield k
+
+    def __iter__(self):
+        for k in super(Headers, self).__iter__():
+            yield Headers.normalize_name(k)
 
 
 class Body(object):

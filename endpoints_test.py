@@ -2003,6 +2003,23 @@ class HeadersTest(TestCase):
         for k in keys:
             self.assertTrue(k in headers)
 
+    def test_iteration(self):
+        hs = Headers()
+        hs['CONTENT_TYPE'] = "application/json"
+        hs['CONTENT-LENGTH'] = "1234"
+        hs['FOO-bAR'] = "che"
+        for k in hs.keys():
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertTrue(k in hs)
+
+        for k, v in hs.items():
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertEqual(hs[k], v)
+
+        for k in hs:
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertTrue(k in hs)
+
 
 ###############################################################################
 # WSGI support
@@ -2306,6 +2323,20 @@ class WSGITest(TestCase):
 
         r = c.get('/foo/bar/baz?che=1&boo=2')
         self.assertEqual(404, r.code)
+
+    def test_response_headers(self):
+        controller_prefix = 'resp_headers.resp'
+        c = SimpleClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        self.response.set_header('FOO_BAR', 'check')",
+            "",
+        ])
+
+        r = c.get('/')
+        self.assertEqual(204, r.code)
+        self.assertTrue("foo-bar" in r.headers)
 
 
 ###############################################################################
