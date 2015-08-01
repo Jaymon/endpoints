@@ -1972,6 +1972,18 @@ class DecoratorsTest(TestCase):
 
 
 class HeadersTest(TestCase):
+    def test_pop(self):
+        d = Headers()
+        d['FOO'] = 1
+        r = d.pop('foo')
+        self.assertEqual(1, 1)
+
+        with self.assertRaises(KeyError):
+            d.pop('foo')
+
+        with self.assertRaises(KeyError):
+            d.pop('FOO')
+
     def test_normalization(self):
 
         keys = [

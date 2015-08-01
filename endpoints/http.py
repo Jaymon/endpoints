@@ -47,33 +47,15 @@ class Headers(dict):
         yield "{}_{}".format(bits[0].title(), "_".join(bits[1:]))
 
     def __getitem__(self, k):
-
-        v = None
-        for nk in self.derive_names(k):
-            try:
-                v = super(Headers, self).__getitem__(nk)
-            except KeyError as e:
-                pass
-            else:
-                break
-
-        # raise a key error if we couldn't find the header
-        if v is None:
-            v = super(Headers, self).__getitem__(k)
-
-        return v
+        nk = self.realkey(k)
+        return super(Headers, self).__getitem__(nk)
 
     def __setitem__(self, k, v):
         knorm = k.upper().replace('-', '_')
         super(Headers, self).__setitem__(knorm, v)
 
     def __contains__(self, k):
-        ret = False
-        for nk in self.derive_names(k):
-            ret = super(Headers, self).__contains__(nk)
-            if ret: break
-
-        return ret
+        return super(Headers, self).__contains__(self.realkey(k))
 
     def get(self, k, dv=None):
         try:
@@ -94,7 +76,7 @@ class Headers(dict):
         return items
 
     def keys(self):
-        return map(Headers.normalize_name, super(Headers, self).keys())
+        return [k for k in self]
 
     def iteritems(self):
         for k, v in self.items():
@@ -107,6 +89,35 @@ class Headers(dict):
     def __iter__(self):
         for k in super(Headers, self).__iter__():
             yield Headers.normalize_name(k)
+
+    def pop(self, k, *args, **kwargs):
+        rk = self.realkey(k)
+        super(Headers, self).pop(rk, *args, **kwargs)
+
+    def realkey(self, k):
+        """this will return the real key that is actually in the dict, it allows you
+        to see the raw key value, if the realkey isn't in the dict, it will just return
+        the key that was passed in
+
+        example --
+            d = self()
+            d['FOO'] = 1
+            print(d.realkey('foo')) # FOO
+        """
+        rk = k
+        for nk in self.derive_names(k):
+            if super(Headers, self).__contains__(nk):
+                rk = nk
+                break
+
+        return rk
+
+    def viewitems(self):
+        raise NotImplemented()
+    def viewvalues(self):
+        raise NotImplemented()
+    def viewkeys(self):
+        raise NotImplemented()
 
 
 class Body(object):
