@@ -155,7 +155,7 @@ class Body(object):
 
 
 class Url(object):
-    """a url object on steriods, this is here to make it easy to manipulate urls"""
+    """a url object on steroids, this is here to make it easy to manipulate urls"""
 
     @property
     def base(self):
@@ -167,6 +167,18 @@ class Url(object):
             "",
             ""
         )))
+
+    @property
+    def hostname(self):
+        return self._hostname
+
+    @hostname.setter
+    def hostname(self, v):
+        self._hostname = v
+        if v:
+            # lets get rid of any port since we are setting the hostname directly
+            bits = v.split(":", 2)
+            self._hostname = bits[0]
 
     @property
     def hostloc(self):
@@ -255,7 +267,6 @@ class Url(object):
             "hostname": None,
             "port": None,
         }
-
 
         o = None
         if urlstring:

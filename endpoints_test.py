@@ -278,6 +278,15 @@ class UrlTest(TestCase):
         u2 = u.modify("/foo/bar", query1="val2")
         self.assertEqual("http://example.com/foo/bar?query1=val2", u2.geturl())
 
+    def test_port(self):
+        scheme = "http"
+        host = "localhost:9000"
+        path = "/path/part"
+        query = "query1=val1"
+        port = "9000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+
 
 class RequestTest(TestCase):
     def test_url(self):
