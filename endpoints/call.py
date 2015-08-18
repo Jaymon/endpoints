@@ -330,9 +330,9 @@ class Call(object):
             ret = e
 
         elif isinstance(e, TypeError):
-
             e_msg = unicode(e)
             if e_msg.startswith(self.request.method) and 'argument' in e_msg:
+                logger.debug(e_msg, exc_info=True)
                 self.response.code = 404
 
             else:
