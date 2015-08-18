@@ -155,7 +155,23 @@ class Body(object):
 
 
 class Url(object):
-    """a url object on steroids, this is here to make it easy to manipulate urls"""
+    """ a url object on steroids, this is here to make it easy to manipulate urls
+
+    we try to map the supported fields to their urlparse equivalents, with some additions
+
+    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+
+    .scheme = http
+    .netloc (readonly) = user:pass@foo.com:1000
+    .hostloc = foo.com:1000
+    .hostname = foo.com
+    .host (readonly) = foo.com (convenience method because I like host more than hostname)
+    .port = 1000
+    .base (readonly) = http://user:pass@foo.com:1000/bar/che
+    .fragment = anchor
+    .anchor (readonly) = anchor
+    .uri (readonly) = /bar/che?baz=boom#anchor
+    """
 
     @property
     def base(self):
@@ -168,17 +184,23 @@ class Url(object):
             ""
         )))
 
-    @property
-    def hostname(self):
-        return self._hostname
+    @_property(setter=True)
+    def port(self, port):
+        if port is not None:
+            port = int(port)
+            if port in [80, 443]:
+                port = None
 
-    @hostname.setter
+        self._port = port
+
+    @_property(setter=True)
     def hostname(self, v):
         self._hostname = v
         if v:
-            # lets get rid of any port since we are setting the hostname directly
-            bits = v.split(":", 2)
-            self._hostname = bits[0]
+            hostname, port = self.split_host_and_port(v)
+            self._hostname = hostname
+            if port:
+                self.port = port
 
     @property
     def hostloc(self):
@@ -216,11 +238,32 @@ class Url(object):
 
     def __init__(self, urlstring=None, **kwargs):
         self._update_url(urlstring)
+
+        # we handle port before any other because the port of host:port in hostname takes precedence
+        # the port on the host would take precedence because proxies mean that the
+        # host can be something:10000 and the port could be 9000 because 10000 is
+        # being proxied to 9000 on the machine, but we want to automatically account
+        # for things like that and then if custom behavior is needed then this method
+        # can be overridden
+        if "port" in kwargs:
+            setattr(self, "port", kwargs.pop("port"))
+
         for k, v in kwargs.items():
             setattr(self, k, v)
 
         if not self.netloc:
             self.netloc = self.hostloc
+
+    @classmethod
+    def split_host_and_port(cls, host):
+        """given a host:port return a tuple (host, port)"""
+        bits = host.split(":", 2)
+        p = None
+        h = bits[0]
+        if len(bits) == 2:
+            p = int(bits[1])
+
+        return h, p
 
     def modify(self, *paths, **query_kwargs):
         """return a new Url instance with paths and query_kwargs changed, basically
@@ -473,8 +516,6 @@ class Request(Http):
         path = self.path
         query = self.query
         port = self.port
-        if port in [80, 443]:
-            port = None
 
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
         return u

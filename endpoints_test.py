@@ -287,6 +287,25 @@ class UrlTest(TestCase):
         u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
         self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
 
+        port = "1000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+
+        host = "localhost"
+        port = "2000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:2000/path/part?query1=val1", u.geturl())
+
+        host = "localhost"
+        port = "80"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost/path/part?query1=val1", u.geturl())
+
+        scheme = "https"
+        host = "localhost:443"
+        port = None
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("https://localhost/path/part?query1=val1", u.geturl())
 
 class RequestTest(TestCase):
     def test_url(self):
@@ -305,6 +324,12 @@ class RequestTest(TestCase):
         r.port = 555
         u = r.url
         self.assertEqual("http://localhost:555/baz/che?foo=bar", r.url.geturl())
+
+        # handle proxied connections
+        r.host = "localhost:10000"
+        r.port = "9000"
+        u = r.url
+        self.assertTrue(":10000" in u.geturl())
 
         # TODO -- simple server configuration
 
@@ -1400,6 +1425,38 @@ class DecoratorsTest(TestCase):
         r.body_kwargs = {"foo": "bar"}
         c.foo()
 
+    def test__property_init(self):
+        counts = dict(fget=0, fset=0, fdel=0)
+        def fget(self):
+            counts["fget"] += 1
+            return self._v
+
+        def fset(self, v):
+            counts["fset"] += 1
+            self._v = v
+
+        def fdel(self):
+            counts["fdel"] += 1
+            del self._v
+
+        class FooPropInit(object):
+            v = endpoints.decorators._property(fget, fset, fdel, "this is v")
+        f = FooPropInit()
+        f.v = 6
+        self.assertEqual(6, f.v)
+        self.assertEqual(2, sum(counts.values()))
+        del f.v
+        self.assertEqual(3, sum(counts.values()))
+
+        counts = dict(fget=0, fset=0, fdel=0)
+        class FooPropInit2(object):
+            v = endpoints.decorators._property(fget=fget, fset=fset, fdel=fdel, doc="this is v")
+        f = FooPropInit2()
+        f.v = 6
+        self.assertEqual(6, f.v)
+        self.assertEqual(2, sum(counts.values()))
+        del f.v
+        self.assertEqual(3, sum(counts.values()))
 
     def test__property_allow_empty(self):
         class PAE(object):
