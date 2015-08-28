@@ -8,10 +8,10 @@ class WSGI(BaseInterface):
         """
         create instance of request
 
-        raw_request -- mongrel2.request.Request() -- the request object retrieved from mongrel2
+        raw_request -- the raw request object retrieved from a WSGI server
         """
         r = self.request_class()
-        for k, v in raw_request.iteritems():
+        for k, v in raw_request.items():
             if k.startswith('HTTP_'):
                 r.set_header(k[5:], v)
             else:
@@ -50,7 +50,8 @@ class Server(BaseServer):
             '{} {}'.format(res.code, res.status),
             [(k, str(v)) for k, v in res.headers.items()]
         )
-        return [res.body]
+        #return (b for b in res)
+        return res
 
     def create_server(self, **kwargs):
         return None

@@ -6,6 +6,7 @@ import cgi
 import re
 import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
+from functools import partial
 
 from .decorators import _property
 from .utils import AcceptHeader
@@ -724,10 +725,10 @@ class Response(Http):
             r = getattr(self, '_body', None)
             if r is not None: ret = True
 
-        else:
-            ret = hasattr(self, '_gbody')
-
         return ret
+
+    def has_streaming_body(self):
+        return hasattr(self._body, "read") if self.has_body() else False
 
     def normalize_body(self, b):
         """return the body as a string, formatted to the appropriate content type"""
@@ -762,6 +763,21 @@ class Response(Http):
             b = str(b)
 
         return b
+
+    def __iter__(self):
+        if self.has_streaming_body():
+            fp = self._body
+            if fp.closed:
+                raise IOError("cannot read streaming body because pointer is closed")
+
+            for chunk in iter(partial(fp.read, 8192), ''):
+                yield chunk
+
+            # close the pointer since we've consumed it
+            fp.close()
+
+        else:
+            yield self.body
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 

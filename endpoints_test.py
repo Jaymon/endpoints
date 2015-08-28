@@ -2111,9 +2111,9 @@ class WSGIClient(object):
         self.controller_prefix = controller_prefix
         self.module_body = os.linesep.join(module_body)
         self.host = "localhost:8080"
-        testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
+        self.module_path = testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
 
-        f = testdata.create_file(
+        self.application_path = testdata.create_file(
             self.application,
             os.linesep.join([
                 "import os",
@@ -2182,6 +2182,10 @@ class WSGIClient(object):
             def stopped(self):
                 return self._stop.isSet()
 
+            def flush(self, line):
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
             def run(self):
                 process = None
                 try:
@@ -2195,13 +2199,23 @@ class WSGIClient(object):
                     )
 
                     # Poll process for new output until finished
-                    while not self.stopped():
-                        line = process.stdout.readline()
-                        if line == '' and process.poll() != None:
+                    for line in iter(process.stdout.readline, ""):
+                        self.flush(line)
+                        if self.stopped():
                             break
 
-                        sys.stdout.write(line)
-                        sys.stdout.flush()
+                    # flush any remaining output
+                    line = process.stdout.read()
+                    self.flush(line)
+
+                    # Poll process for new output until finished
+#                     while not self.stopped():
+#                         line = process.stdout.readline()
+#                         if line == '' and process.poll() != None:
+#                             break
+# 
+#                         sys.stdout.write(line)
+#                         sys.stdout.flush()
 
                 except Exception as e:
                     print e
@@ -2415,6 +2429,25 @@ class WSGITest(TestCase):
         r = c.get('/')
         self.assertEqual(204, r.code)
         self.assertTrue("foo-bar" in r.headers)
+
+    def test_file_stream(self):
+        content = "this is a text file to stream"
+        filepath = testdata.create_file("filename.txt", content)
+        controller_prefix = 'wsgi.post_file'
+        c = self.create_client(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        f = open('{}')".format(filepath),
+            "        self.response.set_header('content-type', 'text/plain')",
+            "        return f",
+            "",
+        ])
+
+        r = c.get('/')
+        self.assertEqual(200, r.code)
+        self.assertEqual(content, r.body)
+        #self.assertTrue(r.body)
 
 
 ###############################################################################
