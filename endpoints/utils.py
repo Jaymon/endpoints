@@ -1,34 +1,31 @@
 import re
+import mimetypes
 
 
-class MimeTypes(object):
-    """This is just a nice simple wrapper around the built in Ubuntu mime.types file"""
+class MimeType(object):
+    """This is just a thin wrapper around Python's built-in MIME Type stuff
 
-    def __init__(self, mimefile="/etc/mime.types"):
-        exts = {}
-        with open(mimefile, "r") as lines:
-            for line in lines:
-                line = line.strip()
-                if line:
-                    bits = re.split("\s+", line)
-                    mt = bits[0]
-                    for ext in bits[1:]:
-                        exts[ext] = mt
+    https://docs.python.org/2/library/mimetypes.html
+    """
 
-        self.exts = exts
-
-    def find(self, val):
+    @classmethod
+    def find_type(cls, val):
         """return the mimetype from the given string value
 
-        if value is a path, then the ext will be found, if val is an extension then
+        if value is a path, then the extension will be found, if val is an extension then
         that will be used to find the mimetype
         """
-        bits = val.rsplit(".", 1)
-        ext = bits[0]
-        if len(bits) > 1:
-            ext = bits[1]
+        mt = ""
+        index = val.rfind(".")
+        if index == -1:
+            val = "fake.{}".format(val)
+        elif index == 0:
+            val = "fake{}".format(val)
 
-        mt = self.exts.get(ext.lower(), "")
+        mt = mimetypes.guess_type(val)[0]
+        if mt is None:
+            mt = ""
+
         return mt
 
 

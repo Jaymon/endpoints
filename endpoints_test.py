@@ -15,7 +15,7 @@ import testdata
 import endpoints
 import endpoints.call
 from endpoints.http import Headers
-from endpoints.utils import MimeTypes
+from endpoints.utils import MimeType
 
 try:
     import requests
@@ -2038,19 +2038,23 @@ class DecoratorsTest(TestCase):
         self.assertEqual(100, r)
 
 
-@skipIf(not os.path.isfile("/etc/mime.types"), "Skipping MimeTypes because no mime.types file")
-class MimeTypesTest(TestCase):
+class MimeTypeTest(TestCase):
     def test_default_file(self):
-        mts = MimeTypes()
         test_mt = "image/jpeg"
 
-        mt = mts.find("some/path/file.jpg")
+        mt = MimeType.find_type("some/path/file.jpg")
         self.assertEqual(test_mt, mt)
 
-        mt = mts.find("jpg")
+        mt = MimeType.find_type("jpg")
         self.assertEqual(test_mt, mt)
 
-        mt = mts.find("JPG")
+        mt = MimeType.find_type("JPG")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type(".JPG")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type(".jpg")
         self.assertEqual(test_mt, mt)
 
 
