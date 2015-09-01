@@ -1,3 +1,36 @@
+import re
+
+
+class MimeTypes(object):
+    """This is just a nice simple wrapper around the built in Ubuntu mime.types file"""
+
+    def __init__(self, mimefile="/etc/mime.types"):
+        exts = {}
+        with open(mimefile, "r") as lines:
+            for line in lines:
+                line = line.strip()
+                if line:
+                    bits = re.split("\s+", line)
+                    mt = bits[0]
+                    for ext in bits[1:]:
+                        exts[ext] = mt
+
+        self.exts = exts
+
+    def find(self, val):
+        """return the mimetype from the given string value
+
+        if value is a path, then the ext will be found, if val is an extension then
+        that will be used to find the mimetype
+        """
+        bits = val.rsplit(".", 1)
+        ext = bits[0]
+        if len(bits) > 1:
+            ext = bits[1]
+
+        mt = self.exts.get(ext.lower(), "")
+        return mt
+
 
 class AcceptHeader(object):
     """

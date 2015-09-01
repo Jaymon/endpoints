@@ -12,8 +12,6 @@ from .decorators import _property
 from .utils import AcceptHeader
 
 
-class MimeType(object):
-
 class Headers(dict):
     """Handles normalizing of header names, the problem with headers is they can
     be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
@@ -56,6 +54,10 @@ class Headers(dict):
     def __setitem__(self, k, v):
         knorm = k.upper().replace('-', '_')
         super(Headers, self).__setitem__(knorm, v)
+
+    def __delitem__(self, k):
+        nk = self.realkey(k)
+        return super(Headers, self).__delitem__(nk)
 
     def __contains__(self, k):
         return super(Headers, self).__contains__(self.realkey(k))
