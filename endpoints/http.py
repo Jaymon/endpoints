@@ -12,6 +12,8 @@ from .decorators import _property
 from .utils import AcceptHeader
 
 
+class MimeType(object):
+
 class Headers(dict):
     """Handles normalizing of header names, the problem with headers is they can
     be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
@@ -114,11 +116,11 @@ class Headers(dict):
         return rk
 
     def viewitems(self):
-        raise NotImplemented()
+        raise NotImplementedError()
     def viewvalues(self):
-        raise NotImplemented()
+        raise NotImplementedError()
     def viewkeys(self):
-        raise NotImplemented()
+        raise NotImplementedError()
 
 
 class Body(object):
@@ -728,6 +730,8 @@ class Response(Http):
         return ret
 
     def has_streaming_body(self):
+        """return True if the response body is a file pointer"""
+        # http://stackoverflow.com/questions/1661262/check-if-object-is-file-like-in-python
         return hasattr(self._body, "read") if self.has_body() else False
 
     def normalize_body(self, b):
@@ -770,6 +774,7 @@ class Response(Http):
             if fp.closed:
                 raise IOError("cannot read streaming body because pointer is closed")
 
+            # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
             for chunk in iter(partial(fp.read, 8192), ''):
                 yield chunk
 
