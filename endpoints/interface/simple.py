@@ -41,16 +41,7 @@ class Simple(BaseInterface):
         }
 
         if r.is_method('POST'):
-            #r.body_input = InputWrapper(raw_request.rfile, r.get_header('content-length', 0))
             r.body_input = raw_request.rfile
-#             r.body_kwargs = self.normalize_body_kwargs(
-#                 r.get_header("content-type"),
-#                 raw_request.rfile,
-#                 raw_request
-#             )
-
-            #content_length = int(r.get_header('content-length', 0))
-            #r.body = raw_request.rfile.read(content_length)
 
         return r
 
@@ -82,8 +73,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
             # send body if one was generated
             if res.has_body():
-                self.wfile.write(res.body)
-                self.wfile.flush()
+                for b in res:
+                    self.wfile.write(b)
+                    self.wfile.flush()
                 self.wfile.close()
                 self.request.close()
 

@@ -15,6 +15,7 @@ import testdata
 import endpoints
 import endpoints.call
 from endpoints.http import Headers
+from endpoints.utils import MimeType
 
 try:
     import requests
@@ -278,6 +279,34 @@ class UrlTest(TestCase):
         u2 = u.modify("/foo/bar", query1="val2")
         self.assertEqual("http://example.com/foo/bar?query1=val2", u2.geturl())
 
+    def test_port(self):
+        scheme = "http"
+        host = "localhost:9000"
+        path = "/path/part"
+        query = "query1=val1"
+        port = "9000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+
+        port = "1000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+
+        host = "localhost"
+        port = "2000"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost:2000/path/part?query1=val1", u.geturl())
+
+        host = "localhost"
+        port = "80"
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("http://localhost/path/part?query1=val1", u.geturl())
+
+        scheme = "https"
+        host = "localhost:443"
+        port = None
+        u = endpoints.Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
+        self.assertEqual("https://localhost/path/part?query1=val1", u.geturl())
 
 class RequestTest(TestCase):
     def test_url(self):
@@ -296,6 +325,12 @@ class RequestTest(TestCase):
         r.port = 555
         u = r.url
         self.assertEqual("http://localhost:555/baz/che?foo=bar", r.url.geturl())
+
+        # handle proxied connections
+        r.host = "localhost:10000"
+        r.port = "9000"
+        u = r.url
+        self.assertTrue(":10000" in u.geturl())
 
         # TODO -- simple server configuration
 
@@ -1116,6 +1151,61 @@ class ReflectTest(TestCase):
         for endpoint in rs:
             self.assertTrue("\n" in endpoint.desc)
 
+    def test_method_docblock(self):
+        tmpdir = testdata.create_dir("reflectdoc")
+        testdata.create_modules(
+            {
+                "mdoc.mblock": os.linesep.join([
+                    "import endpoints",
+                    "class Foo(endpoints.Controller):",
+                    "    '''controller docblock'''",
+                    "    def GET(*args, **kwargs):",
+                    "        '''method docblock'''",
+                    "        pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        rs = endpoints.Reflect("mdoc", 'application/json')
+        for endpoint in rs:
+            desc = endpoint.methods['GET'][0].desc
+            self.assertEqual("method docblock", desc)
+ 
+    def test_method_docblock_bad_decorator(self):
+        tmpdir = testdata.create_dir("reflectdoc2")
+        testdata.create_modules(
+            {
+                "mdoc2.mblock": os.linesep.join([
+                    "import endpoints",
+                    "",
+                    "def bad_dec(func):",
+                    "    def wrapper(*args, **kwargs):",
+                    "        return func(*args, **kwargs)",
+                    "    return wrapper",
+                    "",
+                    "class Foo(endpoints.Controller):",
+                    "    '''controller docblock'''",
+                    "    @bad_dec",
+                    "    def GET(*args, **kwargs):",
+                    "        '''method docblock'''",
+                    "        pass",
+                    "",
+                    "    def POST(*args, **kwargs):",
+                    "        '''should not return this docblock'''",
+                    "        pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        rs = endpoints.Reflect("mdoc2", 'application/json')
+        for endpoint in rs:
+            desc = endpoint.methods['GET'][0].desc
+            self.assertEqual("method docblock", desc)
+ 
     def test_get_versioned_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("versionreflecttest")
@@ -1218,6 +1308,28 @@ class ReflectTest(TestCase):
         self.assertEqual(u'/foo', r.uri)
         self.assertSetEqual(set(['GET', 'POST']), set(r.methods.keys()))
 
+    def test_decorators_param_help(self):
+        testdata.create_modules({
+            "dec_param_help.foo": os.linesep.join([
+                "import endpoints",
+                "from endpoints.decorators import param, require_params",
+                "class Default(endpoints.Controller):",
+                "    @param('baz_full', type=list, default=['val', False, 1], help='baz_full')",
+                "    @param('d', help='d')",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ])
+        })
+
+        rs = endpoints.Reflect("dec_param_help")
+        l = list(rs.get_endpoints())
+        r = l[0]
+
+        methods = r.methods
+        params = methods['POST'][0].params
+        for k, v in params.items():
+            self.assertEqual(k, v['options']['help'])
+
     def test_get_endpoints(self):
         # putting the C back in CRUD
         tmpdir = testdata.create_dir("reflecttest")
@@ -1314,6 +1426,38 @@ class DecoratorsTest(TestCase):
         r.body_kwargs = {"foo": "bar"}
         c.foo()
 
+    def test__property_init(self):
+        counts = dict(fget=0, fset=0, fdel=0)
+        def fget(self):
+            counts["fget"] += 1
+            return self._v
+
+        def fset(self, v):
+            counts["fset"] += 1
+            self._v = v
+
+        def fdel(self):
+            counts["fdel"] += 1
+            del self._v
+
+        class FooPropInit(object):
+            v = endpoints.decorators._property(fget, fset, fdel, "this is v")
+        f = FooPropInit()
+        f.v = 6
+        self.assertEqual(6, f.v)
+        self.assertEqual(2, sum(counts.values()))
+        del f.v
+        self.assertEqual(3, sum(counts.values()))
+
+        counts = dict(fget=0, fset=0, fdel=0)
+        class FooPropInit2(object):
+            v = endpoints.decorators._property(fget=fget, fset=fset, fdel=fdel, doc="this is v")
+        f = FooPropInit2()
+        f.v = 6
+        self.assertEqual(6, f.v)
+        self.assertEqual(2, sum(counts.values()))
+        del f.v
+        self.assertEqual(3, sum(counts.values()))
 
     def test__property_allow_empty(self):
         class PAE(object):
@@ -1894,7 +2038,39 @@ class DecoratorsTest(TestCase):
         self.assertEqual(100, r)
 
 
+class MimeTypeTest(TestCase):
+    def test_default_file(self):
+        test_mt = "image/jpeg"
+
+        mt = MimeType.find_type("some/path/file.jpg")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type("jpg")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type("JPG")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type(".JPG")
+        self.assertEqual(test_mt, mt)
+
+        mt = MimeType.find_type(".jpg")
+        self.assertEqual(test_mt, mt)
+
+
 class HeadersTest(TestCase):
+    def test_pop(self):
+        d = Headers()
+        d['FOO'] = 1
+        r = d.pop('foo')
+        self.assertEqual(1, 1)
+
+        with self.assertRaises(KeyError):
+            d.pop('foo')
+
+        with self.assertRaises(KeyError):
+            d.pop('FOO')
+
     def test_normalization(self):
 
         keys = [
@@ -1926,6 +2102,23 @@ class HeadersTest(TestCase):
         for k in keys:
             self.assertTrue(k in headers)
 
+    def test_iteration(self):
+        hs = Headers()
+        hs['CONTENT_TYPE'] = "application/json"
+        hs['CONTENT-LENGTH'] = "1234"
+        hs['FOO-bAR'] = "che"
+        for k in hs.keys():
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertTrue(k in hs)
+
+        for k, v in hs.items():
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertEqual(hs[k], v)
+
+        for k in hs:
+            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertTrue(k in hs)
+
 
 ###############################################################################
 # WSGI support
@@ -1939,9 +2132,9 @@ class WSGIClient(object):
         self.controller_prefix = controller_prefix
         self.module_body = os.linesep.join(module_body)
         self.host = "localhost:8080"
-        testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
+        self.module_path = testdata.create_module(self.controller_prefix, self.module_body, self.cwd)
 
-        f = testdata.create_file(
+        self.application_path = testdata.create_file(
             self.application,
             os.linesep.join([
                 "import os",
@@ -2010,6 +2203,10 @@ class WSGIClient(object):
             def stopped(self):
                 return self._stop.isSet()
 
+            def flush(self, line):
+                sys.stdout.write(line)
+                sys.stdout.flush()
+
             def run(self):
                 process = None
                 try:
@@ -2023,13 +2220,23 @@ class WSGIClient(object):
                     )
 
                     # Poll process for new output until finished
-                    while not self.stopped():
-                        line = process.stdout.readline()
-                        if line == '' and process.poll() != None:
+                    for line in iter(process.stdout.readline, ""):
+                        self.flush(line)
+                        if self.stopped():
                             break
 
-                        sys.stdout.write(line)
-                        sys.stdout.flush()
+                    # flush any remaining output
+                    line = process.stdout.read()
+                    self.flush(line)
+
+                    # Poll process for new output until finished
+#                     while not self.stopped():
+#                         line = process.stdout.readline()
+#                         if line == '' and process.poll() != None:
+#                             break
+# 
+#                         sys.stdout.write(line)
+#                         sys.stdout.flush()
 
                 except Exception as e:
                     print e
@@ -2229,6 +2436,39 @@ class WSGITest(TestCase):
 
         r = c.get('/foo/bar/baz?che=1&boo=2')
         self.assertEqual(404, r.code)
+
+    def test_response_headers(self):
+        controller_prefix = 'resp_headers.resp'
+        c = SimpleClient(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        self.response.set_header('FOO_BAR', 'check')",
+            "",
+        ])
+
+        r = c.get('/')
+        self.assertEqual(204, r.code)
+        self.assertTrue("foo-bar" in r.headers)
+
+    def test_file_stream(self):
+        content = "this is a text file to stream"
+        filepath = testdata.create_file("filename.txt", content)
+        controller_prefix = 'wsgi.post_file'
+        c = self.create_client(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        f = open('{}')".format(filepath),
+            "        self.response.set_header('content-type', 'text/plain')",
+            "        return f",
+            "",
+        ])
+
+        r = c.get('/')
+        self.assertEqual(200, r.code)
+        self.assertEqual(content, r.body)
+        #self.assertTrue(r.body)
 
 
 ###############################################################################

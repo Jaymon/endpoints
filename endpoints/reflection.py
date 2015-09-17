@@ -14,6 +14,7 @@ from .decorators import _property
 
 
 class ReflectMethod(object):
+    """This encompasses the http verbs like POST and GET"""
 
     @_property
     def version(self):
@@ -42,8 +43,29 @@ class ReflectMethod(object):
     @_property
     def desc(self):
         """return the description of this endpoint"""
-        doc = inspect.getdoc(self.controller_method)
-        if not doc: doc = u''
+        doc = None
+        if self.endpoint:
+            def visit_FunctionDef(node):
+                """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
+                if node.name != self.controller_method_name:
+                    return
+
+                doc = ast.get_docstring(node)
+                raise StopIteration(doc if doc else u"")
+
+            target = self.endpoint.controller_class
+            try:
+                node_iter = ast.NodeVisitor()
+                node_iter.visit_FunctionDef = visit_FunctionDef
+                node_iter.visit(ast.parse(inspect.getsource(target)))
+
+            except StopIteration as e:
+                doc = str(e)
+
+        else:
+            doc = inspect.getdoc(self.controller_method)
+
+        if not doc: doc = u""
         return doc
 
     @_property
@@ -69,6 +91,8 @@ class ReflectMethod(object):
 
 
 class ReflectEndpoint(object):
+    """This will encompass an entire Controller and have information on all the verbs
+    (eg, GET and POST)"""
 
     method_class = ReflectMethod
 
@@ -270,16 +294,19 @@ class Reflect(object):
             if not issubclass(controller_class, Controller): continue
             if controller_class_name.startswith(u'_'): continue
 
-            endpoint = self.endpoint_class(
-                self.controller_prefix,
-                controller_module,
-                controller_class,
+            endpoint = self.create_endpoint(
+                controller_prefix=self.controller_prefix,
+                controller_module=controller_module,
+                controller_class=controller_class,
                 content_type=self.content_type
             )
 
             # filter out base classes like endpoints.Controller
             if endpoint.methods:
                 yield endpoint
+
+    def create_endpoint(self, *args, **kwargs):
+        return self.endpoint_class(*args, **kwargs)
 
     def get_endpoints(self):
         """

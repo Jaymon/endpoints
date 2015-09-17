@@ -6,6 +6,7 @@ import cgi
 import re
 import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
+from functools import partial
 
 from .decorators import _property
 from .utils import AcceptHeader
@@ -17,7 +18,15 @@ class Headers(dict):
     so this handles normalizing the header names so you can request Content-Type
     or CONTENT_TYPE and get the same value"""
 
-    def genkeys(self, k):
+    @classmethod
+    def normalize_name(cls, k):
+        """converts things like FOO_BAR to Foo-Bar which is the normal form"""
+        klower = k.lower().replace('_', '-')
+        bits = klower.split('_')
+        return "-".join((bit.title() for bit in bits))
+
+    @classmethod
+    def derive_names(cls, k):
         """here is where all the magic happens, this will generate all the different
         variations of the header name looking for one that is set"""
         yield k
@@ -39,33 +48,19 @@ class Headers(dict):
         yield "{}_{}".format(bits[0].title(), "_".join(bits[1:]))
 
     def __getitem__(self, k):
-
-        v = None
-        for nk in self.genkeys(k):
-            try:
-                v = super(Headers, self).__getitem__(nk)
-            except KeyError as e:
-                pass
-            else:
-                break
-
-        # raise a key error if we couldn't find the header
-        if v is None:
-            v = super(Headers, self).__getitem__(k)
-
-        return v
+        nk = self.realkey(k)
+        return super(Headers, self).__getitem__(nk)
 
     def __setitem__(self, k, v):
         knorm = k.upper().replace('-', '_')
         super(Headers, self).__setitem__(knorm, v)
 
-    def __contains__(self, k):
-        ret = False
-        for nk in self.genkeys(k):
-            ret = super(Headers, self).__contains__(nk)
-            if ret: break
+    def __delitem__(self, k):
+        nk = self.realkey(k)
+        return super(Headers, self).__delitem__(nk)
 
-        return ret
+    def __contains__(self, k):
+        return super(Headers, self).__contains__(self.realkey(k))
 
     def get(self, k, dv=None):
         try:
@@ -78,6 +73,56 @@ class Headers(dict):
     def update(self, d):
         for k, v in d.items():
             self[k] = v
+
+    def items(self):
+        items = []
+        for k, v in super(Headers, self).items():
+            items.append((Headers.normalize_name(k), v))
+        return items
+
+    def keys(self):
+        return [k for k in self]
+
+    def iteritems(self):
+        for k, v in self.items():
+            yield k, v
+
+    def iterkeys(self):
+        for k in self.keys():
+            yield k
+
+    def __iter__(self):
+        for k in super(Headers, self).__iter__():
+            yield Headers.normalize_name(k)
+
+    def pop(self, k, *args, **kwargs):
+        rk = self.realkey(k)
+        super(Headers, self).pop(rk, *args, **kwargs)
+
+    def realkey(self, k):
+        """this will return the real key that is actually in the dict, it allows you
+        to see the raw key value, if the realkey isn't in the dict, it will just return
+        the key that was passed in
+
+        example --
+            d = self()
+            d['FOO'] = 1
+            print(d.realkey('foo')) # FOO
+        """
+        rk = k
+        for nk in self.derive_names(k):
+            if super(Headers, self).__contains__(nk):
+                rk = nk
+                break
+
+        return rk
+
+    def viewitems(self):
+        raise NotImplementedError()
+    def viewvalues(self):
+        raise NotImplementedError()
+    def viewkeys(self):
+        raise NotImplementedError()
 
 
 class Body(object):
@@ -115,7 +160,23 @@ class Body(object):
 
 
 class Url(object):
-    """a url object on steriods, this is here to make it easy to manipulate urls"""
+    """ a url object on steroids, this is here to make it easy to manipulate urls
+
+    we try to map the supported fields to their urlparse equivalents, with some additions
+
+    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+
+    .scheme = http
+    .netloc (readonly) = user:pass@foo.com:1000
+    .hostloc = foo.com:1000
+    .hostname = foo.com
+    .host (readonly) = foo.com (convenience method because I like host more than hostname)
+    .port = 1000
+    .base (readonly) = http://user:pass@foo.com:1000/bar/che
+    .fragment = anchor
+    .anchor (readonly) = anchor
+    .uri (readonly) = /bar/che?baz=boom#anchor
+    """
 
     @property
     def base(self):
@@ -127,6 +188,24 @@ class Url(object):
             "",
             ""
         )))
+
+    @_property(setter=True)
+    def port(self, port):
+        if port is not None:
+            port = int(port)
+            if port in [80, 443]:
+                port = None
+
+        self._port = port
+
+    @_property(setter=True)
+    def hostname(self, v):
+        self._hostname = v
+        if v:
+            hostname, port = self.split_host_and_port(v)
+            self._hostname = hostname
+            if port:
+                self.port = port
 
     @property
     def hostloc(self):
@@ -164,11 +243,32 @@ class Url(object):
 
     def __init__(self, urlstring=None, **kwargs):
         self._update_url(urlstring)
+
+        # we handle port before any other because the port of host:port in hostname takes precedence
+        # the port on the host would take precedence because proxies mean that the
+        # host can be something:10000 and the port could be 9000 because 10000 is
+        # being proxied to 9000 on the machine, but we want to automatically account
+        # for things like that and then if custom behavior is needed then this method
+        # can be overridden
+        if "port" in kwargs:
+            setattr(self, "port", kwargs.pop("port"))
+
         for k, v in kwargs.items():
             setattr(self, k, v)
 
         if not self.netloc:
             self.netloc = self.hostloc
+
+    @classmethod
+    def split_host_and_port(cls, host):
+        """given a host:port return a tuple (host, port)"""
+        bits = host.split(":", 2)
+        p = None
+        h = bits[0]
+        if len(bits) == 2:
+            p = int(bits[1])
+
+        return h, p
 
     def modify(self, *paths, **query_kwargs):
         """return a new Url instance with paths and query_kwargs changed, basically
@@ -215,7 +315,6 @@ class Url(object):
             "hostname": None,
             "port": None,
         }
-
 
         o = None
         if urlstring:
@@ -422,8 +521,6 @@ class Request(Http):
         path = self.path
         query = self.query
         port = self.port
-        if port in [80, 443]:
-            port = None
 
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
         return u
@@ -632,10 +729,12 @@ class Response(Http):
             r = getattr(self, '_body', None)
             if r is not None: ret = True
 
-        else:
-            ret = hasattr(self, '_gbody')
-
         return ret
+
+    def has_streaming_body(self):
+        """return True if the response body is a file pointer"""
+        # http://stackoverflow.com/questions/1661262/check-if-object-is-file-like-in-python
+        return hasattr(self._body, "read") if self.has_body() else False
 
     def normalize_body(self, b):
         """return the body as a string, formatted to the appropriate content type"""
@@ -670,6 +769,22 @@ class Response(Http):
             b = str(b)
 
         return b
+
+    def __iter__(self):
+        if self.has_streaming_body():
+            fp = self._body
+            if fp.closed:
+                raise IOError("cannot read streaming body because pointer is closed")
+
+            # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
+            for chunk in iter(partial(fp.read, 8192), ''):
+                yield chunk
+
+            # close the pointer since we've consumed it
+            fp.close()
+
+        else:
+            yield self.body
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 

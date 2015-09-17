@@ -239,6 +239,7 @@ class Call(object):
             )
 
         except AttributeError as e:
+            logger.warning(str(e), exc_info=True)
             r = self.request
             raise CallError(405, "{} {} not supported".format(r.method, r.path))
 
@@ -255,17 +256,16 @@ class Call(object):
             d = self.get_controller_info()
 
         except IOError as e:
-            exc_info = sys.exc_info()
-            logger.warning(str(e), exc_info=exc_info)
+            logger.warning(str(e), exc_info=True)
             raise CallError(
                 408,
                 "The client went away before the request body was retrieved."
             )
 
         except (ImportError, AttributeError, TypeError) as e:
-            r = self.request
             exc_info = sys.exc_info()
             logger.warning(str(e), exc_info=exc_info)
+            r = self.request
             raise CallError(
                 404,
                 "{} not found because of {} \"{}\" on {}:{}".format(
@@ -307,8 +307,7 @@ class Call(object):
     def handle_error(self, e):
         ret = None
         if isinstance(e, CallStop):
-            exc_info = sys.exc_info()
-            logger.info(str(e), exc_info=exc_info)
+            logger.info(str(e), exc_info=True)
             self.response.code = e.code
             #self.response.body = e.body
             self.response.add_headers(e.headers)
@@ -316,8 +315,7 @@ class Call(object):
 
         elif isinstance(e, Redirect):
             #logger.exception(e)
-            exc_info = sys.exc_info()
-            logger.info(str(e), exc_info=exc_info)
+            logger.info(str(e), exc_info=True)
             self.response.code = e.code
             #self.response.body = None
             self.response.add_headers(e.headers)
@@ -325,17 +323,16 @@ class Call(object):
 
         elif isinstance(e, (AccessDenied, CallError)):
             #logger.debug("Request Path: {}".format(self.request.path))
-            exc_info = sys.exc_info()
-            logger.warning(str(e), exc_info=exc_info)
+            logger.warning(str(e), exc_info=True)
             self.response.code = e.code
             #self.response.body = e
             self.response.add_headers(e.headers)
             ret = e
 
         elif isinstance(e, TypeError):
-
             e_msg = unicode(e)
             if e_msg.startswith(self.request.method) and 'argument' in e_msg:
+                logger.debug(e_msg, exc_info=True)
                 self.response.code = 404
 
             else:

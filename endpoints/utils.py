@@ -1,3 +1,33 @@
+import re
+import mimetypes
+
+
+class MimeType(object):
+    """This is just a thin wrapper around Python's built-in MIME Type stuff
+
+    https://docs.python.org/2/library/mimetypes.html
+    """
+
+    @classmethod
+    def find_type(cls, val):
+        """return the mimetype from the given string value
+
+        if value is a path, then the extension will be found, if val is an extension then
+        that will be used to find the mimetype
+        """
+        mt = ""
+        index = val.rfind(".")
+        if index == -1:
+            val = "fake.{}".format(val)
+        elif index == 0:
+            val = "fake{}".format(val)
+
+        mt = mimetypes.guess_type(val)[0]
+        if mt is None:
+            mt = ""
+
+        return mt
+
 
 class AcceptHeader(object):
     """

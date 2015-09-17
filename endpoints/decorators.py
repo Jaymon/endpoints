@@ -102,26 +102,57 @@ class _property(object):
     See http://www.reddit.com/r/Python/comments/ejp25/cached_property_decorator_that_is_memory_friendly/
     see https://docs.python.org/2/howto/descriptor.html
     see http://stackoverflow.com/questions/17330160/python-how-does-the-property-decorator-work
+    see https://docs.python.org/2/howto/descriptor.html
 
     options you can use to further customize the property
 
     read_only -- boolean (default False) -- set to de-activate set and del methods
     allow_empty -- boolean (default True) -- False to not cache empty values (eg, None, "")
+    setter -- boolean -- set this to true if you want the decorated method to act as the setter
+        instead of the getter, this will cause a default getter to be created that just returns
+        _name (you should set self._name in your setter)
+    deleter -- boolean -- same as setter, set to True to have the method act as the deleter
     """
     def __init__(self, *args, **kwargs):
-        self.read_only = kwargs.get('read_only', False)
         self.allow_empty = kwargs.get('allow_empty', True)
+        self.has_setter = kwargs.get('setter', False)
+        self.has_deleter = kwargs.get('deleter', False)
+
+        has_no_write = not self.has_setter and not self.has_deleter
+        self.has_getter = kwargs.get('getter', has_no_write)
+
+        # mutually exclusive to having defined a setter or deleter
+        self.read_only = kwargs.get('read_only', False) and has_no_write
+
         if args:
             if isinstance(args[0], bool):
                 self.read_only = args[0]
 
             else:
+                # support _property(fget, fset, fdel, desc) also
+                total_args = len(args)
                 self.set_method(args[0])
+                if total_args > 1:
+                    self.setter(args[1])
+                if total_args > 2:
+                    self.deleter(args[2])
+                if total_args > 3:
+                    self.__doc__ = args[3]
+
+        # support _property(fget=getter, fset=setter, fdel=deleter, doc="")
+        if "fget" in kwargs:
+            self.set_method(kwargs["fget"])
+        if "fset" in kwargs:
+            self.setter(kwargs["fset"])
+        if "fdel" in kwargs:
+            self.deleter(kwargs["fdel"])
+        if "doc" in kwargs:
+            self.__doc__ = kwargs["doc"]
 
     def set_method(self, method):
-        self.fget = method
-        self.fset = self.default_set
-        self.fdel = self.default_del
+        self.fget = method if self.has_getter else self.default_get
+        self.fset = method if self.has_setter else self.default_set
+        self.fdel = method if self.has_deleter else self.default_del
         self.__doc__ = method.__doc__
         self.__name__ = method.__name__
         self.name = '_{}'.format(self.__name__)
@@ -144,11 +175,10 @@ class _property(object):
                 val = self.fget(instance)
                 if val or self.allow_empty:
                     # We don't do fset here because that causes unexpected bahavior
-                    # if you ever override setter, causing the setter to be fired
-                    # every time the getter is called, which confused my for about
+                    # if you ever override the setter, causing the setter to be fired
+                    # every time the getter is called, which confused me for about
                     # an hour before I figured out what was happening
                     self.default_set(instance, val)
-                    #self.fset(instance, val)
 
             except Exception:
                 # make sure no value gets set no matter what
@@ -156,6 +186,12 @@ class _property(object):
                 raise
 
         return val
+
+    def default_get(self, instance):
+        try:
+            return instance.__dict__[self.name]
+        except KeyError:
+            raise AttributeError("can't get attribute {}".format(self.__name__))
 
     def default_set(self, instance, val):
         instance.__dict__[self.name] = val
@@ -178,15 +214,36 @@ class _property(object):
 
     def getter(self, fget):
         self.fget = fget
+        self.has_getter = True
         return self
 
     def setter(self, fset):
         self.fset = fset
+        self.has_setter = True
         return self
 
     def deleter(self, fdel):
         self.fdel = fdel
+        self.has_deleter = True
         return self
+
+
+class _propertyset(_property):
+    def set_method(self, method):
+        super(_propertyset, self).set_method(method)
+
+        # switch get and set since this method is 
+        self.fget = self.default_get
+        self.fset = method
+
+    def set_method(self, method):
+        self.fget = method
+        self.fset = self.default_set
+        self.fdel = self.default_del
+        self.__doc__ = method.__doc__
+        self.__name__ = method.__name__
+        self.name = '_{}'.format(self.__name__)
+
 
 
 class param(object):

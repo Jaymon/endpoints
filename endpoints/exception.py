@@ -27,22 +27,15 @@ class Redirect(CallError):
         super(Redirect, self).__init__(code, location, **kwargs)
 
 
-#class CallError(Base):
-#    pass
-#    def __init__(self, code, msg='', **kwargs):
-#        '''
-#        create the error
-#
-#        code -- integer -- http status code
-#        msg -- string -- the message you want to accompany your status code
-#        '''
-#        super(CallError, self).__init__(code, msg, **kwargs)
-#
-
 class AccessDenied(CallError):
-    """
-    Any time you need to return a 401 you should return this
-    """
+    """Any time you need to return a 401 you should return this"""
+
+    # used for http auth
+    REALM_BASIC = "Basic"
+
+    # used for OAuth
+    REALM_DIGEST = "Digest"
+
     def __init__(self, realm, msg='', **kwargs):
         '''
         create the error
