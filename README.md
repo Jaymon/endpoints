@@ -12,7 +12,7 @@ First, install endpoints with the following command.
 
 If you want the latest and greatest you can also install from source:
 
-    pip install git+https://github.com/firstopinion/endpoints#egg=endpoints
+    $ pip install git+https://github.com/firstopinion/endpoints#egg=endpoints
 
 **Note:** if you get the following error
 
@@ -244,7 +244,7 @@ You can activate versioning just by adding a new method to your controller using
 
 So, let's say you have your controllers set up like this:
 
-    site/controllers/ __init__.py
+    site/controllers/__init__.py
 
 and `controllers.__init__.py` contained:
 
@@ -305,7 +305,7 @@ application = Server()
 
 That's all you need to set it up if you need it. Then you can start a [uWSGI](http://uwsgi-docs.readthedocs.org/) server to test it out:
 
-    uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
+    $ uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
 
 ## Development
 
@@ -313,7 +313,7 @@ That's all you need to set it up if you need it. Then you can start a [uWSGI](ht
 
 To run the tests:
 
-    python -m unittest endpoints_test
+    $ python -m unittest endpoints_test
 
 Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests.
 
