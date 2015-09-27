@@ -2,7 +2,8 @@
 
 Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/).
 
-## Getting Started in 5 Minutes
+
+## 5 Minute Getting Started
 
 ### Installation
 
@@ -22,6 +23,7 @@ you will need to install pip using the following command.
 
     $ sudo easy_install pip
 
+
 ### Set Up Your Controller File
 
 Create a controller file with the following command:
@@ -40,12 +42,14 @@ class Default(Controller):
   def POST(self, **kwargs):
     return 'hello {}'.format(kwargs['name'])
 
-  class Foo(Controller):
-    def GET(self):
-      return "bang"
+class Foo(Controller):
+  def GET(self):
+    return "bang"
 ```
 
+
 ### Set Up A Simple Python Server
+
 Type the following commands to set a few environment variables for your server
 
     $ export ENDPOINTS_PREFIX=mycontroller
@@ -69,6 +73,7 @@ s.serve_forever()
 Start your server file:
 
     $ python myserver.py
+
 
 ## How does it work?
 
@@ -102,6 +107,7 @@ Below are some examples of HTTP requests and how they would be interpreted using
 
 As shown above, we see that **endpoints essentially travels the path from the base module down to the appropriate submodule according to the request given.**
 
+
 ### Example
 
 Let's say your site had the following setup:
@@ -129,7 +135,9 @@ then your call requests would be translated like this:
 |GET /          | controllers.Default.GET() |
 |GET /foo       | controllers.Foo.GET()     |
 
+
 ### Try it!
+
 Run the following requests on the simple server you created. You should see the following output following each request.
 
     $ curl "http://localhost:8000/"
@@ -148,11 +156,13 @@ In the ***second request***, the Controller module was accessed, then the Foo cl
 
 Finally, in the ***last request***, the Controller module was accessed, then the Default class, and finally the POST method with the passed in argument as JSON.
 
+
 ## Fun with parameters, decorators, and more
 
 If you have gotten to this point, congratulations. You understand the basics of endpoints. If you have gotten to this point, and still don't understand endpoints then please go back and make sure you do before reading any further.
 
 There are a few tricks and features of endpoints that are important to cover as they will add *fun*ctionality to your program.
+
 
 ### Handling path parameters and query vars
 
@@ -170,7 +180,7 @@ your call requests would be translated like this:
 |-------------------------------------- | ----------------------------------------------------- |
 |GET /foo/one                           | controllers.Default.GET()                             |
 |GET /foo/one?param1=val1&param2=val2   | prefix.Foo.GET("one", param1="val1", param2="val2")   |
-|GET /foo                               | 404, no one path param                                |
+|GET /foo                               | 404, no `one` path param to pass to GET               |
 |GET /foo/one/two                       | prefix.Foo.GET("one", "two")                          |
 
 Post requests are also merged with the `**params` on the controller method, with the `POST` params taking precedence:
@@ -182,6 +192,7 @@ For example, if the HTTP request is:
 The following path would be:
 
     prefix.Foo.POST(param1="POST1", param2="GET2", param3="val3")
+
 
 ### Handy decorators
 
@@ -199,7 +210,7 @@ class Foo(Controller):
   def GET(self, **params): pass
 ```
 
-Other examples of decorators include `get_param` and `post_param`. The former checks that a query parameter exists. The latter is only concerned with posted parameters.
+Other examples of decorators include `get_param` and `post_param`. The former checks that a query parameter exists, the latter is only concerned with POSTed parameters.
 
 There is also a `require_params` decorator that provides a quick way to ensure certain parameters were provided.
 
@@ -233,6 +244,7 @@ class Foo(Controller):
 ```
 
 The `auth` decorator can also be subclassed and customized.
+
 
 ### Versioning requests
 
@@ -275,6 +287,7 @@ Then, your call requests would be translated like this:
 
 **Note:** attaching the `;version=v2` to the `Accept` header changes the method that is called to handle the request.
 
+
 ### CORS support
 
 Endpoints has a `CorsMixin` you can add to your controllers to support [CORS requests](http://www.w3.org/TR/cors/):
@@ -285,13 +298,15 @@ from endpoints import Controller, CorsMixin
 class Default(Controller, CorsMixin):
   def GET(self):
     return "called / supports cors"
-
+```
 
 The `CorsMixin` will handle all the `OPTION` requests, and setting all the headers, so you don't have to worry about them (unless you want to).
+
 
 ## Built in servers
 
 Endpoints comes with wsgi and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
+
 
 ### Sample wsgi script for uWSGI
 
@@ -307,16 +322,19 @@ That's all you need to set it up if you need it. Then you can start a [uWSGI](ht
 
     $ uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
 
+
 ## Development
 
 ### Unit Tests
 
-To run the tests:
+After cloning the repo, `cd` into the repo's directory and run:
 
     $ python -m unittest endpoints_test
 
-Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests.
+Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests because there are dependencies that the tests need that the rest of the package does not.
+
 
 ## License
 
 MIT
+

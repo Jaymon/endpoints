@@ -450,17 +450,20 @@ class Request(Http):
 
     @_property(read_only=True)
     def ips(self):
-        """return all the possible ips of this request, this will include public and private"""
+        """return all the possible ips of this request, this will include public and private ips"""
         r = []
-        headers = ['x-forwarded-for', 'client-ip', 'x-real-ip', 'x-forwarded', 
-               'x-cluster-client-ip', 'forwarded-for', 'forwarded', 'via',
-               'remote-addr']
+        names = ['X_FORWARDED_FOR', 'CLIENT_IP', 'X_REAL_IP', 'X_FORWARDED', 
+               'X_CLUSTER_CLIENT_IP', 'FORWARDED_FOR', 'FORWARDED', 'VIA',
+               'REMOTE_ADDR']
 
-        for h in headers:
-            vs = self.get_header(h, '')
-            if not vs: continue
-            for v in vs.split(','):
-                r.append(v.strip())
+        for name in names:
+            vs = self.get_header(name, '')
+            if vs:
+                r.extend(map(lambda v: v.strip(), vs.split(',')))
+
+            vs = self.environ.get(name, '')
+            if vs:
+                r.extend(map(lambda v: v.strip(), vs.split(',')))
 
         return r
 

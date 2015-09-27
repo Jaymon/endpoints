@@ -1,4 +1,4 @@
-from unittest import TestCase, skipIf
+from unittest import TestCase, skipIf, SkipTest
 import os
 import urlparse
 import json
@@ -1112,6 +1112,68 @@ class AcceptHeaderTest(TestCase):
 
 
 class ReflectTest(TestCase):
+    def test_super_typeerror(self):
+        """this test was an attempt to replicate an issue we are having on production,
+        sadly, it doesn't replicate it"""
+        raise SkipTest("I can't get this to hit the error we were getting")
+        prefix = "supertypeerror"
+        tmpdir = testdata.create_dir(prefix)
+        m = testdata.create_modules(
+            {
+                "typerr.superfoo": os.linesep.join([
+                    "import endpoints",
+                    "",
+                    "class _BaseController(endpoints.Controller):",
+                    "    def __init__(self, *args, **kwargs):",
+                    "        super(_BaseController, self).__init__(*args, **kwargs)",
+                    "",
+                    "class Default(_BaseController):",
+                    "    def GET(self): pass",
+                    "",
+                ]),
+                "typerr.superfoo.superbar": os.linesep.join([
+                    "from . import _BaseController",
+                    "",
+                    "class _BarBaseController(_BaseController):",
+                    "    def __init__(self, *args, **kwargs):",
+                    "        super(_BarBaseController, self).__init__(*args, **kwargs)",
+                    "",
+                    "class Default(_BaseController):",
+                    "    def GET(self): pass",
+                    "",
+                ])
+            },
+            tmpdir=tmpdir
+        )
+
+        #import typerr.superfoo
+        #import typerr.superfoo.superbar
+
+        controller_prefix = "typerr"
+        rs = endpoints.Reflect(controller_prefix, 'application/json')
+        for endpoint in rs:
+            ds = endpoint.decorators
+            edesc = endpoint.desc
+            for option_name, options in endpoint.methods.items():
+                for option in options:
+                    v = option.version
+                    params = option.params
+                    for p, pd in params.items():
+                        pass
+
+                    headers = dict(option.headers)
+                    desc = option.desc
+
+        r = endpoints.Request()
+        r.method = "GET"
+        r.path = "/superfoo/superbar"
+        c = endpoints.Call(controller_prefix)
+        c.request = r
+        c.response = endpoints.Response()
+        res = c.handle()
+        #pout.v(res.code, res.body)
+
+
     def test_get_methods(self):
         # this doesn't work right now, I've moved this functionality into Reflect
         # this method needs to be updated to work

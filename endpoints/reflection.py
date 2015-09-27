@@ -271,17 +271,30 @@ class Reflect(object):
         """
         router = Router(self.controller_prefix)
         controller_prefix = self.controller_prefix
+
+        # NOTE -- this method previously tried to clean up after itself by deleting
+        # any new modules that were added, but that leads to really subtle errors
+        # that are really difficult to track down and fix and I can't guarrantee we've
+        # caught them all, so my solution is to no longer try and clean up, this
+        # method imports all the modules, live with it
+
+        #new_modules = set()
+        #orig_modules = set(sys.modules.keys())
+
         for controller_name in router.controllers:
             if controller_name.startswith(u'_'): continue
 
-            remove = controller_name in sys.modules
-
             controller_module = importlib.import_module(controller_name)
+
+            # what new modules were added?
+            #snapshot_modules = set(sys.modules.keys())
+            #new_modules.update(snapshot_modules.difference(orig_modules))
+
             yield controller_module
 
-            # leave no trace, if the module wasn't there previously, get rid of it now
-            if remove:
-                sys.modules.pop(controller_name, None)
+        # leave no trace, if the module wasn't there previously, get rid of it now
+        #for module_name in new_modules:
+        #    sys.modules.pop(module_name, None)
 
     def get_controller_classes(self, controller_module):
         """
