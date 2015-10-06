@@ -5,6 +5,7 @@ import inspect
 import re
 import fnmatch
 import ast
+import collections
 #import keyword
 import __builtin__
 
@@ -103,7 +104,8 @@ class ReflectEndpoint(object):
         http://stackoverflow.com/questions/5910703/ specifically, I used this
         answer http://stackoverflow.com/a/9580006
         """
-        res = {}
+        res = collections.defaultdict(list)
+        mmap = {}
         target = self.controller_class
 
         def get_val(na, default=None):
@@ -147,30 +149,65 @@ class ReflectEndpoint(object):
 
             return ret
 
+
+        def is_super(childnode, parentnode):
+            """returns true if child node has a super() call to parent node"""
+            ret = False
+            #pout.b(node.name)
+            #pout.v(node)
+#             for n in node.body:
+#                 if isinstance(n, ast.Expr):
+#                     pout.v(n.value.func, n.value.func.ctx, n.value.func.value)
+            for n in childnode.body:
+                if not isinstance(n, ast.Expr): continue
+
+                try:
+                    func = n.value.func
+                    func_name = func.attr
+                    if func_name == parentnode.name:
+                        ret = isinstance(func.value, ast.Call)
+                        break
+
+                except AttributeError as e:
+                    ret = False
+
+            return ret
+
+
         def visit_FunctionDef(node):
             """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
-            res[node.name] = []
-            for n in node.decorator_list:
-                d = {}
-                name = ''
-                args = []
-                kwargs = {}
-                if isinstance(n, ast.Call):
-                    name = n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id
-                    for an in n.args:
-                        args.append(get_val(an))
 
-                    for an in n.keywords:
-                        kwargs[an.arg] = get_val(an.value)
+            add_decs = True
+            if node.name in res:
+                add_decs = is_super(mmap[node.name], node)
 
-                else:
-                    name = n.attr if isinstance(n, ast.Attribute) else n.id
+            mmap[node.name] = node
 
-                res[node.name].append((name, args, kwargs))
+            if add_decs:
+                for n in node.decorator_list:
+                    d = {}
+                    name = ''
+                    args = []
+                    kwargs = {}
+                    if isinstance(n, ast.Call):
+                        name = n.func.attr if isinstance(n.func, ast.Attribute) else n.func.id
+                        for an in n.args:
+                            args.append(get_val(an))
+
+                        for an in n.keywords:
+                            kwargs[an.arg] = get_val(an.value)
+
+                    else:
+                        name = n.attr if isinstance(n, ast.Attribute) else n.id
+
+                    res[node.name].append((name, args, kwargs))
+
 
         node_iter = ast.NodeVisitor()
         node_iter.visit_FunctionDef = visit_FunctionDef
-        node_iter.visit(ast.parse(inspect.getsource(target)))
+        for target_cls in inspect.getmro(target):
+            if target_cls == Controller: break
+            node_iter.visit(ast.parse(inspect.getsource(target_cls)))
 
         return res
 

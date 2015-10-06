@@ -1,4 +1,5 @@
 from __future__ import absolute_import
+import uwsgi
 
 from . import BaseInterface, BaseServer
 
@@ -29,6 +30,12 @@ class WSGI(BaseInterface):
             r.set_header(k, ct)
 
         if 'wsgi.input' in raw_request:
+
+#             if r.get_header('transfer-encoding') == 'Chunked':
+#                 pout.v(uwsgi.chunked_read())
+#                 pout.v(raw_request['wsgi.input'].read())
+# 
+
             r.body_input = raw_request['wsgi.input']
 
         else:

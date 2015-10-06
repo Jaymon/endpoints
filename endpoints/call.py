@@ -6,6 +6,7 @@ import fnmatch
 import types
 import traceback
 import inspect
+import pkgutil
 
 from .utils import AcceptHeader
 from .http import Response, Request
@@ -27,30 +28,23 @@ class Router(object):
 
         returns -- set -- a set of string module names"""
         controller_prefix = self.controller_prefix
-        _module_name_cache = type(self)._module_name_cache
+        _module_name_cache = type(self)._module_name_cache # static cache, not instance
         if controller_prefix in _module_name_cache:
             return _module_name_cache[controller_prefix]
 
-        module = importlib.import_module(controller_prefix)
-        basedir = os.path.dirname(module.__file__)
-        modules = set()
+        module = self.get_module(controller_prefix)
 
-        for root, dirs, files in os.walk(basedir, topdown=True):
-            dirs[:] = [d for d in dirs if d[0] != '.' or d[0] != '_']
+        if hasattr(module, "__path__"):
+            # path attr exists so this is a package
+            modules = self.find_modules(module.__path__[0], controller_prefix)
 
-            module_name = root.replace(basedir, '', 1)
-            module_name = [controller_prefix] + filter(None, module_name.split('/'))
-            for f in fnmatch.filter(files, '*.py'):
-                if f.startswith('__init__'):
-                    modules.add('.'.join(module_name))
-                else:
-                    # we want to ignore any "private" modules
-                    if not f.startswith('_'):
-                        file_name = os.path.splitext(f)[0]
-                        modules.add('.'.join(module_name + [file_name]))
+        else:
+            # we have a lonely .py file
+            modules = set([controller_prefix])
 
         _module_name_cache.setdefault(controller_prefix, {})
         _module_name_cache[controller_prefix] = modules
+
         return modules
 
     def __init__(self, controller_prefix, path_args=None):
@@ -81,6 +75,27 @@ class Router(object):
             self.controller_class_name = class_object.__name__
         self.controller_class = class_object
         self.controller_method_args = args
+
+    def find_modules(self, path, prefix):
+        """recursive method that will find all the submodules of the given module
+        at prefix with path"""
+
+        modules = set([prefix])
+
+        # https://docs.python.org/2/library/pkgutil.html#pkgutil.iter_modules
+        for module_info in pkgutil.iter_modules([path]):
+            # we want to ignore any "private" modules
+            if module_info[1].startswith('_'): continue
+
+            module_prefix = ".".join([prefix, module_info[1]])
+            if module_info[2]:
+                # module is a package
+                submodules = self.find_modules(os.path.join(path, module_info[1]), module_prefix)
+                modules.update(submodules)
+            else:
+                modules.add(module_prefix)
+
+        return modules
 
     def get_module_name(self, path_args):
         """returns the module_name and remaining path args.

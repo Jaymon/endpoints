@@ -521,6 +521,67 @@ class RequestTest(TestCase):
 
 
 class RouterTest(TestCase):
+
+    def test_mixed_modules_packages(self):
+        # make sure a package with modules and other packages will resolve correctly
+        controller_prefix = "mmp"
+        r = testdata.create_modules({
+            controller_prefix: os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller): pass",
+            ]),
+            "{}.foo".format(controller_prefix): os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller): pass",
+            ]),
+            "{}.foo.bar".format(controller_prefix): os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller): pass",
+            ]),
+            "{}.che".format(controller_prefix): os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller): pass",
+            ]),
+        })
+        r = endpoints.call.Router(controller_prefix)
+        self.assertEqual(set(['mmp.foo', 'mmp', 'mmp.foo.bar', 'mmp.che']), r.controllers)
+
+        # make sure just a file will resolve correctly
+        controller_prefix = "mmp2"
+        testdata.create_module(controller_prefix, os.linesep.join([
+            "from endpoints import Controller",
+            "class Bar(Controller): pass",
+        ]))
+        r = endpoints.call.Router(controller_prefix)
+        self.assertEqual(set(['mmp2']), r.controllers)
+
+    def test_routing_module(self):
+        controller_prefix = "callback_info"
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "class Bar(Controller):",
+            "    def GET(*args, **kwargs): pass"
+        ])
+        testdata.create_module("{}.foo".format(controller_prefix), contents=contents)
+        r = endpoints.call.Router(controller_prefix, ["foo", "bar"])
+
+    def test_routing_package(self):
+        basedir = testdata.create_dir()
+        controller_prefix = "routepack"
+        testdata.create_dir(controller_prefix, tmpdir=basedir)
+        contents = os.linesep.join([
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def GET(self): pass",
+            "",
+        ])
+        f = testdata.create_module(controller_prefix, contents=contents, tmpdir=basedir)
+
+        r = endpoints.call.Router(controller_prefix, [])
+        self.assertTrue(controller_prefix in r.controllers)
+        self.assertEqual(1, len(r.controllers))
+
     def test_routing(self):
         """there was a bug that caused errors raised after the yield to return another
         iteration of a body instead of raising them"""
@@ -1112,6 +1173,108 @@ class AcceptHeaderTest(TestCase):
 
 
 class ReflectTest(TestCase):
+    def test_decorators_inherit_2(self):
+        """you have a parent class with POST method, the child also has a POST method,
+        what do you do? What. Do. You. Do?"""
+        prefix = "decinherit2"
+        m = testdata.create_modules(
+            {
+                prefix: os.linesep.join([
+                    "import endpoints",
+                    "",
+                    "def a(f):",
+                    "    def wrapped(*args, **kwargs):",
+                    "        return f(*args, **kwargs)",
+                    "    return wrapped",
+                    "",
+                    "class b(object):",
+                    "    def __init__(self, func):",
+                    "        self.func = func",
+                    "    def __call__(*args, **kwargs):",
+                    "        return f(*args, **kwargs)",
+                    "",
+                    "def c(func):",
+                    "    def wrapper(*args, **kwargs):",
+                    "        return func(*args, **kwargs)",
+                    "    return wrapper",
+                    "",
+                    "def POST(): pass",
+                    "",
+                    "class D(object):",
+                    "    def HEAD(): pass"
+                    "",
+                    "class _BaseController(endpoints.Controller):",
+                    "    @a",
+                    "    @b",
+                    "    def POST(self, **kwargs): pass",
+                    "",
+                    "    @a",
+                    "    @b",
+                    "    def HEAD(self): pass",
+                    "",
+                    "    @a",
+                    "    @b",
+                    "    def GET(self): pass",
+                    "",
+                    "class Default(_BaseController):",
+                    "    @c",
+                    "    def POST(self, **kwargs): POST()",
+                    "",
+                    "    @c",
+                    "    def HEAD(self):",
+                    "        d = D()",
+                    "        d.HEAD()",
+                    "",
+                    "    @c",
+                    "    def GET(self):",
+                    "        super(Default, self).GET()",
+                    "",
+                ]),
+            }
+        )
+
+        rs = endpoints.Reflect(prefix, 'application/json')
+        l = list(rs.get_endpoints())
+        r = l[0]
+        self.assertEqual(1, len(r.decorators["POST"]))
+        self.assertEqual(1, len(r.decorators["HEAD"]))
+        self.assertEqual(3, len(r.decorators["GET"]))
+
+
+    def test_decorator_inherit_1(self):
+        """make sure that a child class that hasn't defined a METHOD inherits the
+        METHOD method from its parent with decorators in tact"""
+        prefix = "decinherit"
+        tmpdir = testdata.create_dir(prefix)
+        m = testdata.create_modules(
+            {
+                "foodecinherit": os.linesep.join([
+                    "import endpoints",
+                    "",
+                    "def foodec(func):",
+                    "    def wrapper(*args, **kwargs):",
+                    "        return func(*args, **kwargs)",
+                    "    return wrapper",
+                    "",
+                    "class _BaseController(endpoints.Controller):",
+                    "    @foodec",
+                    "    def POST(self, **kwargs):",
+                    "        return 1",
+                    "",
+                    "class Default(_BaseController):",
+                    "    pass",
+                    "",
+                ]),
+            },
+            tmpdir=tmpdir
+        )
+
+        controller_prefix = "foodecinherit"
+        rs = endpoints.Reflect(controller_prefix, 'application/json')
+        for count, endpoint in enumerate(rs, 1):
+            self.assertEqual("foodec", endpoint.decorators["POST"][0][0])
+        self.assertEqual(1, count)
+
     def test_super_typeerror(self):
         """this test was an attempt to replicate an issue we are having on production,
         sadly, it doesn't replicate it"""
@@ -1322,7 +1485,7 @@ class ReflectTest(TestCase):
 
     def test_decorators(self):
         testdata.create_modules({
-            "controller_reflect.foo": os.linesep.join([
+            "controller_reflect": os.linesep.join([
                 "import endpoints",
                 "from endpoints.decorators import param, require_params",
                 "",
@@ -1337,7 +1500,7 @@ class ReflectTest(TestCase):
                 "    def __call__(*args, **kwargs):",
                 "        return f(*args, **kwargs)",
                 "",
-                "class Default(endpoints.Controller):",
+                "class Foo(endpoints.Controller):",
                 "    @dec_func",
                 "    def GET(*args, **kwargs): pass",
                 "    @dec_cls",
@@ -2345,6 +2508,45 @@ class WSGIClient(object):
             kwargs.setdefault("files", files)
         return self.get_response(requests.post(url, **kwargs))
 
+    def post_chunked(self, uri, body, **kwargs):
+
+        filepath = kwargs.pop("filepath", None)
+
+        url = self.get_url(uri)
+        files = {'file': open(filepath, 'rb')}
+        req = requests.Request('POST', url, data=body, files=files)
+        r = req.prepare()
+        pout.v(r)
+        r.headers.pop('Content-Length', None)
+        r.headers['Transfer-Encoding'] = 'Chunked'
+        pout.v(r)
+
+        s = requests.Session()
+        res = s.send(r)
+        return self.get_response(res)
+
+
+#         headers = {}
+#         headers['Transfer-Encoding'] = 'Chunked'
+#         headers['Content-Length'] = ''
+#         kwargs['headers'] = headers
+
+#         if filepath:
+#             data = open(filepath, 'rb')
+#             kwargs['data'] = data
+#             #kwargs['stream'] = True
+
+        def gen_file(filepath):
+            with open(filepath, 'rb') as f:
+                for line in f:
+                    yield f
+
+
+        url = self.get_url(uri)
+        #return self.get_response(requests.post(url, data=gen_file(filepath)))
+        return self.get_response(requests.post(url, data=open(filepath, 'rb')))
+        #return self.post(uri, body, **kwargs)
+
     def get_response(self, requests_response):
         """just make request's response more endpointy"""
         requests_response.code = requests_response.status_code
@@ -2369,6 +2571,22 @@ class WSGITest(TestCase):
 #         if not self.client_instance:
 #             self.client_instance = self.client_class(*args, **kwargs)
 #         return self.client_instance
+
+    def test_chunked(self):
+        filepath = testdata.create_file("filename.txt", testdata.get_ascii_words(500))
+        controller_prefix = 'wsgi.post_chunked'
+        c = self.create_client(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def POST(self, **kwargs):",
+            "        pout.v(self.request)",
+            "        return kwargs['file'].filename",
+            "",
+        ])
+
+        r = c.post_chunked('/', {"foo": "bar", "baz": "che"}, filepath=filepath)
+        self.assertEqual(200, r.code)
+        self.assertTrue("filename.txt" in r.body)
 
     def test_list_param_decorator(self):
         controller_prefix = "lpdcontroller"
@@ -2550,6 +2768,9 @@ class SimpleClient(WSGIClient):
 
     def get_start_cmd(self):
         return "python {}/{}".format(self.cwd, self.application)
+
+    def test_chunked(self):
+        raise SkipTest("chunked is not supported in SimpleClient")
 
 
 @skipIf(requests is None, "Skipping Simple server Test because no requests module")
