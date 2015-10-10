@@ -10,7 +10,7 @@ from .core import Controller, CorsMixin
 from . import decorators
 
 
-# configure root logging handler to avoid "No handler found" warnings.
+# configure root endpoints logging handler to avoid "No handler found" warnings.
 # I got this from requests module
 logger = logging.getLogger(__name__)
 if logger.handlers:

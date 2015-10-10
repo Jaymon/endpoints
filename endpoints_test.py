@@ -1,6 +1,8 @@
 from unittest import TestCase, skipIf, SkipTest
 import os
 import urlparse
+import urllib
+import hashlib
 import json
 import logging
 from BaseHTTPServer import BaseHTTPRequestHandler
@@ -9,6 +11,7 @@ import threading
 import subprocess
 import re
 import StringIO
+import codecs
 
 import testdata
 
@@ -2284,6 +2287,13 @@ class MimeTypeTest(TestCase):
 
 
 class HeadersTest(TestCase):
+    def test_lifecycle(self):
+        d = Headers()
+        d["foo-bar"] = 1
+        self.assertEqual(1, d["Foo-Bar"])
+        self.assertEqual(1, d["fOO-bAr"])
+        self.assertEqual(1, d["fOO_bAr"])
+
     def test_pop(self):
         d = Headers()
         d['FOO'] = 1
@@ -2391,6 +2401,8 @@ class WSGIClient(object):
     def get_script_body(self):
         """returns the script body that is used to start the server"""
         return os.linesep.join([
+            "#from wsgiref.validate import validator",
+            "#application = validator(Server())",
             "application = Server()",
         ])
 
@@ -2406,10 +2418,12 @@ class WSGIClient(object):
         return " ".join([
             "uwsgi",
             "--http=:8080",
+            "--show-config",
             "--master",
             "--processes=1",
             "--cpu-affinity=1",
             "--thunder-lock",
+            "--http-raw-body",
             "--chdir={}".format(self.cwd),
             "--wsgi-file={}".format(self.application),
         ])
@@ -2509,43 +2523,46 @@ class WSGIClient(object):
         return self.get_response(requests.post(url, **kwargs))
 
     def post_chunked(self, uri, body, **kwargs):
-
+        """POST a file to the uri using a Chunked transfer, this works exactly like
+        the post() method, but this will only return the body because we use curl
+        to do the chunked request"""
         filepath = kwargs.pop("filepath", None)
-
         url = self.get_url(uri)
-        files = {'file': open(filepath, 'rb')}
-        req = requests.Request('POST', url, data=body, files=files)
-        r = req.prepare()
-        pout.v(r)
-        r.headers.pop('Content-Length', None)
-        r.headers['Transfer-Encoding'] = 'Chunked'
-        pout.v(r)
+        body = body or {}
 
-        s = requests.Session()
-        res = s.send(r)
-        return self.get_response(res)
+        # http://superuser.com/a/149335/164279
+        # http://comments.gmane.org/gmane.comp.web.curl.general/10711
+        cmd = " ".join([
+            "curl",
+            '--header "Transfer-Encoding: Chunked"',
+            '-F "file=@{}"'.format(filepath),
+            '-F "{}"'.format(urllib.urlencode(body, doseq=True)),
+            url
+        ])
+        output = subprocess.check_output(cmd, shell=True)
 
+        return output
 
-#         headers = {}
-#         headers['Transfer-Encoding'] = 'Chunked'
-#         headers['Content-Length'] = ''
-#         kwargs['headers'] = headers
+        # https://github.com/kennethreitz/requests/blob/master/requests/models.py#L260
+        # I couldn't get Requests to successfully do a chunked request, but I could
+        # get curl to do it, so that's what we're going to use
+#         files = {'file': open(filepath, 'rb')}
+#         req = requests.Request('POST', url, data=body, files=files)
+#         r = req.prepare()
+#         r.headers.pop('Content-Length', None)
+#         r.headers['Transfer-Encoding'] = 'Chunked'
+# 
+#         s = requests.Session()
+#         s.stream = True
+#         res = s.send(r)
+#         return self.get_response(res)
 
-#         if filepath:
-#             data = open(filepath, 'rb')
-#             kwargs['data'] = data
-#             #kwargs['stream'] = True
+        # another way to try chunked in pure python
+        # http://stackoverflow.com/questions/9237961/how-to-force-http-client-to-send-chunked-encoding-http-body-in-python
+        # http://stackoverflow.com/questions/17661962/how-to-post-chunked-encoded-data-in-python
 
-        def gen_file(filepath):
-            with open(filepath, 'rb') as f:
-                for line in f:
-                    yield f
-
-
-        url = self.get_url(uri)
-        #return self.get_response(requests.post(url, data=gen_file(filepath)))
-        return self.get_response(requests.post(url, data=open(filepath, 'rb')))
-        #return self.post(uri, body, **kwargs)
+        # and one more way to test it using raw sockets
+        # http://lists.unbit.it/pipermail/uwsgi/2013-June/006170.html
 
     def get_response(self, requests_response):
         """just make request's response more endpointy"""
@@ -2573,20 +2590,29 @@ class WSGITest(TestCase):
 #         return self.client_instance
 
     def test_chunked(self):
-        filepath = testdata.create_file("filename.txt", testdata.get_ascii_words(500))
+        filepath = testdata.create_file("filename.txt", testdata.get_words(500))
         controller_prefix = 'wsgi.post_chunked'
+
         c = self.create_client(controller_prefix, [
+            "import hashlib",
             "from endpoints import Controller",
-            "class Default(Controller):",
+            "class Bodykwargs(Controller):",
             "    def POST(self, **kwargs):",
-            "        pout.v(self.request)",
-            "        return kwargs['file'].filename",
+            "        return hashlib.md5(kwargs['file'].file.read()).hexdigest()",
+            "",
+            "class Bodyraw(Controller):",
+            "    def POST(self, **kwargs):",
+            "        return len(self.request.body)",
             "",
         ])
 
-        r = c.post_chunked('/', {"foo": "bar", "baz": "che"}, filepath=filepath)
-        self.assertEqual(200, r.code)
-        self.assertTrue("filename.txt" in r.body)
+        size = c.post_chunked('/bodyraw', {"foo": "bar", "baz": "che"}, filepath=filepath)
+        self.assertGreater(int(size), 0)
+
+        with codecs.open(filepath, "rb", encoding="UTF-8") as fp:
+            h1 = hashlib.md5(fp.read().encode("UTF-8")).hexdigest()
+            h2 = c.post_chunked('/bodykwargs', {"foo": "bar", "baz": "che"}, filepath=filepath)
+            self.assertEqual(h1, h2.strip('"'))
 
     def test_list_param_decorator(self):
         controller_prefix = "lpdcontroller"
@@ -2769,13 +2795,13 @@ class SimpleClient(WSGIClient):
     def get_start_cmd(self):
         return "python {}/{}".format(self.cwd, self.application)
 
-    def test_chunked(self):
-        raise SkipTest("chunked is not supported in SimpleClient")
-
 
 @skipIf(requests is None, "Skipping Simple server Test because no requests module")
 class SimpleTest(WSGITest):
     client_class = SimpleClient
+
+    def test_chunked(self):
+        raise SkipTest("chunked is not supported in SimpleClient")
 
     def test_simple_post(self):
         controller_prefix = 'simple.post_file'

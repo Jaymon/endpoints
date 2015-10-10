@@ -12,48 +12,88 @@ from .decorators import _property
 from .utils import AcceptHeader
 
 
+# import wsgiref.headers
+# class Headers(wsgiref.headers.Headers):
+# 
+#     def get(self, name, default=None):
+#         name = name.lower().replace('_', '-')
+#         ret = default
+#         for k, v in self._headers:
+# 
+#             klower = k.lower()
+# 
+#             if klower == name:
+#                 ret = v
+# 
+#             elif klower.replace('_', '-') == name:
+#                 ret = v
+# 
+#         return ret
+# 
+
 class Headers(dict):
     """Handles normalizing of header names, the problem with headers is they can
     be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
     so this handles normalizing the header names so you can request Content-Type
-    or CONTENT_TYPE and get the same value"""
+    or CONTENT_TYPE and get the same value
+
+    https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
+
+    You could almost replace this with wsgiref.headers.Headers class, but that doesn't
+    extend dict or object
+    """
 
     @classmethod
     def normalize_name(cls, k):
         """converts things like FOO_BAR to Foo-Bar which is the normal form"""
         klower = k.lower().replace('_', '-')
-        bits = klower.split('_')
+        bits = klower.split('-')
         return "-".join((bit.title() for bit in bits))
 
-    @classmethod
-    def derive_names(cls, k):
+    def derive_names(self, k):
         """here is where all the magic happens, this will generate all the different
         variations of the header name looking for one that is set"""
+
+        # foo-bar
         yield k
 
+        # FOO_BAR
         kupper = k.upper()
-        yield kupper.replace('-', '_')
-        yield kupper.replace('_', '-')
+        kunderscore = kupper.replace('-', '_')
+        yield kunderscore
 
-        klower = k.lower()
-        klower_norm = klower.replace('-', '_')
-        yield klower_norm
+        # FOO-BAR
+        kdash = kupper.replace('_', '-')
+        yield kdash
 
-        yield klower.replace('_', '-')
+        # foo-bar
+        yield kdash.lower()
 
-        bits = klower_norm.split('_')
+        # foo_bar
+        kunderscore = kunderscore.lower()
+        yield kunderscore
+
+        # Foo-Bar
+        bits = kunderscore.split('_')
         yield "-".join((bit.title() for bit in bits))
 
-        yield "{}-{}".format(bits[0].title(), "-".join(bits[1:]))
-        yield "{}_{}".format(bits[0].title(), "_".join(bits[1:]))
+        # Foo-bar
+        krare = "{}-{}".format(bits[0].title(), "-".join(bits[1:]))
+        yield krare
+
+        # Foo_bar
+        yield krare.replace("-", "_")
+
+        # handle any strange keys like fOO-baR
+        krare = krare.lower()
+        for ak in super(Headers, self).keys():
+            akrare = ak.lower().replace("_", "-")
+            if krare == akrare:
+                yield ak
 
     def __getitem__(self, k):
         nk = self.realkey(k)
         return super(Headers, self).__getitem__(nk)
-
-    def __setitem__(self, k, v):
-        knorm = k.upper().replace('-', '_')
-        super(Headers, self).__setitem__(knorm, v)
 
     def __delitem__(self, k):
         nk = self.realkey(k)
@@ -69,10 +109,6 @@ class Headers(dict):
             v = dv
 
         return v
-
-    def update(self, d):
-        for k, v in d.items():
-            self[k] = v
 
     def items(self):
         items = []
@@ -566,7 +602,7 @@ class Request(Http):
         """return the raw version of the body"""
         body = None
         if self.body_input:
-            body = self.body_input.read(int(self.get_header('content-length', 0)))
+            body = self.body_input.read(int(self.get_header('content-length', -1)))
 
         return body
 
