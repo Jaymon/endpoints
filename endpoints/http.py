@@ -683,6 +683,20 @@ class Request(Http):
 
         return access_token
 
+    def get_auth_token(self):
+        """try and get an access token first from bearer auth header, then from
+        GET or POST parameters
+
+        return -- string -- the access token
+        """
+        access_token = self.get_auth_bearer()
+        if not access_token:
+            access_token = self.query_kwargs.get('access_token', '')
+            if not access_token:
+                access_token = self.body_kwargs.get('access_token', '')
+
+        return access_token
+
     def get_auth_basic(self):
         """return the username and password of a basic auth header if it exists"""
         username = ''

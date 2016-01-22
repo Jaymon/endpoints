@@ -12,6 +12,7 @@ import subprocess
 import re
 import StringIO
 import codecs
+import base64
 
 import testdata
 
@@ -1633,15 +1634,166 @@ class EndpointsTest(TestCase):
         self.assertEqual(s, controllers)
 
 
-class DecoratorsTest(TestCase):
+class DecoratorsAuthTest(TestCase):
+    def get_basic_auth_header(self, username, password):
+        credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
+        return 'Basic {}'.format(credentials)
+
+    def get_bearer_auth_header(self, access_token):
+        return 'Bearer {}'.format(access_token)
+
+
+    def test_bad_setup(self):
+
+        def target(request, *args, **kwargs):
+            pass
+
+        class TARA(object):
+            @endpoints.decorators.auth.token_auth(target=target)
+            def foo_token(self): pass
+
+            @endpoints.decorators.auth.client_auth(client_apps=[])
+            def foo_client(self): pass
+
+            @endpoints.decorators.auth.basic_auth(target=target)
+            def foo_basic(self): pass
+
+            @endpoints.decorators.auth.auth("Basic", target=target)
+            def foo_auth(self): pass
+
+        r = endpoints.Request()
+        c = TARA()
+        c.request = r
+
+        for m in ["foo_token", "foo_client", "foo_basic", "foo_auth"]: 
+            with self.assertRaises(endpoints.AccessDenied):
+                getattr(c, m)()
+
+    def test_token_auth(self):
+        def target(request, access_token):
+            if access_token != "bar":
+                raise ValueError()
+            return True
+
+        def target_bad(request, *args, **kwargs):
+            pass
+
+        class TARA(object):
+            @endpoints.decorators.auth.token_auth(target=target)
+            def foo(self): pass
+
+            @endpoints.decorators.auth.token_auth(target=target_bad)
+            def foo_bad(self): pass
+
+
+        r = endpoints.Request()
+        c = TARA()
+        c.request = r
+
+        r.set_header('authorization', self.get_bearer_auth_header("foo"))
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        r.set_header('authorization', self.get_bearer_auth_header("bar"))
+        c.foo()
+
+        r = endpoints.Request()
+        c.request = r
+
+        r.body_kwargs["access_token"] = "foo"
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        r.body_kwargs["access_token"] = "bar"
+        c.foo()
+
+        r = endpoints.Request()
+        c.request = r
+
+        r.query_kwargs["access_token"] = "foo"
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        r.query_kwargs["access_token"] = "bar"
+        c.foo()
+
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo_bad()
+
+    def test_client_auth(self):
+        class TARA(object):
+            @endpoints.decorators.auth.client_auth(client_apps=[("foo", "bar")])
+            def foo(self): pass
+
+            @endpoints.decorators.auth.client_auth(client_apps=[])
+            def foo_bad(self): pass
+
+
+        username = "foo"
+        password = "..."
+        r = endpoints.Request()
+        r.set_header('authorization', self.get_basic_auth_header(username, password))
+
+        c = TARA()
+        c.request = r
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        password = "bar"
+        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        c.foo()
+
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo_bad()
+
+    def test_basic_auth(self):
+        def target(request, username, password):
+            if username != "bar":
+                raise ValueError()
+            return True
+
+        def target_bad(request, *args, **kwargs):
+            pass
+
+        class TARA(object):
+            @endpoints.decorators.auth.basic_auth(target=target)
+            def foo(self): pass
+
+            @endpoints.decorators.auth.basic_auth(target=target_bad)
+            def foo_bad(self): pass
+
+        username = "foo"
+        password = "..."
+        r = endpoints.Request()
+        r.set_header('authorization', self.get_basic_auth_header(username, password))
+
+        c = TARA()
+        c.request = r
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo()
+
+        username = "bar"
+        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        c.foo()
+
+        with self.assertRaises(endpoints.AccessDenied):
+            c.foo_bad()
+
     def test_auth(self):
         def target(request):
             if request.body_kwargs["foo"] != "bar":
                 raise ValueError()
+            return True
+
+        def target_bad(request, *args, **kwargs):
+            pass
 
         class TARA(object):
-            @endpoints.decorators.auth("Basic", target=target)
+            @endpoints.decorators.auth.auth("Basic", target=target)
             def foo(self): pass
+
+            @endpoints.decorators.auth.auth(target=target_bad)
+            def foo_bad(self): pass
 
         r = endpoints.Request()
         r.body_kwargs = {"foo": "che"}
@@ -1654,6 +1806,8 @@ class DecoratorsTest(TestCase):
         r.body_kwargs = {"foo": "bar"}
         c.foo()
 
+
+class DecoratorsTest(TestCase):
     def test__property_init(self):
         counts = dict(fget=0, fset=0, fdel=0)
         def fget(self):

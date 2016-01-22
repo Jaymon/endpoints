@@ -6,7 +6,8 @@ from functools import wraps
 
 from decorators import FuncDecorator
 
-from .exception import CallError, AccessDenied
+from ..exception import CallError, AccessDenied
+from . import auth
 
 
 class httpcache(FuncDecorator):
@@ -40,55 +41,6 @@ class nohttpcache(FuncDecorator):
                 "Pragma": "no-cache", 
                 "Expires": "0"
             })
-            return func(self, *args, **kwargs)
-
-        return decorated
-
-
-class auth(FuncDecorator):
-    """
-    handy auth decorator that makes doing basic or token auth easy peasy
-
-    the request get_auth_client(), get_auth_basic(), and get_auth_bearer() methods
-    and access_token property should come in real handy here
-
-    example --
-
-    # create a token auth decorator
-    from endpoints import Controller
-    from endpoints.decorators import auth
-
-    def target(request):
-        if request.access_token != "foo":
-            raise ValueError("invalid access token")
-
-    class Default(Controller):
-        @auth("Bearer", target=target)
-        def GET(self):
-            return "hello world"
-    """
-    def target(self, request):
-        if self.target_callback:
-            try:
-                self.target_callback(request)
-
-            except CallError:
-                raise
-
-            except Exception as e:
-                raise AccessDenied(self.realm, e.message)
-
-        else:
-            raise CallError(403, "You need to pass in a target callback to use authentication")
-
-    def decorate(self, func, realm='', target=None):
-        self.target_callback = target
-        self.realm = realm
-        slf = self
-
-        @wraps(func)
-        def decorated(self, *args, **kwargs):
-            slf.target(self.request)
             return func(self, *args, **kwargs)
 
         return decorated
