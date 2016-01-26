@@ -93,6 +93,10 @@ class basic_auth(auth):
     """
     def normalize_target_params(self, request, *args, **kwargs):
         username, password = request.get_auth_basic()
+
+        if not username: raise ValueError("username is required")
+        if not password: raise ValueError("password is required")
+
         kwargs = {
             "request": request,
             "username": username,
@@ -125,7 +129,7 @@ class client_auth(basic_auth):
             raise ValueError("No valid client_id and client_secret auth found")
         return True
 
-    def find_client_apps(self):
+    def normalize_client_apps(self):
         """compile all the client_apps we want to validate agains
 
         this is the method that should be overridden in a subclass
@@ -163,47 +167,51 @@ class client_auth(basic_auth):
 
         return found_client_app
 
-    def find_client_params(self, request, *args, **kwargs):
-        """try and get client id and secret first from basic auth header, then from
-        GET or POST parameters
+#     def find_client_params(self, request, *args, **kwargs):
+#         """try and get client id and secret first from basic auth header, then from
+#         GET or POST parameters
+# 
+#         request -- Request -- the active Request instance
+#         *args -- list -- any path passed to controller
+#         **kwargs -- dict -- the combined GET and POST variables passed to controller
+# 
+#         return -- tuple -- client_id, client_secret
+#         """
+#         client_id, client_secret = request.get_auth_basic()
+#         if not client_id and not client_secret:
+#             client_id = kwargs.get('client_id', '')
+#             client_secret = kwargs.get('client_secret', '')
+# 
+#         if not client_id: raise ValueError("client_id is required")
+#         if not client_secret: raise ValueError("client_secret is required")
+# 
+#         return client_id, client_secret
 
-        request -- Request -- the active Request instance
-        *args -- list -- any path passed to controller
-        **kwargs -- dict -- the combined GET and POST variables passed to controller
-
-        return -- tuple -- client_id, client_secret
-        """
-        client_id, client_secret = request.get_auth_basic()
-        if not client_id and not client_secret:
-            client_id = kwargs.get('client_id', '')
-            client_secret = kwargs.get('client_secret', '')
+    def normalize_target_params(self, request, *args, **kwargs):
+        client_id, client_secret = request.client_tokens
 
         if not client_id: raise ValueError("client_id is required")
         if not client_secret: raise ValueError("client_secret is required")
 
-        return client_id, client_secret
-
-    def normalize_target_params(self, request, *args, **kwargs):
-        client_id, client_secret = self.find_client_params(request, *args, **kwargs)
         kwargs = {
             "request": request,
             "client_id": client_id,
             "client_secret": client_secret,
-            "client_apps": self.find_client_apps(),
+            "client_apps": self.normalize_client_apps(),
         }
         return [], kwargs
 
-    def decorate(self, func, client_apps=None):
+    def decorate(self, func, target, client_apps=None):
         if client_apps:
             self.client_apps = client_apps
 
-        return super(client_auth, self).decorate(func, target=None)
+        return super(client_auth, self).decorate(func, target=target)
 
 
 class token_auth(auth):
     """
-    handy token auth decorator that checks for access_token in an authorization Bearer
-    header
+    handy token auth decorator that checks for access_token in an authorization
+    Bearer header
 
     example --
 
@@ -220,7 +228,10 @@ class token_auth(auth):
             return "hello world"
     """
     def normalize_target_params(self, request, *args, **kwargs):
-        access_token = request.get_auth_token()
+        access_token = request.access_token
+
+        if not access_token: raise ValueError("access_token is required")
+
         kwargs = {
             "request": request,
             "access_token": access_token,

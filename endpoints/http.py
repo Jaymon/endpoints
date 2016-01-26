@@ -476,13 +476,28 @@ class Request(Http):
         """return an Oauth 2.0 Bearer access token if it can be found"""
         access_token = self.get_auth_bearer()
         if not access_token:
-            if 'access_token' in self.query_kwargs:
-                access_token = self.query_kwargs['access_token']
-
-            elif 'access_token' in self.body_kwargs:
-                access_token = self.body_kwargs['access_token']
+            access_token = self.query_kwargs.get('access_token', '')
+            if not access_token:
+                access_token = self.body_kwargs.get('access_token', '')
 
         return access_token
+
+    @property
+    def client_tokens(self):
+        """try and get Oauth 2.0 client id and secret first from basic auth header,
+        then from GET or POST parameters
+
+        return -- tuple -- client_id, client_secret
+        """
+        client_id, client_secret = self.request.get_auth_basic()
+        if not client_id and not client_secret:
+            client_id = self.query_kwargs.get('client_id', '')
+            client_secret = self.query_kwargs.get('client_secret', '')
+            if not client_id and not client_secret:
+                client_id = self.body_kwargs.get('client_id', '')
+                client_secret = self.body_kwargs.get('client_secret', '')
+
+        return client_id, client_secret
 
     @_property(read_only=True)
     def ips(self):
@@ -683,20 +698,6 @@ class Request(Http):
 
         return access_token
 
-    def get_auth_token(self):
-        """try and get an access token first from bearer auth header, then from
-        GET or POST parameters
-
-        return -- string -- the access token
-        """
-        access_token = self.get_auth_bearer()
-        if not access_token:
-            access_token = self.query_kwargs.get('access_token', '')
-            if not access_token:
-                access_token = self.body_kwargs.get('access_token', '')
-
-        return access_token
-
     def get_auth_basic(self):
         """return the username and password of a basic auth header if it exists"""
         username = ''
@@ -709,22 +710,6 @@ class Request(Http):
                 username, password = auth_str.split(':', 1)
 
         return username, password
-
-    def get_auth_client(self):
-        """try and get client id and secret first from basic auth header, then from
-        GET or POST parameters
-
-        return -- tuple -- client_id, client_secret
-        """
-        client_id, client_secret = self.request.get_auth_basic()
-        if not client_id and not client_secret:
-            client_id = self.query_kwargs.get('client_id', '')
-            client_secret = self.query_kwargs.get('client_secret', '')
-            if not client_id and not client_secret:
-                client_id = self.body_kwargs.get('client_id', '')
-                client_secret = self.body_kwargs.get('client_secret', '')
-
-        return client_id, client_secret
 
 
 class Response(Http):
