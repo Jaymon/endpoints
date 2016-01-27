@@ -1652,7 +1652,7 @@ class DecoratorsAuthTest(TestCase):
             @endpoints.decorators.auth.token_auth(target=target)
             def foo_token(self): pass
 
-            @endpoints.decorators.auth.client_auth(client_apps=[])
+            @endpoints.decorators.auth.client_auth(target=target)
             def foo_client(self): pass
 
             @endpoints.decorators.auth.basic_auth(target=target)
@@ -1684,7 +1684,6 @@ class DecoratorsAuthTest(TestCase):
 
             @endpoints.decorators.auth.token_auth(target=target_bad)
             def foo_bad(self): pass
-
 
         r = endpoints.Request()
         c = TARA()
@@ -1721,26 +1720,31 @@ class DecoratorsAuthTest(TestCase):
             c.foo_bad()
 
     def test_client_auth(self):
+        def target(request, client_id, client_secret):
+            return client_id == "foo" and client_secret == "bar"
+
+        def target_bad(request, *args, **kwargs):
+            pass
+
         class TARA(object):
-            @endpoints.decorators.auth.client_auth(client_apps=[("foo", "bar")])
+            @endpoints.decorators.auth.client_auth(target=target)
             def foo(self): pass
 
-            @endpoints.decorators.auth.client_auth(client_apps=[])
+            @endpoints.decorators.auth.client_auth(target=target_bad)
             def foo_bad(self): pass
 
-
-        username = "foo"
-        password = "..."
+        client_id = "foo"
+        client_secret = "..."
         r = endpoints.Request()
-        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        r.set_header('authorization', self.get_basic_auth_header(client_id, client_secret))
 
         c = TARA()
         c.request = r
         with self.assertRaises(endpoints.AccessDenied):
             c.foo()
 
-        password = "bar"
-        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        client_secret = "bar"
+        r.set_header('authorization', self.get_basic_auth_header(client_id, client_secret))
         c.foo()
 
         with self.assertRaises(endpoints.AccessDenied):

@@ -489,7 +489,7 @@ class Request(Http):
 
         return -- tuple -- client_id, client_secret
         """
-        client_id, client_secret = self.request.get_auth_basic()
+        client_id, client_secret = self.get_auth_basic()
         if not client_id and not client_secret:
             client_id = self.query_kwargs.get('client_id', '')
             client_secret = self.query_kwargs.get('client_secret', '')

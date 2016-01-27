@@ -118,75 +118,14 @@ class client_auth(basic_auth):
     from endpoints import Controller
     from endpoints.decorators.auth import client_auth
 
+    def target(request, client_id, client_secret):
+        return client_id == "foo" and client_secret == "bar"
+
     class Default(Controller):
-        @client_auth(client_apps=[("foo", "bar")])
+        @client_auth(target=target)
         def GET(self):
             return "hello world"
     """
-    def target_callback(self, request, client_id, client_secret, client_apps):
-        found_client_app = self.find_client_app(client_id, client_secret, client_apps)
-        if not found_client_app:
-            raise ValueError("No valid client_id and client_secret auth found")
-        return True
-
-    def normalize_client_apps(self):
-        """compile all the client_apps we want to validate agains
-
-        this is the method that should be overridden in a subclass
-
-        return -- list -- a list of tuples containing (client_id, client_secret) to
-            validate against
-        """
-        client_apps = []
-        try:
-            client_apps = self.client_apps
-        except AttributeError:
-            pass
-        return client_apps
-
-
-    def find_client_app(self, client_id, client_secret, client_apps):
-        """This will handled authenticating against a tuple (client_apps) of
-        (client_id, client_secret) that can be passed into the decorator
-
-        client_id -- string -- the found request client id
-        client_secret -- string -- the found request client_secret
-        client_apps -- list -- a list of (client_id, client_secret, options) tuples to compare
-            the passed in client_id and client_secret against
-
-        return -- tuple -- the found matching client_app from the client_apps list
-        """
-        found_client_app = None
-        for client_t in client_apps:
-            clen = len(client_t)
-            app_cid = client_t[0]
-            app_cs = client_t[1]
-            if client_id == app_cid and client_secret == app_cs:
-                found_client_app = client_t
-                break
-
-        return found_client_app
-
-#     def find_client_params(self, request, *args, **kwargs):
-#         """try and get client id and secret first from basic auth header, then from
-#         GET or POST parameters
-# 
-#         request -- Request -- the active Request instance
-#         *args -- list -- any path passed to controller
-#         **kwargs -- dict -- the combined GET and POST variables passed to controller
-# 
-#         return -- tuple -- client_id, client_secret
-#         """
-#         client_id, client_secret = request.get_auth_basic()
-#         if not client_id and not client_secret:
-#             client_id = kwargs.get('client_id', '')
-#             client_secret = kwargs.get('client_secret', '')
-# 
-#         if not client_id: raise ValueError("client_id is required")
-#         if not client_secret: raise ValueError("client_secret is required")
-# 
-#         return client_id, client_secret
-
     def normalize_target_params(self, request, *args, **kwargs):
         client_id, client_secret = request.client_tokens
 
@@ -197,14 +136,10 @@ class client_auth(basic_auth):
             "request": request,
             "client_id": client_id,
             "client_secret": client_secret,
-            "client_apps": self.normalize_client_apps(),
         }
         return [], kwargs
 
-    def decorate(self, func, target, client_apps=None):
-        if client_apps:
-            self.client_apps = client_apps
-
+    def decorate(self, func, target):
         return super(client_auth, self).decorate(func, target=target)
 
 
