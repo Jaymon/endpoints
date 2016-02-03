@@ -1634,6 +1634,36 @@ class EndpointsTest(TestCase):
         self.assertEqual(s, controllers)
 
 
+class DecoratorsRatelimitTest(TestCase):
+    def test_throttle(self):
+
+        class TARA(object):
+            @endpoints.decorators.ratelimit(limit=3, ttl=1)
+            def foo(self): return 1
+
+        r = endpoints.Request()
+        r.set_header("X_FORWARDED_FOR", "127.0.0.1")
+        c = TARA()
+        c.request = r
+
+        for x in range(3):
+            r = c.foo()
+            self.assertEqual(1, r)
+
+        for x in range(2):
+            with self.assertRaises(endpoints.CallError):
+                c.foo()
+
+        time.sleep(1)
+
+        for x in range(3):
+            r = c.foo()
+            self.assertEqual(1, r)
+
+        for x in range(2):
+            with self.assertRaises(endpoints.CallError):
+                c.foo()
+
 class DecoratorsAuthTest(TestCase):
     def get_basic_auth_header(self, username, password):
         credentials = base64.b64encode('{}:{}'.format(username, password)).strip()

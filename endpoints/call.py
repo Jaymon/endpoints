@@ -344,6 +344,10 @@ class Call(object):
             self.response.add_headers(e.headers)
             ret = e
 
+        elif isinstance(e, NotImplementedError):
+            logger.warning(str(e), exc_info=True)
+            self.response.code = 501
+
         elif isinstance(e, TypeError):
             e_msg = unicode(e)
             if e_msg.startswith(self.request.method) and 'argument' in e_msg:

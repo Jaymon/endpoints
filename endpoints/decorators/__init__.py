@@ -3,11 +3,62 @@ import types
 import re
 import cgi
 from functools import wraps
+import datetime
 
 from decorators import FuncDecorator
 
 from ..exception import CallError, AccessDenied
 from . import auth
+from .base import TargetDecorator
+
+
+class ratelimit(TargetDecorator):
+    def target(self, request, limit, ttl):
+        now = datetime.datetime.utcnow()
+        count = 1
+        calls = getattr(self, "_calls", {})
+        if not calls:
+            calls = {}
+
+        ip = request.ip
+        if ip in calls:
+            count = calls[ip]["count"] + 1
+            if count > limit:
+                td = now - calls[ip]["start_date"]
+                if td.seconds < ttl:
+                    raise ValueError(
+                        "Please wait {} seconds to make another request".format(ttl - td.seconds)
+                    )
+
+                else:
+                    count = 1
+
+            else:
+                now = calls[ip]["start_date"]
+
+        calls[ip] = {
+            "count": count,
+            "start_date": now,
+        }
+
+        self._calls = calls
+        return True
+
+    def normalize_target_params(self, request, *args, **kwargs):
+        kwargs = {
+            "request": request,
+            "limit": self.limit,
+            "ttl": self.ttl,
+        }
+        return [], kwargs
+
+    def handle_error(self, e):
+        raise CallError(429, e.message)
+
+    def decorate(self, func, limit, ttl, *anoop, **kwnoop):
+        self.limit = int(limit)
+        self.ttl = int(ttl)
+        return super(ratelimit, self).decorate(func, target=None, *anoop, **kwnoop)
 
 
 class httpcache(FuncDecorator):
