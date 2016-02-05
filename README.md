@@ -51,7 +51,7 @@ class Foo(Controller):
 
 Now that you have your `mycontroller.py`, let's use the built-in WSGI server to serve them:
 
-    $ endpoints-wsgiserver.py --prefix=mycontroller --host=localhost:8000
+    $ endpoints-wsgiserver --prefix=mycontroller --host=localhost:8000
 
 
 ### Test it out
