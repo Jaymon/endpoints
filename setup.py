@@ -1,5 +1,4 @@
 #!/usr/bin/env python
-# I shamefully ripped most of this off from fbconsole
 # http://docs.python.org/distutils/setupscript.html
 # http://docs.python.org/2/distutils/examples.html
 
@@ -7,17 +6,9 @@ import sys
 from setuptools import setup, find_packages
 import ast
 
-name = 'endpoints'
-version = ''
-with open('{}/__init__.py'.format(name), 'rU') as f:
-    for node in (n for n in ast.parse(f.read()).body if isinstance(n, ast.Assign)):
-        node_name = node.targets[0]
-        if isinstance(node_name, ast.Name) and node_name.id.startswith('__version__'):
-            version = node.value.s
-            break
-
-if not version:
-    raise RuntimeError('Unable to find version number')
+import endpoints
+name = endpoints.__name__
+version = endpoints.__version__
 
 setup(
     name=name,
@@ -39,5 +30,10 @@ setup(
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries',
         'Programming Language :: Python :: 2.7',
     ],
+    entry_points = {
+        'console_scripts': [
+            'endpoints-wsgiserver = {}.bin.wsgiserver:console'.format(name),
+        ],
+    },
     #test_suite = "endpoints_test",
 )

@@ -1,4 +1,7 @@
 from __future__ import absolute_import
+import os
+from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
+import SocketServer
 
 try:
     import uwsgi
@@ -86,22 +89,26 @@ class WSGI(BaseInterface):
         r.raw_request = raw_request
 
         # handle headers not prefixed with http
-        k = 'CONTENT_TYPE'
-        ct = r.environ.pop(k, None)
-        if ct:
-            r.set_header(k, ct)
+        for k, t in {'CONTENT_TYPE': None, 'CONTENT_LENGTH': int}.items():
+            v = r.environ.pop(k, None)
+            if v:
+                r.set_header(k, t(v) if t else v)
 
         if 'wsgi.input' in raw_request:
 
-            if r.get_header('transfer-encoding', "").lower().startswith('chunked'):
-                if uwsgi:
-                    r.body_input = uWSGIChunkedBody()
-
-                else:
-                    raise IOError("Server does not support chunked requests")
+            if "CONTENT_LENGTH" in raw_request and r.get_header("CONTENT_LENGTH", 0) <= 0:
+                r.body_kwargs = {}
 
             else:
-                r.body_input = raw_request['wsgi.input']
+                if r.get_header('transfer-encoding', "").lower().startswith('chunked'):
+                    if uwsgi:
+                        r.body_input = uWSGIChunkedBody()
+
+                    else:
+                        raise IOError("Server does not support chunked requests")
+
+                else:
+                    r.body_input = raw_request['wsgi.input']
 
         else:
             r.body_kwargs = {}
@@ -109,31 +116,74 @@ class WSGI(BaseInterface):
         return r
 
 
-class Server(BaseServer):
+# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server-using-socketserver-framework-in-python?rq=1
+class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
+    """This is here to make the standard wsgi server multithreaded"""
+    pass
+
+
+class WSGIBaseServer(BaseServer):
+    """Common WSGI base configuration"""
     interface_class = WSGI
+    server_class = WSGIHTTPServer
 
+
+class Application(WSGIBaseServer):
+    """The Application that a WSGI server needs
+
+    this extends Server just to make it easier on the end user, basically, all you
+    need to do to use this is in your wsgi-file, you can just do:
+
+        from endpoints.interface.wsgi import Application
+        application = Application()
+
+    and be good to go
+    """
     def __call__(self, environ, start_response):
-        return self.application(environ, start_response)
-
-    def application(self, environ, start_response):
         res = self.interface.handle(environ)
-
         start_response(
             '{} {}'.format(res.code, res.status),
             [(k, str(v)) for k, v in res.headers.items()]
         )
-        #return (b for b in res)
         return res
 
     def create_server(self, **kwargs):
         return None
 
     def handle_request(self):
-        raise NotImplemented("WSGI is handled through application() method")
+        raise NotImplementedError()
 
     def serve_forever(self):
-        raise NotImplemented("WSGI is handled through application() method")
+        raise NotImplementedError()
 
     def serve_count(self, count):
-        raise NotImplemented("WSGI is handled through application() method")
+        raise NotImplementedError()
+
+
+class Server(WSGIBaseServer):
+    """A simple python WSGI Server
+
+    you would normally only use this with the bin/wsgiserver.py script, if you
+    want to use it outside of that, then look at that script for inspiration
+    """
+    application_class=Application
+
+    def create_server(self, **kwargs):
+        host = kwargs.pop('host', '')
+        if not host:
+            host = os.environ['ENDPOINTS_HOST']
+
+        h, p = host.split(':')
+        server_address = (h, int(p))
+
+        s = self.server_class(server_address, WSGIRequestHandler, **kwargs)
+        s.set_app(self.application_class())
+        return s
+
+    def handle_request(self):
+        return self.server.handle_request()
+
+    def serve_forever(self):
+        return self.server.serve_forever()
+
 

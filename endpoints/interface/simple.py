@@ -1,3 +1,13 @@
+###############################################################################
+# DEPRECATED 2-2-2016 - This is deprecated in favor of just using the Python simple
+# WSGI server, no point in supporting this when we can pipe everything through the
+# common WSGI interface
+#
+# This will be removed in the future and won't be maintained from here on out, tests
+# will go away, I'm going to keep it for a bit as an example of how to implement another
+# interface for awhile though. Even though it shouldn't be used
+###############################################################################
+
 import os
 from BaseHTTPServer import HTTPServer, BaseHTTPRequestHandler
 import socket

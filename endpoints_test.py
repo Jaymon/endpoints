@@ -2544,9 +2544,9 @@ class HeadersTest(TestCase):
 
 
 ###############################################################################
-# WSGI support
+# UWSGI support
 ###############################################################################
-class WSGIClient(object):
+class UWSGIClient(object):
 
     application = "server_script.py"
 
@@ -2591,7 +2591,7 @@ class WSGIClient(object):
         return os.linesep.join([
             "#from wsgiref.validate import validator",
             "#application = validator(Server())",
-            "application = Server()",
+            "application = Application()",
         ])
 
     @classmethod
@@ -2655,15 +2655,6 @@ class WSGIClient(object):
                     # flush any remaining output
                     line = process.stdout.read()
                     self.flush(line)
-
-                    # Poll process for new output until finished
-#                     while not self.stopped():
-#                         line = process.stdout.readline()
-#                         if line == '' and process.poll() != None:
-#                             break
-# 
-#                         sys.stdout.write(line)
-#                         sys.stdout.flush()
 
                 except Exception as e:
                     print e
@@ -2760,9 +2751,9 @@ class WSGIClient(object):
 
 
 @skipIf(requests is None, "Skipping WSGI Test because no requests module")
-class WSGITest(TestCase):
+class UWSGITest(TestCase):
 
-    client_class = WSGIClient
+    client_class = UWSGIClient
     #client_instance = None
 
     def setUp(self):
@@ -2860,13 +2851,13 @@ class WSGITest(TestCase):
             "",
         ])
 
+        r = c.post('/', {})
+        self.assertEqual(204, r.code)
+
         r = c.post('/', None, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
         r = c.post('/', None)
-        self.assertEqual(204, r.code)
-
-        r = c.post('/', {})
         self.assertEqual(204, r.code)
 
         r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
@@ -2905,7 +2896,7 @@ class WSGITest(TestCase):
                 "    def body_kwargs(self):",
                 "        raise IOError('timeout during read(0) on wsgi.input')",
                 "",
-                "Server.request_class = Request",
+                "Application.request_class = Request",
                 "",
             ],
         )
@@ -2921,7 +2912,7 @@ class WSGITest(TestCase):
 
     def test_404_request(self):
         controller_prefix = 'wsgi404.request404'
-        c = SimpleClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self): pass",
@@ -2933,7 +2924,7 @@ class WSGITest(TestCase):
 
     def test_response_headers(self):
         controller_prefix = 'resp_headers.resp'
-        c = SimpleClient(controller_prefix, [
+        c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
@@ -2966,16 +2957,16 @@ class WSGITest(TestCase):
 
 
 ###############################################################################
-# Simple Server support
+# WSGI Server support
 ###############################################################################
-class SimpleClient(WSGIClient):
+class WSGIClient(UWSGIClient):
     def get_script_imports(self):
-        return "from endpoints.interface.simple import *"
+        return "from endpoints.interface.wsgi import *"
 
     def get_script_body(self):
         """returns the script body that is used to start the server"""
         return os.linesep.join([
-            "os.environ['ENDPOINTS_SIMPLE_HOST'] = '{}'".format(self.host),
+            "os.environ['ENDPOINTS_HOST'] = '{}'".format(self.host),
             "s = Server()",
             "s.serve_forever()"
         ])
@@ -2984,24 +2975,10 @@ class SimpleClient(WSGIClient):
         return "python {}/{}".format(self.cwd, self.application)
 
 
-@skipIf(requests is None, "Skipping Simple server Test because no requests module")
-class SimpleTest(WSGITest):
-    client_class = SimpleClient
+@skipIf(requests is None, "Skipping wsgi server Test because no requests module")
+class WSGITest(UWSGITest):
+    client_class = WSGIClient
 
     def test_chunked(self):
-        raise SkipTest("chunked is not supported in SimpleClient")
-
-    def test_simple_post(self):
-        controller_prefix = 'simple.post_file'
-        c = SimpleClient(controller_prefix, [
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def POST(self, *args, **kwargs):",
-            "        return kwargs['foo']",
-            "",
-        ])
-
-        r = c.post('/', {"foo": "bar", "baz": "che"})
-        self.assertEqual(200, r.code)
-        self.assertTrue("bar" in r.body)
+        raise SkipTest("chunked is not supported in Python WSGIClient")
 

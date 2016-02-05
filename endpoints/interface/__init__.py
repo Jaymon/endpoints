@@ -69,7 +69,9 @@ class BaseServer(object):
     """the interface that should be used to translate between the supported server"""
 
     server_class = None
-    """the supported server's interface"""
+    """the supported server's interface, there is no common interface for this class.
+    Basically it is the raw backend class that the BaseServer child is translating
+    for endpoints compatibility"""
 
     request_class = Request
     """the endpoints.http.Request compatible class that should be used to make

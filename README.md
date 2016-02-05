@@ -47,32 +47,25 @@ class Foo(Controller):
     return "bang"
 ```
 
+### Start a Server
 
-### Set Up A Simple Python Server
+Now that you have your `mycontroller.py`, let's use the built-in WSGI server to serve them:
 
-Type the following commands to set a few environment variables for your server
+    $ endpoints-wsgiserver.py --prefix=mycontroller --host=localhost:8000
 
-    $ export ENDPOINTS_PREFIX=mycontroller
-    $ export ENDPOINTS_SIMPLE_HOST=localhost:8000
 
-Now create a server file:
+### Test it out
 
-    $ touch myserver.py
+Using curl:
 
-and add the necessary code to run a simple server:
+    $ curl http://localhost:8000
+    "boom"
+    $ curl http://localhost:8000/foo
+    "bang"
+    $ curl http://localhost:8000/ -d "name=Awesome you"
+    "hello Awesome you"
 
-```python
-import os
-
-from endpoints.interface.simple import Server
-
-s = Server()
-s.serve_forever()
-```
-
-Start your server file:
-
-    $ python myserver.py
+That's it. Easy peasy!
 
 
 ## How does it work?
@@ -159,7 +152,7 @@ Finally, in the ***last request***, the Controller module was accessed, then the
 
 ## Fun with parameters, decorators, and more
 
-If you have gotten to this point, congratulations. You understand the basics of endpoints. If you have gotten to this point, and still don't understand endpoints then please go back and make sure you do before reading any further.
+If you have gotten to this point, congratulations. You understand the basics of endpoints. If you don't understand endpoints then please go back and read from the top again before reading any further.
 
 There are a few tricks and features of endpoints that are important to cover as they will add *fun*ctionality to your program.
 
@@ -227,23 +220,23 @@ The require_params decorator as used above will make sure `param1`, `param2`, an
 
 #### Authentication
 
-The `auth` decorator tries to make user authentication easier. It takes a **realm** and a **target** callback in order to perform the authentication.
+Endpoints tries to make user authentication easier, so it includes some handy authentication decorators in [endpoints.decorators.auth](https://github.com/firstopinion/endpoints). 
+
+Perform `basic` authentication:
 
 ```python
 from endpoints import Controller
-from endpoints.decorators import auth
+from endpoints.decorators.auth import basic_auth
 
-def target(request):
-  username, password = request.get_auth_basic()
-  if username != "foo" or password != "bar":
-    raise ValueError("authentication failed")
+def target(request, username, password):
+  return username == "foo" and password == "bar"
 
 class Foo(Controller):
-  @auth("Basic", target)
+  @auth(target)
   def GET(self, **params): pass
 ```
 
-The `auth` decorator can also be subclassed and customized.
+The auth decorators can also be subclassed and customized by just overriding the `target()` method.
 
 
 ### Versioning requests
@@ -254,13 +247,11 @@ You can activate versioning just by adding a new method to your controller using
 
     METHOD_VERSION
 
-So, let's say you have your controllers set up like this:
+So, let's say you have a `controllers.py` which contained:
 
-    site/controllers/__init__.py
-
-and `controllers.__init__.py` contained:
 
 ```python
+# controllers.py
 from endpoints import Controller
 
 class Default(Controller):
@@ -305,17 +296,19 @@ The `CorsMixin` will handle all the `OPTION` requests, and setting all the heade
 
 ## Built in servers
 
-Endpoints comes with wsgi and [Python Simple Server](https://docs.python.org/2/library/basehttpserver.html) support.
+Endpoints comes with wsgi support and has a built-in python wsgi server:
+
+    $ endpoints-wsgiserver --help
 
 
 ### Sample wsgi script for uWSGI
 
 ```python
 import os
-from endpoints.interface.wsgi import Server
+from endpoints.interface.wsgi import Application
 
 os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
-application = Server()
+application = Application()
 ```
 
 That's all you need to set it up if you need it. Then you can start a [uWSGI](http://uwsgi-docs.readthedocs.org/) server to test it out:

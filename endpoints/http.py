@@ -133,7 +133,7 @@ class Headers(dict):
 
     def pop(self, k, *args, **kwargs):
         rk = self.realkey(k)
-        super(Headers, self).pop(rk, *args, **kwargs)
+        return super(Headers, self).pop(rk, *args, **kwargs)
 
     def realkey(self, k):
         """this will return the real key that is actually in the dict, it allows you
@@ -617,7 +617,7 @@ class Request(Http):
         """return the raw version of the body"""
         body = None
         if self.body_input:
-            body = self.body_input.read(int(self.get_header('content-length', -1)))
+            body = self.body_input.read(self.get_header('content-length', -1))
 
         return body
 
@@ -678,7 +678,7 @@ class Request(Http):
         self._body = self._build_body_str(body_kwargs)
 
     def __init__(self):
-        self.environ = {}
+        self.environ = Headers()
         super(Request, self).__init__()
 
     def is_method(self, method):
