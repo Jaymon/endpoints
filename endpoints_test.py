@@ -851,7 +851,6 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(302, res.code)
         self.assertEqual('http://example.com', res.headers['Location'])
 
@@ -868,7 +867,6 @@ class CallTest(TestCase):
         c.request = r
 
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
     def test_handle_404_typeerror_2(self):
@@ -902,7 +900,6 @@ class CallTest(TestCase):
         r.path = u'/hdec'
         c.request = r
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
         r = endpoints.Request()
@@ -910,7 +907,6 @@ class CallTest(TestCase):
         r.path = u'/htype'
         c.request = r
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
         r = endpoints.Request()
@@ -918,7 +914,6 @@ class CallTest(TestCase):
         r.path = u'/'
         c.request = r
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
         r = endpoints.Request()
@@ -926,7 +921,6 @@ class CallTest(TestCase):
         r.path = u'/'
         c.request = r
         res = c.handle()
-        res.body # we need to cause the body to be handled
         self.assertEqual(404, res.code)
 
     def test_handle_404_typeerror_3(self):

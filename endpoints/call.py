@@ -319,7 +319,7 @@ class Call(object):
         body = callback(*callback_args, **callback_kwargs)
         return body
 
-    def handle_error(self, e):
+    def handle_error(self, e, **kwargs):
         ret = None
         if isinstance(e, CallStop):
             logger.info(str(e), exc_info=True)
@@ -370,6 +370,9 @@ class Call(object):
 
         return -- Response() -- the response object with a body already"""
         body = None
+        callback = None
+        callback_args = []
+        callback_kwargs = {}
         try:
             self.response.set_header('Content-Type', "{};charset={}".format(self.content_type, self.charset))
             self.response.charset = self.charset
@@ -377,7 +380,12 @@ class Call(object):
             body = self.handle_controller(callback, callback_args, callback_kwargs)
 
         except Exception as e:
-            body = self.handle_error(e)
+            body = self.handle_error(
+                e,
+                callback_args=callback_args,
+                callback_kwargs=callback_kwargs,
+                callback=callback
+            )
 
         finally:
             self.response.body = body

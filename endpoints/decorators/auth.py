@@ -1,15 +1,14 @@
 from __future__ import absolute_import
 import logging
 
-from decorators import FuncDecorator
-
 from ..exception import CallError, AccessDenied
+from .base import TargetDecorator
 
 
 logger = logging.getLogger(__name__)
 
 
-class auth(FuncDecorator):
+class auth(TargetDecorator):
     """
     handy auth decorator that makes doing basic or token auth easy peasy
 
@@ -34,43 +33,16 @@ class auth(FuncDecorator):
         def GET(self):
             return "hello world"
     """
-    def normalize_target_params(self, request, *args, **kwargs):
-        param_args = [request] + list(args)
-        return param_args, kwargs
 
-    def target(self, request, *args, **kwargs):
-        try:
-            return self.target_callback(request, *args, **kwargs)
-
-        except (AttributeError, TypeError) as e:
-            logger.debug(e, exc_info=True)
+    def handle_error(self, e):
+        if isinstance(e, NotImplementedError):
             raise CallError(403, "You need a validator function to use authentication")
-
-    def handle_target(self, request, *args, **kwargs):
-
-        try:
-            param_args, param_kwargs = self.normalize_target_params(request, *args, **kwargs)
-            ret = self.target(*param_args, **param_kwargs)
-            if not ret:
-                raise ValueError("target did not return True")
-
-        except CallError:
-            raise
-
-        except Exception as e:
-            logger.debug(e, exc_info=True)
+        else:
             raise AccessDenied(self.realm, e.message)
 
     def decorate(self, func, realm='', target=None, *anoop, **kwnoop):
         self.realm = realm
-        if target:
-            self.target_callback = target
-
-        def decorated(decorated_self, *args, **kwargs):
-            self.handle_target(decorated_self.request, *args, **kwargs)
-            return func(decorated_self, *args, **kwargs)
-
-        return decorated
+        return super(auth, self).decorate(func, target=target)
 
 
 class basic_auth(auth):
@@ -104,7 +76,7 @@ class basic_auth(auth):
         }
         return [], kwargs
 
-    def decorate(self, func, target):
+    def decorate(self, func, target=None):
         return super(basic_auth, self).decorate(func, realm="basic", target=target)
 
 
@@ -139,7 +111,7 @@ class client_auth(basic_auth):
         }
         return [], kwargs
 
-    def decorate(self, func, target):
+    def decorate(self, func, target=None):
         return super(client_auth, self).decorate(func, target=target)
 
 
@@ -173,7 +145,7 @@ class token_auth(auth):
         }
         return [], kwargs
 
-    def decorate(self, func, target):
+    def decorate(self, func, target=None):
         return super(token_auth, self).decorate(func, realm="Bearer", target=target)
 
 

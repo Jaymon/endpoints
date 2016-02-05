@@ -22,7 +22,7 @@ class TargetDecorator(FuncDecorator):
             param_args, param_kwargs = self.normalize_target_params(request, *args, **kwargs)
             ret = self.target(*param_args, **param_kwargs)
             if not ret:
-                raise ValueError("target did not return True")
+                raise ValueError("{} check failed".format(self.__class__.__name__))
 
         except CallError:
             raise
