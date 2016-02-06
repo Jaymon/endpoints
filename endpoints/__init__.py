@@ -18,5 +18,5 @@ if logger.handlers:
 del(logger)
 
 
-__version__ = '1.1.3'
+__version__ = '1.1.4'
 

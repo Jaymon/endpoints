@@ -13,32 +13,49 @@ from .base import TargetDecorator
 
 
 class ratelimit(TargetDecorator):
-    def target(self, request, limit, ttl):
+    """Rate limit a certain endpoint
+
+    example --
+
+    from endpoints import Controller
+    from endpoints.decorators import ratelimit
+
+    class Default(Controller):
+        @ratelimit(10, 3600) # you can make 10 requests per hour
+        def GET(self):
+            return "hello world"
+    """
+    def target(self, request, key, limit, ttl):
+        """this is what is run to check if requests should be throttled
+
+        you should override this method if you want to customize the implementation
+
+        request -- Request -- the request instance
+        key -- string -- the unique key for the endpoint
+        limit -- int -- max requests that should be received in ttl
+        ttl -- int -- how many seconds they should be throttled for (3600 = 1 hour)
+        """
         now = datetime.datetime.utcnow()
         count = 1
         calls = getattr(self, "_calls", {})
         if not calls:
             calls = {}
 
-        ip = request.ip
-        if ip in calls:
-            count = calls[ip]["count"] + 1
+        if key in calls:
+            count = calls[key]["count"] + 1
             if count > limit:
-                td = now - calls[ip]["start_date"]
+                td = now - calls[key]["date"]
                 if td.seconds < ttl:
                     raise ValueError(
                         "Please wait {} seconds to make another request".format(ttl - td.seconds)
                     )
 
                 else:
-                    count = 1
+                    count = 1 # we are starting over
 
-            else:
-                now = calls[ip]["start_date"]
-
-        calls[ip] = {
+        calls[key] = {
             "count": count,
-            "start_date": now,
+            "date": now,
         }
 
         self._calls = calls
@@ -47,15 +64,23 @@ class ratelimit(TargetDecorator):
     def normalize_target_params(self, request, *args, **kwargs):
         kwargs = {
             "request": request,
+            "key": self.normalize_key(request),
             "limit": self.limit,
             "ttl": self.ttl,
         }
         return [], kwargs
 
+    def normalize_key(self, request):
+        """if you don't want to override target but do want to customize the key,
+        override this method, this is mainly for convenience of child classes"""
+        return "{}.{}".format(request.ip, request.path)
+
     def handle_error(self, e):
+        """all exceptions should generate 429 responses"""
         raise CallError(429, e.message)
 
     def decorate(self, func, limit, ttl, *anoop, **kwnoop):
+        """see target for an explanation of limit and ttl"""
         self.limit = int(limit)
         self.ttl = int(ttl)
         return super(ratelimit, self).decorate(func, target=None, *anoop, **kwnoop)

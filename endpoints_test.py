@@ -1635,10 +1635,15 @@ class DecoratorsRatelimitTest(TestCase):
             @endpoints.decorators.ratelimit(limit=3, ttl=1)
             def foo(self): return 1
 
-        r = endpoints.Request()
-        r.set_header("X_FORWARDED_FOR", "127.0.0.1")
+            @endpoints.decorators.ratelimit(limit=10, ttl=1)
+            def bar(self): return 2
+
+
+        r_foo = endpoints.Request()
+        r_foo.set_header("X_FORWARDED_FOR", "276.0.0.1")
+        r_foo.path = "/foo"
         c = TARA()
-        c.request = r
+        c.request = r_foo
 
         for x in range(3):
             r = c.foo()
@@ -1648,7 +1653,20 @@ class DecoratorsRatelimitTest(TestCase):
             with self.assertRaises(endpoints.CallError):
                 c.foo()
 
-        time.sleep(1)
+        # make sure another path isn't messed with by foo
+        r_bar = endpoints.Request()
+        r_bar.set_header("X_FORWARDED_FOR", "276.0.0.1")
+        r_bar.path = "/bar"
+        c.request = r_bar
+        for x in range(10):
+            r = c.bar()
+            self.assertEqual(2, r)
+            time.sleep(0.1)
+
+        with self.assertRaises(endpoints.CallError):
+            c.bar()
+
+        c.request = r_foo
 
         for x in range(3):
             r = c.foo()
