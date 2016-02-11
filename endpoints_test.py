@@ -1825,8 +1825,29 @@ class DecoratorsAuthTest(TestCase):
         with self.assertRaises(endpoints.AccessDenied):
             c.foo_bad()
 
+    def test_basic_auth_same_kwargs(self):
+        def target(request, username, password):
+            if username != "bar":
+                raise ValueError()
+            return True
+
+        class MockObject(object):
+            @endpoints.decorators.auth.basic_auth(target=target)
+            def foo(self, *args, **kwargs): return 1
+
+        c = MockObject()
+        username = "bar"
+        password = "..."
+        r = endpoints.Request()
+        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        c.request = r
+
+        # if no TypeError is raised then it worked :)
+        r = c.foo(request="this_should_error_out")
+        self.assertEqual(1, r)
+
     def test_auth(self):
-        def target(request):
+        def target(request, controller_args, controller_kwargs):
             if request.body_kwargs["foo"] != "bar":
                 raise ValueError()
             return True

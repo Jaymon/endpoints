@@ -61,7 +61,7 @@ class ratelimit(TargetDecorator):
         self._calls = calls
         return True
 
-    def normalize_target_params(self, request, *args, **kwargs):
+    def normalize_target_params(self, request, controller_args, controller_kwargs):
         kwargs = {
             "request": request,
             "key": self.normalize_key(request),

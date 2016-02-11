@@ -33,7 +33,6 @@ class auth(TargetDecorator):
         def GET(self):
             return "hello world"
     """
-
     def handle_error(self, e):
         if isinstance(e, NotImplementedError):
             raise CallError(403, "You need a validator function to use authentication")
@@ -63,7 +62,7 @@ class basic_auth(auth):
         def GET(self):
             return "hello world"
     """
-    def normalize_target_params(self, request, *args, **kwargs):
+    def normalize_target_params(self, request, controller_args, controller_kwargs):
         username, password = request.get_auth_basic()
 
         if not username: raise ValueError("username is required")
@@ -98,7 +97,7 @@ class client_auth(basic_auth):
         def GET(self):
             return "hello world"
     """
-    def normalize_target_params(self, request, *args, **kwargs):
+    def normalize_target_params(self, request, controller_args, controller_kwargs):
         client_id, client_secret = request.client_tokens
 
         if not client_id: raise ValueError("client_id is required")
@@ -134,7 +133,7 @@ class token_auth(auth):
         def GET(self):
             return "hello world"
     """
-    def normalize_target_params(self, request, *args, **kwargs):
+    def normalize_target_params(self, request, controller_args, controller_kwargs):
         access_token = request.access_token
 
         if not access_token: raise ValueError("access_token is required")
