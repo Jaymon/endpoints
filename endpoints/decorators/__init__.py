@@ -64,13 +64,17 @@ class ratelimit(TargetDecorator):
     def normalize_target_params(self, request, controller_args, controller_kwargs):
         kwargs = {
             "request": request,
-            "key": self.normalize_key(request),
+            "key": self.normalize_key(
+                request,
+                controller_args=controller_args,
+                controller_kwargs=controller_kwargs,
+            ),
             "limit": self.limit,
             "ttl": self.ttl,
         }
         return [], kwargs
 
-    def normalize_key(self, request):
+    def normalize_key(self, request, *args, **kwargs):
         """if you don't want to override target but do want to customize the key,
         override this method, this is mainly for convenience of child classes"""
         return "{}.{}".format(request.ip, request.path)
