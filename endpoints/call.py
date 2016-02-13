@@ -388,9 +388,12 @@ class Call(object):
             )
 
         finally:
-            self.response.body = body
             if self.response.code == 204:
                 self.response.headers.pop('Content-Type', None)
+                self.response.body = None
+
+            else:
+                self.response.body = body
 
         return self.response
 

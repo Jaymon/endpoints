@@ -974,18 +974,23 @@ class CallTest(TestCase):
             "class Testcallstop(Controller):",
             "    def GET(*args, **kwargs):",
             "        raise CallStop(205, None)",
+            "",
             "class Testcallstop2(Controller):",
             "    def GET(*args, **kwargs):",
-            "        raise CallStop(200, 'this is the body')"
+            "        raise CallStop(200, 'this is the body')",
+            "",
+            "class Testcallstop3(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise CallStop(204, 'this is ignored')",
         ])
-        testdata.create_module("controllerhcs.handlecallstop", contents=contents)
+        testdata.create_module("handlecallstop", contents=contents)
 
         r = endpoints.Request()
-        r.path = u"/handlecallstop/testcallstop"
-        r.path_args = [u'handlecallstop', u'testcallstop']
+        r.path = u"/testcallstop"
+        r.path_args = [u'testcallstop']
         r.query_kwargs = {}
         r.method = u"GET"
-        c = endpoints.Call("controllerhcs")
+        c = endpoints.Call("handlecallstop")
         c.response = endpoints.Response()
         c.request = r
 
@@ -994,11 +999,17 @@ class CallTest(TestCase):
         self.assertEqual(None, res._body)
         self.assertEqual(205, res.code)
 
-        r.path = u"/handlecallstop/testcallstop2"
-        r.path_args = [u'handlecallstop', u'testcallstop2']
+        r.path = u"/testcallstop2"
+        r.path_args = [u'testcallstop2']
         res = c.handle()
         self.assertEqual('"this is the body"', res.body)
         self.assertEqual(200, res.code)
+
+        r.path = u"/testcallstop3"
+        r.path_args = [u'testcallstop3']
+        res = c.handle()
+        self.assertEqual(None, res._body)
+        self.assertEqual(204, res.code)
 
 #     def test_bad_query_bad_path(self):
 #         """Jarid and I noticed these errors always popping up in the logs, they 
