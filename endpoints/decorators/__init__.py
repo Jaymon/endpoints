@@ -45,7 +45,7 @@ class ratelimit(TargetDecorator):
             count = calls[key]["count"] + 1
             if count > limit:
                 td = now - calls[key]["date"]
-                if td.seconds < ttl:
+                if td.total_seconds() < ttl:
                     raise ValueError(
                         "Please wait {} seconds to make another request".format(ttl - td.seconds)
                     )
