@@ -1,10 +1,12 @@
 import threading
 import os
 import inspect
-import endpoints
 import subprocess
 import time
 import sys
+
+import endpoints
+from ..utils import Host
 
 
 class WSGIThread(threading.Thread):
@@ -40,10 +42,6 @@ class WSGIThread(threading.Thread):
                 if self.stopped():
                     break
 
-            # flush any remaining output
-#             line = process.stdout.read()
-#             self.flush(line)
-
         except Exception as e:
             if not self.server.quiet:
                 print e
@@ -76,7 +74,7 @@ class WSGIServer(object):
 
     example --
 
-        server = WSGIClient("foo.bar")
+        server = WSGIServer("foo.bar")
         server.start()
     """
 
@@ -89,24 +87,24 @@ class WSGIServer(object):
             path = self.autodiscover_path()
         return path
 
-    def __init__(self, controller_prefix, path="", port=8080, host="0.0.0.0", quiet=False):
+    def __init__(self, controller_prefix, host="localhost:8080", quiet=False, **kwargs):
         """create a WSGI simple server
 
         controller_prefix -- string -- the endpoints prefix, the value that would be passed
             to ENDPOINTS_PREFIX
+        host -- string -- the hostname:port, something like 127.0.0.1:8080 or 0.0.0.0:8080 or localhost
         path -- string -- the path to the wsgi file, this will be set to self.autodiscover_path()
             if it isn't passed in
-        port -- integer -- the port to use
-        host -- string -- the host, something like 127.0.0.1 or 0.0.0.0 or localhost
         quiet -- boolean -- True to silence server output, False (default) to print output to stdout
+        **kwargs -- dict -- provides an easy hook to set other instance properties
         """
-        self.cwd = os.curdir
         self.controller_prefix = controller_prefix
-        self._path = path
-        self.host = host
-        self.port = port
+        self.host = Host(host)
         self.quiet = quiet
-        self.env = {}
+
+        self.cwd = kwargs.get("cwd", os.curdir)
+        self._path = kwargs.get("path", "")
+        self.env = kwargs.get("env", {})
 
     def kill(self):
         cmd = "pkill -9 -f {}".format(self.path)
@@ -125,7 +123,7 @@ class WSGIServer(object):
         return [
             "python",
             self.path,
-            "--host={}:{}".format(self.host, self.port),
+            "--host={}".format(self.host),
             "--prefix={}".format(self.controller_prefix),
         ]
 
@@ -139,6 +137,12 @@ class WSGIServer(object):
 
         env = dict(os.environ)
         env.update(self.env)
+
+        if "PYTHONPATH" in env:
+            env["PYTHONPATH"] += os.pathsep + self.cwd
+        else:
+            env["PYTHONPATH"] = self.cwd
+
         kwargs["env"] = env
 
         return args, kwargs
@@ -163,7 +167,7 @@ class UWSGIServer(WSGIServer):
     def get_start_cmd(self):
         return [
             "uwsgi",
-            "--http={}:{}".format(self.host, self.port),
+            "--http={}".format(self.host),
             "--show-config",
             "--master",
             "--processes=1",

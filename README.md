@@ -326,8 +326,3 @@ After cloning the repo, `cd` into the repo's directory and run:
 
 Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests because there are dependencies that the tests need that the rest of the package does not.
 
-
-## License
-
-MIT
-

@@ -8,21 +8,26 @@ import requests
 from requests.auth import HTTPBasicAuth
 
 from ..http import Headers
+from ..utils import Host
 
 
 class HTTPClient(object):
     """A generic test client that can make endpoint requests"""
     timeout = 10
 
-    def __init__(self, host="localhost", *args, **kwargs):
-        if host:
-            self.host = host
+    def __init__(self, host, *args, **kwargs):
+        self.host = Host(host)
 
         # these are the common headers that usually don't change all that much
         self.headers = Headers({
             "x-forwarded-for": "127.0.0.1",
             "user-agent": "Endpoints client",
         })
+
+        if kwargs.get("json", False):
+            self.headers.update({
+                "content-type": "application/json",
+            })
 
     def get(self, uri, query=None, **kwargs):
         """make a GET request"""
@@ -35,13 +40,16 @@ class HTTPClient(object):
     def post_file(self, uri, body, files, **kwargs):
         """POST a file"""
         kwargs["files"] = files
+        #for key in files.keys():
+        #    if isinstance(files[key], basestring):
+        #        files[key] = open(files[key], 'rb')
 
-#         filepath = kwargs.pop("filepath", None)
-#         if filepath:
-#             files = {'file': open(filepath, 'rb')}
-#             kwargs.setdefault("files", files)
-
-        return self.fetch('post', uri, {}, body, **kwargs)
+        # we ignore content type for posting files since it requires very specific things
+        ct = self.headers.pop("content-type", None)
+        ret = self.fetch('post', uri, {}, body, **kwargs)
+        if ct:
+            self.headers["content-type"] = ct
+        return ret
 
     def post_chunked(self, uri, body, **kwargs):
         """POST a file to the uri using a Chunked transfer, this works exactly like
@@ -117,14 +125,6 @@ class HTTPClient(object):
         self.response = res
         return res
 
-    def get_host(self):
-        host = self.host
-        host = host.rstrip('/')
-        return host
-
-    def get_method(self):
-        return "http"
-
     def get_query(self, query_str, query):
         if query:
             more_query_str = urllib.urlencode(query, doseq=True)
@@ -136,8 +136,7 @@ class HTTPClient(object):
         return query_str
 
     def get_url(self, uri, query=None):
-        method = self.get_method()
-        host = self.get_host()
+        base_url = self.host.url
 
         query_str = ''
         if '?' in uri:
@@ -150,7 +149,7 @@ class HTTPClient(object):
         if query_str:
             uri = '{}?{}'.format(uri, query_str)
 
-        ret_url = '{}://{}/{}'.format(self.get_method(), host, uri)
+        ret_url = '{}/{}'.format(base_url, uri)
         return ret_url
 
     def get_fetch_body(self, body):
@@ -163,13 +162,27 @@ class HTTPClient(object):
             it a bit to make it look a bit more like the internal endpoints.Response object
         """
         res.code = res.status_code
+        res.headers = Headers(res.headers)
         res._body = None
         res.body = ''
         body = res.content
         if body:
-            res._body = body
+            if self.is_json(res.headers):
+                res._body = res.json()
+            else:
+                res._body = body
+
             res.body = body
+
         return res
+
+    def is_json(self, headers):
+        """return true if content_type is a json content type"""
+        ret = False
+        ct = headers.get("content-type", "").lower()
+        if ct:
+            ret = ct.lower().rfind("json") >= 0
+        return ret
 
     def basic_auth(self, username, password):
         '''
@@ -197,29 +210,4 @@ class HTTPClient(object):
             self.headers["content-type"],
             version
         )
-
-
-class JSONClient(HTTPClient):
-    """This is just like the HTTPClient but assumes json POST bodies and json response
-    bodies"""
-    def __init__(self, *args, **kwargs):
-        super(JSONClient, self).__init__(*args, **kwargs)
-
-        # these are the common headers that usually don't change all that much
-        self.headers.update({
-            "content-type": "application/json",
-        })
-
-    def get_fetch_body(self, body):
-        if not body: body = {}
-        merged_body = dict(body)
-        merged_body = json.dumps(merged_body)
-        return merged_body
-
-    def get_fetch_response(self, res):
-        """the goal of this method is to make the requests object more endpoints like"""
-        res = super(JSONClient, self).get_fetch_response(res)
-        if res.body:
-            res._body = res.json()
-        return res
 

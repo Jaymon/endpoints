@@ -1,5 +1,57 @@
 import re
 import mimetypes
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse #py3
+
+
+class Host(str):
+    """A host string is defined as hostname:port for my purposes
+
+    This class attempts to sooth the rough edges to make sure there is access to
+    what is needed
+
+    example --
+        h = Host("https://foo.com:8080")
+        print h # foo.com:8080
+        print h.hostname # foo.com
+        print h.url # http://foo.com:8080
+        print h.port # 8080
+    """
+    @property
+    def hostname(self):
+        b = self.split(":")
+        return b[0]
+
+    @property
+    def port(self):
+        b = self.split(":")
+        return int(b[1]) if len(b) > 1 else 0
+
+    @property
+    def netloc(self):
+        return self
+
+    @property
+    def url(self):
+        return "{}://{}".format(self.scheme, self)
+
+    def __new__(cls, host):
+        b = urlparse.urlparse(host.rstrip("/"))
+        if b.scheme:
+            scheme = b.scheme.lower()
+            netloc = b.netloc
+
+        else:
+            scheme = "http"
+            netloc = b.path
+
+        netloc = netloc.lower()
+        instance = super(Host, cls).__new__(cls, netloc)
+
+        instance.scheme = scheme
+        return instance
 
 
 class MimeType(object):

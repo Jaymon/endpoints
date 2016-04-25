@@ -91,6 +91,10 @@ class Headers(dict):
             if krare == akrare:
                 yield ak
 
+    def __setitem__(self, k, v):
+        nk = self.realkey(k)
+        super(Headers, self).__setitem__(nk, v)
+
     def __getitem__(self, k):
         nk = self.realkey(k)
         return super(Headers, self).__getitem__(nk)

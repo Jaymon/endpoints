@@ -1,4 +1,4 @@
-from unittest import TestCase, skipIf, SkipTest
+from . import TestCase, skipIf, SkipTest
 import os
 import codecs
 import hashlib
@@ -7,7 +7,7 @@ import json
 import requests
 import testdata
 
-from endpoints.client.http import HTTPClient, JSONClient
+from endpoints.client.http import HTTPClient
 from endpoints.client.wsgi import WSGIServer, UWSGIServer
 
 
@@ -20,13 +20,13 @@ class UWSGIClient(object):
     server_class = UWSGIServer
     server_script_name = "endpoints_testserver_script.py"
 
-    def __init__(self, controller_prefix, module_body, config_module_body=''):
+    def __init__(self, controller_prefix, module_body, config_module_body='', host=''):
         self.cwd = testdata.create_dir()
         #self.controller_prefix = controller_prefix
         #self.module_body = os.linesep.join(module_body)
 
         # client
-        self.client = self.client_class("localhost:8080")
+        self.client = self.client_class(host)
 
         # create the controller module
         self.module_path = testdata.create_module(
@@ -61,9 +61,9 @@ class UWSGIClient(object):
 
         # server
         self.server = self.server_class(
-            controller_prefix,
-            self.script_path,
-            port=8080
+            controller_prefix=controller_prefix,
+            host=host,
+            path=self.script_path
         )
         self.server.cwd = self.cwd
         self.server.start()
@@ -78,7 +78,7 @@ class UWSGIClient(object):
 
     @classmethod
     def kill(cls):
-        cls.server_class("", cls.server_script_name).kill()
+        cls.server_class(controller_prefix="", path=cls.server_script_name).kill()
 
     def __getattr__(self, key):
         try:
@@ -92,7 +92,6 @@ class UWSGIClient(object):
 class UWSGITest(TestCase):
 
     client_class = UWSGIClient
-    #client_instance = None
 
     def setUp(self):
         self.client_class.kill()
@@ -101,10 +100,8 @@ class UWSGITest(TestCase):
         self.client_class.kill()
 
     def create_client(self, *args, **kwargs):
+        kwargs.setdefault("host", self.get_host())
         return self.client_class(*args, **kwargs)
-#         if not self.client_instance:
-#             self.client_instance = self.client_class(*args, **kwargs)
-#         return self.client_instance
 
     def test_chunked(self):
         filepath = testdata.create_file("filename.txt", testdata.get_words(500))
@@ -318,4 +315,39 @@ class WSGITest(UWSGITest):
 
     def test_chunked(self):
         raise SkipTest("chunked is not supported in Python WSGIClient")
+
+
+###############################################################################
+# Client tests
+###############################################################################
+class HTTPClientTest(TestCase):
+
+    def create_server(self, controller_prefix, contents):
+        tdm = testdata.create_module(controller_prefix, contents)
+        server = WSGIServer(controller_prefix, self.get_host())
+        server.cwd = tdm.basedir
+        server.kill()
+        return server
+
+    def create_client(self):
+        client = HTTPClient(self.get_host())
+        return client
+
+    def test_post_file(self):
+        filepath = testdata.create_file("json_post_file.txt", "json post file")
+        controller_prefix = 'jsonclient.controller'
+        server = self.create_server(controller_prefix, [
+            "from endpoints import Controller, decorators",
+            "class Default(Controller):",
+            "    @decorators.param('file')",
+            "    def POST(self, *args, **kwargs):",
+            "        return dict(body=kwargs['file'].filename)",
+            "",
+        ])
+        server.start()
+        c = self.create_client()
+        r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
+        self.assertEqual(200, r.code)
+        self.assertEqual("json_post_file.txt", r._body["body"])
+        server.stop()
 
