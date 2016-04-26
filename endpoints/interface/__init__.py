@@ -20,12 +20,17 @@ class BaseInterface(object):
         self.call_class = call_class
 
     def create_request(self, raw_request, **kwargs):
+        """convert the raw interface raw_request to a request that endpoints understands"""
         raise NotImplemented()
 
     def create_response(self, **kwargs):
+        """create the endpoints understandable response instance that is used to
+        return output to the client"""
         return self.response_class()
 
     def create_call(self, raw_request, **kwargs):
+        """create a call object that has endpoints understandable request and response
+        instances"""
         c = self.call_class(self.controller_prefix)
         c.request = self.create_request(raw_request, **kwargs)
         c.response = self.create_response(**kwargs)
@@ -85,30 +90,11 @@ class BaseServer(object):
     """the endpoints.call.Call compatible class that should be used to make a
     Call() instance"""
 
-    def __init__(self, controller_prefix='', interface_class=None, server_class=None, \
-                 request_class=None, response_class=None, call_class=None, **kwargs):
+    def __init__(self, controller_prefix='', **kwargs):
         if controller_prefix:
             self.controller_prefix = controller_prefix
         if not self.controller_prefix:
             self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
-
-        if interface_class:
-            self.interface_class = interface_class
-
-        if server_class:
-            self.server_class = server_class
-
-        if request_class:
-            self.request_class = request_class
-
-        if response_class:
-            self.response_class = response_class
-
-        if call_class:
-            self.call_class = call_class
-
-        self.interface = self.create_interface(**kwargs)
-        self.server = self.create_server(**kwargs)
 
     def create_interface(self, **kwargs):
         kwargs.setdefault('call_class', self.call_class)
@@ -124,6 +110,7 @@ class BaseServer(object):
         raise NotImplemented()
 
     def serve_forever(self):
+        self.prepare()
         try:
             while True: self.handle_request()
         except Exception as e:
@@ -131,6 +118,7 @@ class BaseServer(object):
             raise
 
     def serve_count(self, count):
+        self.prepare()
         try:
             handle_count = 0
             while handle_count < count:
@@ -139,4 +127,13 @@ class BaseServer(object):
         except Exception as e:
             logger.exception(e)
             raise
+
+    def prepare(self):
+        """this should be called in all request handling methods to make sure the
+        internal object is "ready" to process requests"""
+        if not hasattr(self, "interface"):
+            self.interface = self.create_interface()
+
+        if not hasattr(self, "server"):
+            self.server = self.create_server()
 

@@ -78,23 +78,20 @@ class WSGIServer(object):
         server.start()
     """
 
-    script = "wsgiserver.py"
+    bin_script = "wsgiserver.py"
 
     @property
     def path(self):
-        path = self._path
-        if not path:
-            path = self.autodiscover_path()
-        return path
+        endpoints_dir = os.path.dirname(inspect.getsourcefile(endpoints))
+        return os.path.join(endpoints_dir, "bin", self.bin_script)
 
-    def __init__(self, controller_prefix, host="localhost:8080", quiet=False, **kwargs):
+    def __init__(self, controller_prefix, host="localhost:8080", wsgifile="", quiet=False, **kwargs):
         """create a WSGI simple server
 
         controller_prefix -- string -- the endpoints prefix, the value that would be passed
             to ENDPOINTS_PREFIX
         host -- string -- the hostname:port, something like 127.0.0.1:8080 or 0.0.0.0:8080 or localhost
-        path -- string -- the path to the wsgi file, this will be set to self.autodiscover_path()
-            if it isn't passed in
+        wsgifile -- string -- the path to the wsgi file that has an application callable
         quiet -- boolean -- True to silence server output, False (default) to print output to stdout
         **kwargs -- dict -- provides an easy hook to set other instance properties
         """
@@ -103,29 +100,29 @@ class WSGIServer(object):
         self.quiet = quiet
 
         self.cwd = kwargs.get("cwd", os.curdir)
-        self._path = kwargs.get("path", "")
+        self.wsgifile = wsgifile
         self.env = kwargs.get("env", {})
 
     def kill(self):
-        cmd = "pkill -9 -f {}".format(self.path)
+        key = self.wsgifile
+        if not key:
+            key = self.path
+        cmd = "pkill -9 -f {}".format(key)
         subprocess.call("{} > /dev/null 2>&1".format(cmd), shell=True)
 
-    def autodiscover_path(self):
-        # get this source directory
-        endpoints_dir = os.path.dirname(inspect.getsourcefile(endpoints))
-        #this_dir = os.path.dirname(inspect.getsourcefile(WSGIClient))
-
-        # now get the endpoints
-        #os.path.join(, "..")
-        return os.path.join(endpoints_dir, "bin", self.script)
-
     def get_start_cmd(self):
-        return [
+        cmd = [
             "python",
             self.path,
             "--host={}".format(self.host),
             "--prefix={}".format(self.controller_prefix),
         ]
+
+        wsgifile = self.wsgifile
+        if wsgifile:
+            cmd.append('--file={}'.format(wsgifile))
+
+        return cmd
 
     def get_subprocess_args_and_kwargs(self):
         args = [self.get_start_cmd()]
@@ -156,13 +153,24 @@ class WSGIServer(object):
 
     def stop(self):
         """http://stackoverflow.com/questions/323972/is-there-any-way-to-kill-a-thread-in-python"""
-        self.thread.stop()
+        try:
+            self.thread.stop()
+        except AttributeError:
+            pass
+
         self.kill()
 
 
 class UWSGIServer(WSGIServer):
 
-    script = "wsgifile.py"
+    bin_script = "wsgifile.py"
+    process_count = 1
+
+    def __init__(self, *args, **kwargs):
+        super(UWSGIServer, self).__init__(*args, **kwargs)
+
+        if not self.wsgifile:
+            self.wsgifile = self.path
 
     def get_start_cmd(self):
         return [
@@ -170,12 +178,12 @@ class UWSGIServer(WSGIServer):
             "--http={}".format(self.host),
             "--show-config",
             "--master",
-            "--processes=1",
+            "--processes={}".format(self.process_count),
             "--cpu-affinity=1",
             "--thunder-lock",
             "--http-raw-body",
             "--chdir={}".format(self.cwd),
-            "--wsgi-file={}".format(self.path),
+            "--wsgi-file={}".format(self.wsgifile),
         ]
 
     def get_subprocess_args_and_kwargs(self):

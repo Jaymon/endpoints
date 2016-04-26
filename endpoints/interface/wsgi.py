@@ -70,7 +70,7 @@ class uWSGIChunkedBody(object):
         return line
 
 
-class WSGI(BaseInterface):
+class WSGIInterface(BaseInterface):
     def create_request(self, raw_request, **kwargs):
         """
         create instance of request
@@ -125,7 +125,7 @@ class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
 
 class WSGIBaseServer(BaseServer):
     """Common WSGI base configuration"""
-    interface_class = WSGI
+    interface_class = WSGIInterface
     server_class = WSGIHTTPServer
 
 
@@ -140,7 +140,12 @@ class Application(WSGIBaseServer):
 
     and be good to go
     """
+    def __init__(self, *args, **kwargs):
+        super(Application, self).__init__(*args, **kwargs)
+        self.prepare()
+
     def __call__(self, environ, start_response):
+        """this is what will be called for each request that that WSGI server handles"""
         res = self.interface.handle(environ)
         start_response(
             '{} {}'.format(res.code, res.status),
@@ -169,6 +174,22 @@ class Server(WSGIBaseServer):
     """
     application_class=Application
 
+    @property
+    def application(self):
+        """if no application has been set, then create it using application_class"""
+        app = getattr(self, "_application", None)
+        if not app:
+            app = self.application_class()
+            self._application = app
+        return app
+
+    @application.setter
+    def application(self, v):
+        """allow overriding of the application factory, this allows you to set
+        your own application callable that will be used to handle requests, see
+        bin/wsgiserver.py script as an example of usage"""
+        self._application = v
+
     def create_server(self, **kwargs):
         host = kwargs.pop('host', '')
         if not host:
@@ -178,13 +199,15 @@ class Server(WSGIBaseServer):
         server_address = (host.hostname, host.port)
 
         s = self.server_class(server_address, WSGIRequestHandler, **kwargs)
-        s.set_app(self.application_class())
+        s.set_app(self.application)
         return s
 
     def handle_request(self):
+        self.prepare()
         return self.server.handle_request()
 
     def serve_forever(self):
+        self.prepare()
         return self.server.serve_forever()
 
 

@@ -22,10 +22,6 @@ class UWSGIClient(object):
 
     def __init__(self, controller_prefix, module_body, config_module_body='', host=''):
         self.cwd = testdata.create_dir()
-        #self.controller_prefix = controller_prefix
-        #self.module_body = os.linesep.join(module_body)
-
-        # client
         self.client = self.client_class(host)
 
         # create the controller module
@@ -46,14 +42,18 @@ class UWSGIClient(object):
                 #"sys.path.append('{}')".format(os.path.dirname(os.path.realpath(inspect.getsourcefile(endpoints)))),
                 "sys.path.append('{}')".format(os.path.realpath(os.curdir)),
                 "",
-                "from endpoints.interface.wsgi import *",
+                #"from endpoints.interface.wsgi import *",
+                "from endpoints.interface.wsgi import Application, Server",
                 ""
                 "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
                 "",
                 "##############################################################",
                 os.linesep.join(config_module_body),
                 "##############################################################",
-                os.linesep.join(self.get_script_body()),
+                #os.linesep.join(self.get_script_body()),
+                "#from wsgiref.validate import validator",
+                "#application = validator(Application())",
+                "application = Application()",
                 ""
             ]),
             self.cwd
@@ -63,22 +63,14 @@ class UWSGIClient(object):
         self.server = self.server_class(
             controller_prefix=controller_prefix,
             host=host,
-            path=self.script_path
+            wsgifile=self.script_path
         )
         self.server.cwd = self.cwd
         self.server.start()
 
-    def get_script_body(self):
-        """returns the script body that is used to start the server"""
-        return [
-            "#from wsgiref.validate import validator",
-            "#application = validator(Server())",
-            "application = Application()",
-        ]
-
     @classmethod
     def kill(cls):
-        cls.server_class(controller_prefix="", path=cls.server_script_name).kill()
+        cls.server_class(controller_prefix="", wsgifile=cls.server_script_name).kill()
 
     def __getattr__(self, key):
         try:
@@ -237,7 +229,7 @@ class UWSGITest(TestCase):
 
         r = c.post(
             '/',
-            json.dumps({"foo": "bar"}),
+            {"foo": "bar"},
             headers={
                 "content-type": "application/json",
             }
@@ -294,19 +286,7 @@ class UWSGITest(TestCase):
 # WSGI Server support
 ###############################################################################
 class WSGIClient(UWSGIClient):
-
     server_class = WSGIServer
-
-    def get_script_body(self):
-        """returns the script body that is used to start the server"""
-        return [
-            "os.environ['ENDPOINTS_HOST'] = '{}'".format(self.client.host),
-            "s = Server()",
-            "s.serve_forever()"
-        ]
-
-    def get_start_cmd(self):
-        return "python ".format(self.path)
 
 
 @skipIf(requests is None, "Skipping wsgi server Test because no requests module")
@@ -320,18 +300,32 @@ class WSGITest(UWSGITest):
 ###############################################################################
 # Client tests
 ###############################################################################
-class HTTPClientTest(TestCase):
+class ClientTestCase(TestCase):
+    server = None
 
-    def create_server(self, controller_prefix, contents):
+    def setUp(self):
+        if self.server:
+            self.server.stop()
+
+    def tearDown(self):
+        if self.server:
+            self.server.stop()
+
+    def create_server(self, controller_prefix, contents, **kwargs):
         tdm = testdata.create_module(controller_prefix, contents)
-        server = WSGIServer(controller_prefix, self.get_host())
+        server = WSGIServer(controller_prefix, host=self.get_host(), **kwargs)
         server.cwd = tdm.basedir
-        server.kill()
+        server.stop()
+        self.server = server
+        self.server.start()
         return server
 
     def create_client(self):
         client = HTTPClient(self.get_host())
         return client
+
+
+class HTTPClientTest(ClientTestCase):
 
     def test_post_file(self):
         filepath = testdata.create_file("json_post_file.txt", "json post file")
@@ -344,10 +338,34 @@ class HTTPClientTest(TestCase):
             "        return dict(body=kwargs['file'].filename)",
             "",
         ])
-        server.start()
         c = self.create_client()
         r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
         self.assertEqual(200, r.code)
         self.assertEqual("json_post_file.txt", r._body["body"])
-        server.stop()
+
+
+class WSGIServerTest(ClientTestCase):
+    def test_wsgifile(self):
+        wsgifile = testdata.create_file("wsgiserverapp.py", [
+            "import os",
+            "from endpoints.interface.wsgi import Application",
+            "os.environ['WSGI_TESTING'] = 'foo bar'",
+            "application = Application()",
+            "",
+        ])
+        controller_prefix = 'wsgiservercon.controller'
+        server = self.create_server(controller_prefix, [
+            "import os",
+            "from endpoints import Controller, decorators",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        return os.environ['WSGI_TESTING']",
+            "",
+        ], wsgifile=wsgifile)
+        c = self.create_client()
+
+        r = c.get("/")
+        self.assertEqual(200, r.code)
+        self.assertEqual("foo bar", r._body)
+
 
