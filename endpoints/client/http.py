@@ -5,7 +5,8 @@ import json
 import os
 
 import requests
-from requests.auth import HTTPBasicAuth
+#from requests.auth import HTTPBasicAuth
+from requests.auth import _basic_auth_str
 
 from ..http import Headers
 from ..utils import Host
@@ -193,10 +194,11 @@ class HTTPClient(object):
         username -- string
         password -- string
         '''
-        credentials = HTTPBasicAuth(username, password)
-        #credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
-        auth_string = 'Basic {}'.format(credentials)
-        self.headers['authorization'] = auth_string
+        self.headers['authorization'] = _basic_auth_str(username, password)
+#         credentials = HTTPBasicAuth(username, password)
+#         #credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
+#         auth_string = 'Basic {}'.format(credentials())
+#         self.headers['authorization'] = auth_string
 
     def token_auth(self, access_token):
         """add bearer TOKEN auth to this client"""

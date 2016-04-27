@@ -343,6 +343,11 @@ class HTTPClientTest(ClientTestCase):
         self.assertEqual(200, r.code)
         self.assertEqual("json_post_file.txt", r._body["body"])
 
+    def test_basic_auth(self):
+        c = self.create_client()
+        c.basic_auth("foo", "bar")
+        self.assertRegexpMatches(c.headers["authorization"], "Basic\s+[a-zA-Z0-9=]+")
+
 
 class WSGIServerTest(ClientTestCase):
     def test_wsgifile(self):
