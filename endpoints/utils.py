@@ -1,9 +1,16 @@
+import os
 import re
 import mimetypes
 try:
     import urlparse
 except ImportError:
     import urllib.parse as urlparse #py3
+
+
+class Path(str):
+    def __new__(cls, s):
+        s = os.path.abspath(os.path.expanduser(str(s)))
+        return super(Path, cls).__new__(cls, s)
 
 
 class Host(str):

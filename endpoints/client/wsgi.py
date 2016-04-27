@@ -6,7 +6,7 @@ import time
 import sys
 
 import endpoints
-from ..utils import Host
+from ..utils import Host, Path
 
 
 class WSGIThread(threading.Thread):
@@ -99,7 +99,7 @@ class WSGIServer(object):
         self.host = Host(host)
         self.quiet = quiet
 
-        self.cwd = kwargs.get("cwd", os.curdir)
+        self.cwd = Path(kwargs.get("cwd", os.curdir))
         self.wsgifile = wsgifile
         self.env = kwargs.get("env", {})
 
@@ -120,7 +120,7 @@ class WSGIServer(object):
 
         wsgifile = self.wsgifile
         if wsgifile:
-            cmd.append('--file={}'.format(wsgifile))
+            cmd.append('--file={}'.format(Path(wsgifile)))
 
         return cmd
 
@@ -183,7 +183,7 @@ class UWSGIServer(WSGIServer):
             "--thunder-lock",
             "--http-raw-body",
             "--chdir={}".format(self.cwd),
-            "--wsgi-file={}".format(self.wsgifile),
+            "--wsgi-file={}".format(Path(self.wsgifile)),
         ]
 
     def get_subprocess_args_and_kwargs(self):
