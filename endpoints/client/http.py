@@ -40,10 +40,13 @@ class HTTPClient(object):
 
     def post_file(self, uri, body, files, **kwargs):
         """POST a file"""
+        # requests doesn't actually need us to open the files but we do anyway because
+        # if we don't then the filename isn't preserved, so we assume each string
+        # value is a filepath
+        for key in files.keys():
+            if isinstance(files[key], basestring):
+                files[key] = open(files[key], 'rb')
         kwargs["files"] = files
-        #for key in files.keys():
-        #    if isinstance(files[key], basestring):
-        #        files[key] = open(files[key], 'rb')
 
         # we ignore content type for posting files since it requires very specific things
         ct = self.headers.pop("content-type", None)

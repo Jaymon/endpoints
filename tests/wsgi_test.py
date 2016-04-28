@@ -326,7 +326,6 @@ class ClientTestCase(TestCase):
 
 
 class HTTPClientTest(ClientTestCase):
-
     def test_post_file(self):
         filepath = testdata.create_file("json_post_file.txt", "json post file")
         controller_prefix = 'jsonclient.controller'
