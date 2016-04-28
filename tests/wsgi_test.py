@@ -326,6 +326,17 @@ class ClientTestCase(TestCase):
 
 
 class HTTPClientTest(ClientTestCase):
+    def test_get_url(self):
+        c = self.create_client()
+
+        uri = "http://foo.com"
+        url = c.get_url(uri)
+        self.assertEqual(uri, url)
+
+        uri = "/foo/bar"
+        url = c.get_url(uri)
+        self.assertEqual("{}{}".format(c.host.url, uri), url)
+
     def test_post_file(self):
         filepath = testdata.create_file("json_post_file.txt", "json post file")
         controller_prefix = 'jsonclient.controller'

@@ -3,6 +3,7 @@ import urllib
 import subprocess
 import json
 import os
+import re
 
 import requests
 #from requests.auth import HTTPBasicAuth
@@ -140,8 +141,9 @@ class HTTPClient(object):
         return query_str
 
     def get_url(self, uri, query=None):
-        base_url = self.host.url
+        if re.match("^\S+://\S", uri): return uri
 
+        base_url = self.host.url
         query_str = ''
         if '?' in uri:
             i = uri.index('?')
