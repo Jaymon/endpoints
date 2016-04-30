@@ -36,7 +36,7 @@ def console():
     parser.add_argument(
         '--dir', "-D", "--directory",
         dest="directory",
-        default=os.curdir,
+        default=os.getcwd(),
         help='the directory to run the server from',
     )
 
