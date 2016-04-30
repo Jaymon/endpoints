@@ -25,11 +25,26 @@ def console():
     parser.add_argument("-v", "--version", action='version', version="%(prog)s {}".format(endpoints.__version__))
     parser.add_argument("--quiet", action='store_true', dest='quiet')
     parser.add_argument('--prefix', "--controller-prefix", "-P", help='The endpoints prefix')
-    parser.add_argument('--file', "-F", default="", help='The wsgi file, the file that has an application callable')
+    parser.add_argument(
+        '--file', "-F", "--wsgi-file", "--wsgifile",
+        dest="file",
+        default="",
+        help='The wsgi file, the file that has an application callable'
+    )
     parser.add_argument('--host', "-H", help='The host to serve on in the form host:port')
     parser.add_argument('--count', "-C", help='How many requests to process until self termination', type=int, default=0)
+    parser.add_argument(
+        '--dir', "-D", "--directory",
+        dest="directory",
+        default=os.curdir,
+        help='the directory to run the server from',
+    )
 
     args = parser.parse_args()
+
+    # we want to make sure the directory can be imported from since chances are
+    # the prefix module lives in that directory
+    sys.path.append(args.directory)
 
     if not args.quiet:
         # https://docs.python.org/2.7/library/logging.html#logging.basicConfig
@@ -38,6 +53,7 @@ def console():
     logger = logging.getLogger(__name__)
     os.environ["ENDPOINTS_HOST"] = args.host
     os.environ["ENDPOINTS_PREFIX"] = args.prefix
+
 
     s = Server()
 
