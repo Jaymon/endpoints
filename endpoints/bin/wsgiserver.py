@@ -54,7 +54,6 @@ def console():
     os.environ["ENDPOINTS_HOST"] = args.host
     os.environ["ENDPOINTS_PREFIX"] = args.prefix
 
-
     s = Server()
 
     if args.file:
