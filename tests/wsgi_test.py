@@ -302,6 +302,7 @@ class WSGITest(UWSGITest):
 ###############################################################################
 class ClientTestCase(TestCase):
     server = None
+    server_class = WSGIServer
 
     def setUp(self):
         if self.server:
@@ -313,7 +314,7 @@ class ClientTestCase(TestCase):
 
     def create_server(self, controller_prefix, contents, **kwargs):
         tdm = testdata.create_module(controller_prefix, contents)
-        server = WSGIServer(controller_prefix, host=self.get_host(), **kwargs)
+        server = self.server_class(controller_prefix, host=self.get_host(), **kwargs)
         server.cwd = tdm.basedir
         server.stop()
         self.server = server
@@ -360,6 +361,15 @@ class HTTPClientTest(ClientTestCase):
 
 
 class WSGIServerTest(ClientTestCase):
+    def test_start(self):
+        controller_prefix = 'wsgiserverstart.controller'
+        server = self.create_server(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self): pass",
+            "",
+        ])
+
     def test_wsgifile(self):
         wsgifile = testdata.create_file("wsgiserverapp.py", [
             "import os",
@@ -383,4 +393,7 @@ class WSGIServerTest(ClientTestCase):
         self.assertEqual(200, r.code)
         self.assertEqual("foo bar", r._body)
 
+
+class UWSGIServer(WSGIServerTest):
+    server_class = UWSGIServer
 

@@ -34,8 +34,10 @@ setup(
     ],
     entry_points = {
         'console_scripts': [
-            'endpoints-wsgiserver = {}.bin.wsgiserver:console'.format(name),
+            #'endpoints-wsgiserver = {}.bin.wsgiserver:console'.format(name),
+            '{} = {}.bin.wsgiserver:console'.format(name, name),
         ],
     },
+    scripts=['{}/bin/endpoints_wsgifile.py'.format(name)]
     #test_suite = "endpoints_test",
 )
