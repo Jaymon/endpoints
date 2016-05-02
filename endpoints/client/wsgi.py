@@ -53,7 +53,7 @@ class WSGIThread(threading.Thread):
 
             # Poll process for new output until finished
             for line in iter(process.stdout.readline, ""):
-                self.server.buf.append(line.strip())
+                self.server.buf.append(line.rstrip())
                 if not self.server.quiet:
                     self.flush(line)
 
