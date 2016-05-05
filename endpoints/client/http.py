@@ -9,8 +9,7 @@ import requests
 #from requests.auth import HTTPBasicAuth
 from requests.auth import _basic_auth_str
 
-from ..http import Headers
-from ..utils import Host
+from ..http import Headers, Url
 
 
 class HTTPClient(object):
@@ -18,7 +17,7 @@ class HTTPClient(object):
     timeout = 10
 
     def __init__(self, host, *args, **kwargs):
-        self.host = Host(host)
+        self.host = Url(host)
 
         # these are the common headers that usually don't change all that much
         self.headers = Headers({
@@ -143,7 +142,7 @@ class HTTPClient(object):
     def get_url(self, uri, query=None):
         if re.match("^\S+://\S", uri): return uri
 
-        base_url = self.host.url
+        base_url = self.host.host
         query_str = ''
         if '?' in uri:
             i = uri.index('?')

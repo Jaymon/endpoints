@@ -7,7 +7,8 @@ import sys
 from collections import deque
 
 import endpoints
-from ..utils import Host, Path
+from ..utils import Path
+from ..http import Url
 
 
 def find_module_path():
@@ -161,7 +162,7 @@ class WSGIServer(object):
         **kwargs -- dict -- provides an easy hook to set other instance properties
         """
         self.controller_prefix = controller_prefix
-        self.host = Host(host)
+        self.host = Url(host)
 
         self.cwd = Path(kwargs.get("cwd", os.curdir))
         self.wsgifile = wsgifile
@@ -178,7 +179,7 @@ class WSGIServer(object):
         cmd = [
             "python",
             self.path,
-            "--host={}".format(self.host),
+            "--host={}".format(self.host.netloc),
             "--prefix={}".format(self.controller_prefix),
         ]
 
@@ -241,7 +242,7 @@ class UWSGIServer(WSGIServer):
     def get_start_cmd(self):
         return [
             "uwsgi",
-            "--http={}".format(self.host),
+            "--http={}".format(self.host.netloc),
             "--show-config",
             "--master",
             "--processes={}".format(self.process_count),

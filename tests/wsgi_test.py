@@ -95,6 +95,20 @@ class UWSGITest(TestCase):
         kwargs.setdefault("host", self.get_host())
         return self.client_class(*args, **kwargs)
 
+    def test_request_url(self):
+        """make sure request url gets controller_path correctly"""
+        controller_prefix = "requesturl.controller"
+        c = self.create_client(controller_prefix, [
+            "from endpoints import Controller",
+            "class Requrl(Controller):",
+            "    def GET(self):",
+            "        return self.request.url.controller",
+            "",
+        ])
+
+        r = c.get('/requrl')
+        self.assertTrue("/requrl" in r._body)
+
     def test_chunked(self):
         filepath = testdata.create_file("filename.txt", testdata.get_words(500))
         controller_prefix = 'wsgi.post_chunked'
@@ -336,7 +350,7 @@ class HTTPClientTest(ClientTestCase):
 
         uri = "/foo/bar"
         url = c.get_url(uri)
-        self.assertEqual("{}{}".format(c.host.url, uri), url)
+        self.assertEqual("{}{}".format(c.host.host, uri), url)
 
     def test_post_file(self):
         filepath = testdata.create_file("json_post_file.txt", "json post file")

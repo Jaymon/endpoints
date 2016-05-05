@@ -14,7 +14,7 @@ except ImportError:
     from StringIO import StringIO
 
 from . import BaseInterface, BaseServer
-from ..utils import Host
+from ..http import Url
 
 
 class uWSGIChunkedBody(object):
@@ -195,7 +195,7 @@ class Server(WSGIBaseServer):
         if not host:
             host = os.environ['ENDPOINTS_HOST']
 
-        host = Host(host)
+        host = Url(host)
         server_address = (host.hostname, host.port)
 
         s = self.server_class(server_address, WSGIRequestHandler, **kwargs)

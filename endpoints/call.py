@@ -23,6 +23,10 @@ class Router(object):
     _module_name_cache = {}
 
     @property
+    def controller_path(self):
+        return "/".join(self.controller_path_args)
+
+    @property
     def controllers(self):
         """get all the modules in the controller_prefix
 
@@ -48,6 +52,7 @@ class Router(object):
         return modules
 
     def __init__(self, controller_prefix, path_args=None):
+        self.controller_path_args = []
         self.controller_prefix = controller_prefix
         if not controller_prefix:
             raise ValueError("controller prefix is empty")
@@ -66,7 +71,7 @@ class Router(object):
             class_object = self.get_class(self.controller_module, args[0].capitalize())
 
         if class_object:
-            args.pop(0)
+            self.controller_path_args.append(args.pop(0))
 
         else:
             class_object = self.get_class(self.controller_module, self.controller_class_name)
@@ -109,7 +114,7 @@ class Router(object):
             mod_name += "." + path_args[0]
             if mod_name in cset:
                 module_name = mod_name
-                path_args.pop(0)
+                self.controller_path_args.append(path_args.pop(0))
             else:
                 break
 
@@ -222,6 +227,7 @@ class Call(object):
 
         d['class'] = router.controller_class
         d['class_name'] = router.controller_class_name
+        d['path'] = router.controller_path
 
         d['method'] = self.get_normalized_method()
         d['args'] = router.controller_method_args
@@ -243,6 +249,7 @@ class Call(object):
         actual controller callback method that will be used to handle the request"""
         callback = None
         try:
+            self.request.controller_info = controller_info
             instance = controller_info['class'](self.request, self.response)
             instance.call = self
 

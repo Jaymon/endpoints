@@ -2,19 +2,19 @@ from unittest import TestCase
 
 import testdata
 
-from endpoints.utils import MimeType, AcceptHeader, Host
+from endpoints.utils import MimeType, AcceptHeader
 
 
-class HostTest(TestCase):
-    def test_port(self):
-        h = Host("localhost:8080")
-        self.assertEqual(8080, h.port)
-
-        h = Host("localhost")
-        self.assertEqual(0, h.port)
-
-        h = Host("localhost:")
-        self.assertEqual(0, h.port)
+# class HostTest(TestCase):
+#     def test_port(self):
+#         h = Host("localhost:8080")
+#         self.assertEqual(8080, h.port)
+# 
+#         h = Host("localhost")
+#         self.assertEqual(0, h.port)
+# 
+#         h = Host("localhost:")
+#         self.assertEqual(0, h.port)
 
 
 class MimeTypeTest(TestCase):
