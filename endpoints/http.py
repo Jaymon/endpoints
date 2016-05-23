@@ -208,6 +208,7 @@ class Url(object):
     we try to map the supported fields to their urlparse equivalents, with some additions
 
     given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+    with a controller: Bar
 
     .scheme = http
     .netloc (readonly) = user:pass@foo.com:1000
@@ -219,6 +220,10 @@ class Url(object):
     .fragment = anchor
     .anchor (readonly) = anchor
     .uri (readonly) = /bar/che?baz=boom#anchor
+
+    .host_url(...) = httop://foo.com/...
+    .base_url(...) = httop://foo.com/bar/che/...
+    .controller_url(...) = httop://foo.com/bar/...
     """
 
     scheme = "http"
@@ -415,6 +420,23 @@ class Url(object):
         return not self.__eq__(other)
 
     def controller_url(self, *paths, **query_kwargs):
+        """create a new url object using the controller path as a base
+
+        if you have a controller `foo.BarController` then this would create a new
+        Url instance with `host/foo/bar` as the base path, so any *paths will be
+        appended to `/foo/bar`
+
+        example -- 
+            # controller foo.BarController
+
+            print url # http://host.com/foo/bar/some_random_path
+
+            print url.controller_url() # http://host.com/foo/bar
+            print url.controller_url("che", boom="bam") # http://host/foo/bar/che?boom=bam
+
+        *paths -- list -- the paths to append to the controller path
+        **query_kwargs -- dict -- any query string params to add
+        """
         kwargs = self._get_url_kwargs(*paths, **query_kwargs)
         if self.controller_path:
             if "path" in kwargs:
@@ -424,6 +446,22 @@ class Url(object):
         return self._create(self.host, **kwargs)
 
     def base_url(self, *paths, **query_kwargs):
+        """create a new url object using the current base path as a base
+
+        if you had requested /foo/bar, then this would append *paths and **query_kwargs
+        to /foo/bar
+
+        example -- 
+            # current path: /foo/bar
+
+            print url # http://host.com/foo/bar
+
+            print url.base_url() # http://host.com/foo/bar
+            print url.base_url("che", boom="bam") # http://host/foo/bar/che?boom=bam
+
+        *paths -- list -- the paths to append to the current path without query params
+        **query_kwargs -- dict -- any query string params to add
+        """
         kwargs = self._get_url_kwargs(*paths, **query_kwargs)
         if self.path:
             if "path" in kwargs:
@@ -433,11 +471,27 @@ class Url(object):
         return self._create(self.host, **kwargs)
 
     def host_url(self, *paths, **query_kwargs):
+        """create a new url object using the host as a base
+
+        if you had requested http://host/foo/bar, then this would append *paths and **query_kwargs
+        to http://host
+
+        example -- 
+            # current url: http://host/foo/bar
+
+            print url # http://host.com/foo/bar
+
+            print url.host_url() # http://host.com/
+            print url.host_url("che", boom="bam") # http://host/che?boom=bam
+
+        *paths -- list -- the paths to append to the current path without query params
+        **query_kwargs -- dict -- any query string params to add
+        """
         kwargs = self._get_url_kwargs(*paths, **query_kwargs)
         return self._create(self.host, **kwargs)
 
     def geturl(self):
-        """return the dsn back into url form"""
+        """return a string representation of the url"""
         return urlparse.urlunsplit((
             self.scheme,
             self.netloc,
