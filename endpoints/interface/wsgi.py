@@ -196,7 +196,11 @@ class Server(WSGIBaseServer):
             host = os.environ['ENDPOINTS_HOST']
 
         host = Url(host)
-        server_address = (host.hostname, host.port)
+        hostname = host.hostname
+        port = host.port
+        if not port:
+            raise RuntimeError("Please specify a port using the format host:PORT")
+        server_address = (hostname, port)
 
         s = self.server_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)

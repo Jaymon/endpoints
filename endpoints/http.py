@@ -270,8 +270,8 @@ class Url(object):
     def port(self, port):
         if port is not None:
             port = int(port)
-            if port in [80, 443]:
-                port = None
+#             if port in [80, 443]:
+#                 port = None
 
         self._port = port
 
@@ -288,7 +288,8 @@ class Url(object):
     def hostloc(self):
         """return just the host:port, basically netloc without username and pass info"""
         hostloc = self.hostname
-        if self.port:
+        port = self.port
+        if port and port not in [80, 443]:
             hostloc = '{}:{}'.format(hostloc, self.port)
         return hostloc
 
@@ -391,6 +392,13 @@ class Url(object):
 
         if not hasattr(self, "netloc") or not self.netloc:
             self.netloc = self.hostloc
+
+        # we don't want common ports to be a part of a .geturl() call, but we do
+        # want .port to return them
+        for common_port in [80, 443]:
+            port_str = ":{}".format(common_port)
+            if self.netloc.endswith(port_str):
+                self.netloc = self.netloc[:-len(port_str)]
 
         self.path = self._get_paths(self.path)[0]
 

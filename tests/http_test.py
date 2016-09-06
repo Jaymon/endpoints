@@ -404,14 +404,45 @@ class ResponseTest(TestCase):
 
 
 class UrlTest(TestCase):
-    def test_no_scheme(self):
+    def test_standard_port(self):
+        h = Url("localhost:80")
+        self.assertEqual("http://localhost", h.geturl())
+        self.assertEqual(80, h.port)
 
+        h = Url("http://localhost:80")
+        self.assertEqual("http://localhost", h.geturl())
+        self.assertEqual(80, h.port)
+
+        h = Url("http://example.com:80")
+        self.assertEqual("http://example.com", h.geturl())
+        self.assertEqual(80, h.port)
+
+        h = Url("http://user:pass@foo.com:80")
+        self.assertEqual("http://user:pass@foo.com", h.geturl())
+        self.assertEqual(80, h.port)
+
+        h = Url("https://user:pass@bar.com:443")
+        self.assertEqual("https://user:pass@bar.com", h.geturl())
+        self.assertEqual(443, h.port)
+
+        h = Url("http://localhost:8000")
+        self.assertEqual("http://localhost:8000", h.geturl())
+        self.assertEqual(8000, h.port)
+
+        h = Url("http://localhost:4436")
+        self.assertEqual("http://localhost:4436", h.geturl())
+        self.assertEqual(4436, h.port)
+
+        h = Url("http://localhost")
+        self.assertEqual("http://localhost", h.geturl())
+        self.assertEqual(None, h.port)
+
+    def test_no_scheme(self):
         h = Url("localhost:8080/foo/bar?che=1")
         self.assertEqual(8080, h.port)
         self.assertEqual("localhost", h.hostname)
         self.assertEqual("foo/bar", h.path)
         self.assertEqual("che=1", h.query)
-        return
 
         h = Url("localhost:8080/foo/bar")
         self.assertEqual(8080, h.port)
