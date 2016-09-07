@@ -4,7 +4,16 @@ import sys
 import socket
 import logging
 
-logging.basicConfig()
+#logging.basicConfig()
+# configure root logger
+logger = logging.getLogger()
+logger.setLevel(logging.DEBUG)
+log_handler = logging.StreamHandler(stream=sys.stderr)
+log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
+log_handler.setFormatter(log_formatter)
+logger.addHandler(log_handler)
+logger = logging.getLogger("example")
+
 
 #sys.path.append(os.path.join("..", "endpoints"))
 sys.path.append("..")
@@ -37,10 +46,10 @@ class SimpleHandler(BaseHTTPRequestHandler):
             req.query = query
             req.method = self.command
             req.headers = self.headers.dict
-            pout.v(req.method, req.headers)
 
             c = Call("controllers")
             c.request = req
+            c.response = Response()
             res = c.handle()
 
             self.send_response(res.code)
@@ -50,7 +59,6 @@ class SimpleHandler(BaseHTTPRequestHandler):
             self.send_header('Connection', 'close')
             self.end_headers()
 
-            pout.v(res.headers, res.body)
             body = res.body
             if body:
                 self.wfile.write(res.body)
@@ -63,7 +71,9 @@ class SimpleHandler(BaseHTTPRequestHandler):
 
 if __name__ == "__main__":
 
-    server_address = ('', 8000)
+    port = 8000
+    logger.info("Listening on port {}".format(port))
+    server_address = ('', port)
     httpd = HTTPServer(server_address, SimpleHandler)
     httpd.serve_forever()
     #httpd.handle_request()
