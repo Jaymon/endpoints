@@ -10,7 +10,25 @@ logger = logging.getLogger(__name__)
 
 
 class TargetDecorator(FuncDecorator):
+    """Base decorator providing common functionality to run a target when decorated
+    function is called, this class is meant to be extended by a child
+
+    .. seealso:: decorators.auth
+    """
     def normalize_target_params(self, request, controller_args, controller_kwargs):
+        """get params ready for calling target
+
+        this method exists because child classes might only really need certain params
+        passed to the method, this allows the child classes to decided what their
+        target methods need
+
+        :param request: the http.Request instance for this specific request
+        :param controller_args: the arguments that will be passed to the controller
+        :param controller_kwargs: the key/val arguments that will be passed to the 
+            controller, these usually come from query strings and post bodies
+        :returns: a tuple (list, dict) that correspond to the *args, **kwargs that
+            will be passed to the target() method
+        """
         return [], dict(
             request=request,
             controller_args=controller_args, 
@@ -18,9 +36,21 @@ class TargetDecorator(FuncDecorator):
         )
 
     def handle_error(self, e):
+        """Any error the class isn't sure how to categorize will go through this method
+
+        overriding this method allows child classes to customize responses based
+        on certain encountered errors
+
+        :param e: the raised error
+        """
         raise e
 
     def handle_target(self, request, controller_args, controller_kwargs):
+        """Internal method for this class
+
+        handles normalizing the passed in values from the decorator using
+        .normalize_target_params() and then passes them to the set .target()
+        """
         try:
             param_args, param_kwargs = self.normalize_target_params(
                 request=request,
@@ -43,6 +73,12 @@ class TargetDecorator(FuncDecorator):
             self.handle_error(e)
 
     def decorate(self, func, target, *anoop, **kwnoop):
+        """decorate the passed in func calling target when func is called
+
+        :param func: the function being decorated
+        :param target: the target that will be run when func is called
+        :returns: the decorated func
+        """
         if target:
             self.target = target
 

@@ -28,27 +28,41 @@ class Redirect(CallError):
 
 
 class AccessDenied(CallError):
-    """Any time you need to return a 401 you should return this"""
+    """Any time you need to return a 401 you should return this
+
+    .. seealso:: https://tools.ietf.org/html/rfc7235
+    """
 
     # used for http auth
-    REALM_BASIC = "Basic"
+    SCHEME_BASIC = "Basic"
 
-    # used for OAuth
-    REALM_DIGEST = "Digest"
+    # used for Oauth access token
+    SCHEME_BEARER = "Bearer"
 
-    def __init__(self, realm, msg='', **kwargs):
-        '''
-        create the error
+    # used when nothing is specified
+    SCHEME_DEFAULT = "Auth"
 
-        realm -- string -- usually either 'Basic' or 'Digest'
-        msg -- string -- the message you want to accompany your status code
-        '''
-        self.realm = realm.title()
+    def __init__(self, msg='', scheme="", realm="", **kwargs):
+        """create an access denied error (401)
+
+        This error adds the needed WWW-Authenticate header using the passed in
+        scheme and realm. Rfc 7235 also includes type and title params but I didn't
+        think they were worth adding right now so they are ignored
+
+        Realm is no longer required, see https://tools.ietf.org/html/rfc7235#appendix-A
+
+        :param msg: string, the message you want to accompany your status code
+        :param scheme: usually one of the SCHEME_* constants but can really be anything
+        :param realm: this is the namespace for the authentication scheme
+        :param **kwargs: headers if you want to add custom headers
+        """
+        self.scheme = scheme.title() if scheme else self.SCHEME_DEFAULT
+        self.realm = realm
 
         # set the realm header
-        headers = kwargs.pop('headers', {})
-        headers.setdefault('WWW-Authenticate', self.realm)
-        kwargs['headers'] = headers
+        kwargs.setdefault("headers", {})
+        v = "{} realm=\"{}\"".format(self.scheme, self.realm) if self.realm else self.scheme
+        kwargs["headers"].setdefault("WWW-Authenticate", v)
 
         super(AccessDenied, self).__init__(401, msg, **kwargs)
 

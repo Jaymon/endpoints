@@ -581,21 +581,33 @@ class CallTest(TestCase):
             "from endpoints import Controller, AccessDenied",
             "class Default(Controller):",
             "    def GET(*args, **kwargs):",
-            "        raise AccessDenied('basic')",
+            "        raise AccessDenied(scheme='basic')",
+            "class Bar(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        raise AccessDenied()",
         ])
         testdata.create_module(controller_prefix, contents=contents)
+
         r = endpoints.Request()
         r.method = u'GET'
         r.path = u'/'
-
         c = endpoints.Call(controller_prefix)
         c.response = endpoints.Response()
         c.request = r
-
         res = c.handle()
         res.body # we need to cause the body to be handled
         self.assertEqual(401, res.code)
         self.assertTrue('Basic' in res.headers['WWW-Authenticate'])
+
+        r = endpoints.Request()
+        r.method = u'GET'
+        r.path = u'/bar'
+        c = endpoints.Call(controller_prefix)
+        c.response = endpoints.Response()
+        c.request = r
+        res = c.handle()
+        self.assertEqual(401, res.code)
+        self.assertTrue('Auth' in res.headers['WWW-Authenticate'])
 
     def test_handle_callstop(self):
         contents = os.linesep.join([
@@ -1262,7 +1274,7 @@ class DecoratorsAuthTest(TestCase):
             @endpoints.decorators.auth.basic_auth(target=target)
             def foo_basic(self): pass
 
-            @endpoints.decorators.auth.auth("Basic", target=target)
+            @endpoints.decorators.auth.auth(target=target)
             def foo_auth(self): pass
 
         r = endpoints.Request()
@@ -1418,7 +1430,7 @@ class DecoratorsAuthTest(TestCase):
             pass
 
         class TARA(object):
-            @endpoints.decorators.auth.auth("Basic", target=target)
+            @endpoints.decorators.auth.auth(target=target)
             def foo(self): pass
 
             @endpoints.decorators.auth.auth(target=target_bad)
