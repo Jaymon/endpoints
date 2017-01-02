@@ -31,6 +31,7 @@ class AccessDenied(CallError):
     """Any time you need to return a 401 you should return this
 
     .. seealso:: https://tools.ietf.org/html/rfc7235
+    .. seealso: http://stackoverflow.com/questions/12701085/what-is-the-realm-in-basic-authentication
     """
 
     # used for http auth
