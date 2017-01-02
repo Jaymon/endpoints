@@ -4,12 +4,16 @@ import re
 import cgi
 from functools import wraps
 import datetime
+import logging
 
 from decorators import FuncDecorator
 
 from ..exception import CallError, AccessDenied
 from . import auth
 from .base import TargetDecorator
+
+
+logger = logging.getLogger(__name__)
 
 
 class ratelimit(TargetDecorator):
@@ -289,10 +293,11 @@ class param(object):
 
     example --
 
-    @decorators.param('name', type=int, nargs='+', action='store_list')
+    @decorators.param('name', type=int, action='store_list')
 
     name -- string -- the name of the query_param
     **flags -- dict
+        dest -- string -- the key in kwargs this param will be set into
         type -- type -- a python type like int or float
         action -- string --
             store -- default
@@ -308,7 +313,6 @@ class param(object):
             decorated method is called
         required -- boolean -- True if param is required, default is true
         choices -- set() -- a set of values to be in tested against (eg, val in choices)
-        matches -- regex -- TODO -- a regular expression that the value needs to match
         allow_empty -- boolean -- True allows values like False, 0, '' through,
             default False, this will also let through any empty value that was set
             via the default flag
@@ -316,14 +320,55 @@ class param(object):
         min_size -- int -- the minimum size of the param
         regex -- regexObject -- if you would like the param to be validated with a regular
             exception, uses the re.search() method
+        help -- string -- a helpful description for this param
 
     raises -- 
         CallError -- with 400 status code on any param validation failures
     """
     def __init__(self, *names, **flags):
-        self.name = names[0]
-        self.names = names
+        self.normalize_type(names)
+        self.normalize_flags(flags)
+
+    def normalize_flags(self, flags):
+        """normalize the flags to make sure needed values are there
+
+        after this method is called self.flags is available
+
+        :param flags: the flags that will be normalized
+        """
+        flags['type'] = flags.get('type', None)
+        paction = flags.get('action', 'store')
+        if paction == 'store_false':
+            flags['default'] = True 
+            flags['type'] = bool
+
+        elif paction == 'store_true':
+            flags['default'] = False
+            flags['type'] = bool
+
+        prequired = False if 'default' in flags else flags.get('required', True)
+
+        flags["action"] = paction
+        flags["required"] = prequired
         self.flags = flags
+
+    def normalize_type(self, names):
+        """Decide if this param is an arg or a kwarg and set appropriate internal flags"""
+        self.name = names[0]
+        self.is_kwarg = False
+        self.is_arg = False
+        self.names = []
+
+        try:
+            # http://stackoverflow.com/a/16488383/5006 uses ask forgiveness because
+            # of py2/3 differences of integer check
+            self.index = int(self.name)
+            self.name = ""
+            self.is_arg = True
+
+        except ValueError:
+            self.is_kwarg = True
+            self.names = names
 
     def normalize_default(self, default):
         ret = default
@@ -333,10 +378,63 @@ class param(object):
         elif isinstance(default, list):
             ret = list(default)
 
+        else:
+            if callable(default):
+                ret = default()
+
         return ret
 
-    def find_param(self, names, required, default, request, args, kwargs):
-        """actually try to retrieve names key from params dict"""
+    def normalize_param(self, slf, args, kwargs):
+        """this is where all the magic happens, this will try and find the param and
+        put its value in kwargs if it has a default and stuff"""
+        if self.is_kwarg:
+            kwargs = self.normalize_kwarg(slf.request, kwargs)
+        else:
+            args = self.normalize_arg(slf.request, args)
+        return slf, args, kwargs
+
+    def normalize_arg(self, request, args):
+        flags = self.flags
+        index = self.index
+        args = list(args)
+
+        paction = flags['action']
+        if paction not in set(['store', 'store_false', 'store_true']):
+            raise RuntimeError('unsupported positional param action {}'.format(paction))
+
+        if 'dest' in flags:
+            logger.warn("dest is ignored in positional param")
+
+        try:
+            val = args.pop(index)
+
+        except IndexError:
+            if flags["required"]:
+                raise CallError(400, "required positional param at index {} does not exist".format(index))
+
+            else:
+                val = self.normalize_default(flags.get('default', None))
+
+        try:
+            val = self.normalize_val(request, val)
+
+        except ValueError as e:
+            raise CallError(400, "Positional arg {} failed with {}".format(index, e.message))
+
+        args.insert(index, val)
+
+        return args
+
+    def find_kwarg(self, request, names, required, default, kwargs):
+        """actually try to retrieve names key from params dict
+
+        :param request: the current request instance, handy for child classes
+        :param names: the names this kwarg can be
+        :param required: True if a name has to be found in kwargs
+        :param default: the default value if name isn't found
+        :param kwargs: the kwargs that will be used to find the value
+        :returns: tuple, found_name, val where found_name is the actual name kwargs contained
+        """
         val = default
         found_name = ''
         for name in names:
@@ -346,188 +444,189 @@ class param(object):
                 break
 
         if not found_name and required:
-            raise CallError(400, "required param {} was not present".format(self.name))
+            raise ValueError("required param {} does not exist".format(self.name))
 
         return found_name, val
 
-    def normalize_param(self, slf, args, kwargs):
-        """this is where all the magic happens, this will try and find the param and
-        put its value in kwargs if it has a default and stuff"""
+    def normalize_kwarg(self, request, kwargs):
         flags = self.flags
         name = self.name
-        dest_name = flags.get('dest', name)
-        ptype = flags.get('type', None)
-        paction = flags.get('action', 'store')
-        if paction == 'store_false':
-            flags['default'] = True 
-            ptype = bool
 
-        elif paction == 'store_true':
-            flags['default'] = False
-            ptype = bool
+        try:
+            pdefault = self.normalize_default(flags.get('default', None))
+            prequired = flags['required']
+            dest_name = flags.get('dest', name)
 
-        pdefault = self.normalize_default(flags.get('default', None))
-        if callable(pdefault): pdefault = pdefault()
+            has_val = True
+            found_name, val = self.find_kwarg(request, self.names, prequired, pdefault, kwargs)
+            if found_name:
+                # we are going to replace found_name with dest_name
+                kwargs.pop(found_name)
+            else:
+                # we still want to run a default value through normalization but if we
+                # didn't find a value and don't have a default, don't set any value
+                has_val = 'default' in flags
 
-        prequired = False if 'default' in flags else flags.get('required', True)
+            if has_val:
+                    kwargs[dest_name] = self.normalize_val(request, val)
+
+        except ValueError as e:
+            raise CallError(400, "{} failed with {}".format(name, e.message))
+
+        return kwargs
+
+    def normalize_val(self, request, val):
+        """This will take the value and make sure it meets expectations
+
+        :param request: the current request instance
+        :param val: the raw value pulled from kwargs or args
+        :returns: val that has met all param checks
+        :raises: ValueError if val fails any checks
+        """
+        flags = self.flags
+        paction = flags['action']
+        ptype = flags['type']
         pchoices = flags.get('choices', None)
         allow_empty = flags.get('allow_empty', False)
         min_size = flags.get('min_size', None)
         max_size = flags.get('max_size', None)
         regex = flags.get('regex', None)
 
-        normalize = True
-        request = slf.request
-        found_name, val = self.find_param(self.names, prequired, pdefault, request, args, kwargs)
-        if found_name:
-            kwargs.pop(found_name)
-        else:
-            normalize = 'default' in flags
+        if paction in set(['store_list']):
+            if isinstance(val, list) and len(val) > 1:
+                raise ValueError("too many values for param")
 
-        if normalize:
-            if paction in set(['store_list']):
-                if isinstance(val, list) and len(val) > 1:
-                    raise CallError(400, "too many values for param {}".format(name))
-
-                if isinstance(val, basestring):
-                    val = val.split(',')
-
-                else:
-                    val = list(val)
-
-            elif paction in set(['append', 'append_list']):
-                if not isinstance(val, list):
-                    val = [val]
-
-                if paction == 'append_list':
-                    vs = []
-                    for v in val:
-                        if isinstance(v, basestring):
-                            vs.extend(v.split(','))
-                        else:
-                            vs.append(v)
-
-                    val = vs
+            if isinstance(val, basestring):
+                val = val.split(',')
 
             else:
-                if paction not in set(['store', 'store_false', 'store_true']):
-                    raise ValueError('unknown param action {}'.format(paction))
+                val = list(val)
 
-            if ptype:
-                if isinstance(val, list) and ptype != list:
-                    val = map(ptype, val)
+        elif paction in set(['append', 'append_list']):
+            if not isinstance(val, list):
+                val = [val]
 
-                else:
-                    if isinstance(ptype, type):
-                        if issubclass(ptype, bool):
-                            if val in set(['true', 'True', '1']):
-                                val = True
-                            elif val in set(['false', 'False', '0']):
-                                val = False
-                            else:
-                                val = ptype(val)
+            if paction == 'append_list':
+                vs = []
+                for v in val:
+                    if isinstance(v, basestring):
+                        vs.extend(v.split(','))
+                    else:
+                        vs.append(v)
 
-                        elif issubclass(ptype, str):
-                            charset = request.charset
-                            if charset and isinstance(val, unicode):
-                                val = val.encode(charset)
-                            else:
-                                val = ptype(val)
+                val = vs
 
+        else:
+            if paction not in set(['store', 'store_false', 'store_true']):
+                raise RuntimeError('unknown param action {}'.format(paction))
+
+        if ptype:
+            if isinstance(val, list) and ptype != list:
+                val = map(ptype, val)
+
+            else:
+                if isinstance(ptype, type):
+                    if issubclass(ptype, bool):
+                        if val in set(['true', 'True', '1']):
+                            val = True
+                        elif val in set(['false', 'False', '0']):
+                            val = False
+                        else:
+                            val = ptype(val)
+
+                    elif issubclass(ptype, str):
+                        charset = request.charset
+                        if charset and isinstance(val, unicode):
+                            val = val.encode(charset)
                         else:
                             val = ptype(val)
 
                     else:
                         val = ptype(val)
 
-            if pchoices:
-                if val not in pchoices:
-                    raise CallError(400, "param {} with value {} not in choices {}".format(name, val, pchoices))
-
-            # at some point this if statement is just going to be too ridiculous
-            # FieldStorage check is because of this bug https://bugs.python.org/issue19097
-            if not allow_empty and val is not False and not val and not isinstance(val, cgi.FieldStorage):
-                if 'default' not in flags:
-                    raise CallError(400, "param {} was empty".format(name))
-
-            if min_size is not None:
-                failed = False
-                if isinstance(val, (int, float)):
-                    if val < min_size: failed = True
                 else:
-                    if len(val) < min_size: failed = True
+                    val = ptype(val)
 
-                if failed:
-                    raise CallError(400, "param {} was smaller than {}".format(name, min_size))
+        if pchoices:
+            if val not in pchoices:
+                raise ValueError("param value {} not in choices {}".format(val, pchoices))
 
-            if max_size is not None:
-                failed = False
-                if isinstance(val, (int, float)):
-                    if val > max_size: failed = True
-                else:
-                    if len(val) > max_size: failed = True
+        # at some point this if statement is just going to be too ridiculous
+        # FieldStorage check is because of this bug https://bugs.python.org/issue19097
+        if not allow_empty and val is not False and not val and not isinstance(val, cgi.FieldStorage):
+            if 'default' not in flags:
+                raise ValueError("param was empty")
 
-                if failed:
-                    raise CallError(400, "param {} was bigger than {}".format(name, max_size))
+        if min_size is not None:
+            failed = False
+            if isinstance(val, (int, float)):
+                if val < min_size: failed = True
+            else:
+                if len(val) < min_size: failed = True
 
-            if regex:
-                failed = False
-                if isinstance(regex, basestring):
-                    if not re.search(regex, val): failed = True
-                else:
-                    if not regex.search(val): failed = True
+            if failed:
+                raise ValueError("param was smaller than {}".format(min_size))
 
-                if failed:
-                    raise CallError(400, "param {} failed regex check".format(name))
+        if max_size is not None:
+            failed = False
+            if isinstance(val, (int, float)):
+                if val > max_size: failed = True
+            else:
+                if len(val) > max_size: failed = True
 
-            kwargs[dest_name] = val
+            if failed:
+                raise ValueError("param was bigger than {}".format(max_size))
 
-        return slf, args, kwargs
+        if regex:
+            failed = False
+            if isinstance(regex, basestring):
+                if not re.search(regex, val): failed = True
+            else:
+                if not regex.search(val): failed = True
+
+            if failed:
+                raise ValueError("param failed regex check")
+
+        return val
 
     def __call__(slf, func):
-        position = func.__dict__.get('param_position', 0)
         @wraps(func)
         def wrapper(self, *args, **kwargs):
-            slf.position = wrapper.__dict__.get('param_position', 0)
             self, args, kwargs = slf.normalize_param(self, args, kwargs)
             return func(self, *args, **kwargs)
-
-        position = wrapper.__dict__.setdefault('param_position', position + 1)
         return wrapper
 
 
 class get_param(param):
     """same as param, but only checks GET params"""
-    def find_param(self, names, required, default, request, args, kwargs):
+    def find_kwarg(self, request, names, required, default, kwargs):
         try:
-            return super(get_param, self).find_param(
+            return super(get_param, self).find_kwarg(
+                request,
                 names,
                 required,
                 default,
-                request,
-                args,
                 request.query_kwargs
             )
 
-        except CallError:
-            raise CallError(400, "required param {} was not present in GET params".format(self.name))
+        except ValueError:
+            raise ValueError("required param {} was not present in GET params".format(self.name))
 
 
 class post_param(param):
     """same as param but only checks POST params"""
-    def find_param(self, names, required, default, request, args, kwargs):
+    def find_kwarg(self, request, names, required, default, kwargs):
         try:
-            return super(post_param, self).find_param(
+            return super(post_param, self).find_kwarg(
+                request,
                 names,
                 required,
                 default,
-                request,
-                args,
                 request.body_kwargs
             )
 
-        except CallError:
-            raise CallError(400, "required param {} was not present in POST params".format(self.name))
+        except ValueError:
+            raise ValueError("required param {} was not present in POST params".format(self.name))
 
 
 class require_params(object):

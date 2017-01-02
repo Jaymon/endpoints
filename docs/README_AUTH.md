@@ -41,11 +41,13 @@ You can extend any of the auth decorators to fit them into your own system:
 ```python
 from endpoints.decorators.auth import basic_auth
 
-class auth_user(auth_basic):
+class auth_user(basic_auth):
     """validate a user in our system and set request.user if a valid user is found"""
 
     def target(self, request, username, password):
         # validate username and password using app specific db or whatnot
+        user = magical_db_check(username, password)
+        request.user = user
         return True # true if user is valid, false otherwise
 
     def decorate(self, f):
