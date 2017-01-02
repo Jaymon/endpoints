@@ -14,17 +14,13 @@ The flags you can pass to the any of the decorators are:
 * dest -- string -- the key in kwargs this param will be set into
 * type -- type -- a python type like int or float
 * action -- string --
-    store -- default
-    store_false -- set if you want default to be true, and false if param is
-        passed in
-    store_true -- opposite of store_false
-    store_list -- set to have a value like 1,2,3 be blown up to ['1', '2', '3']
-    append -- if multiple param values should be turned into an array
-        eg, foo=1&foo=2 would become foo=[1, 2]
-    append_list -- it's store_list + append, so foo=1&foo=2,3 would be foo=[1, 2, 3]
-* default -- mixed -- the value that should be set if query param isn't there, if this is
-    callable (eg, time.time or datetime.utcnow) then it will be called every time the
-    decorated method is called
+    * store -- default
+    * store_false -- set if you want default to be true, and false if param is passed in
+    * store_true -- opposite of store_false
+    * store_list -- set to have a value like 1,2,3 be blown up to ['1', '2', '3']
+    * append -- if multiple param values should be turned into an array (eg, `foo=1&foo=2` would become `foo=[1, 2]`)
+    * append_list -- it's store_list + append, so `foo=1&foo=2,3` would be `foo=[1, 2, 3]`
+* default -- mixed -- the value that should be set if query param isn't there, if this is callable (eg, `time.time` or `datetime.utcnow`) then it will be called every time the decorated method is called
 * required -- boolean -- True if param is required, default is true
 * choices -- set() -- a set of values to be in tested against (eg, val in choices)
 * allow_empty -- boolean -- True allows values like False, 0, '' through,
@@ -32,8 +28,7 @@ The flags you can pass to the any of the decorators are:
     via the default flag
 * max_size -- int -- the maximum size of the param
 * min_size -- int -- the minimum size of the param
-* regex -- regexObject -- if you would like the param to be validated with a regular
-    exception, uses the re.search() method
+* regex -- regexObject -- if you would like the param to be validated with a regular exception, uses the `re.search()` method
 * help -- string -- a helpful description for this param
 
 
