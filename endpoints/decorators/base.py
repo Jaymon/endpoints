@@ -64,10 +64,6 @@ class TargetDecorator(FuncDecorator):
         except CallError:
             raise
 
-        except (AttributeError, TypeError) as e:
-            logger.debug(e, exc_info=True)
-            raise NotImplementedError(e.message)
-
         except Exception as e:
             logger.debug(e, exc_info=True)
             self.handle_error(e)
