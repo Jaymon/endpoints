@@ -716,7 +716,7 @@ class Request(Http):
         # http://www.ietf.org/rfc/rfc3330.txt (IPv4)
         # http://www.ietf.org/rfc/rfc5156.txt (IPv6)
         regex = re.compile(ur'^(?:{})'.format(ur'|'.join([
-            ur'[0-2]\.', # externally non-routable
+            ur'0\.', # reserved for 'self-identification'
             ur'10\.', # class A
             ur'169\.254', # link local block
             ur'172\.(?:1[6-9]|2[0-9]|3[0-1])', # class B
