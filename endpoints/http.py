@@ -715,11 +715,12 @@ class Request(Http):
         # https://github.com/un33k/django-ipware
         # http://www.ietf.org/rfc/rfc3330.txt (IPv4)
         # http://www.ietf.org/rfc/rfc5156.txt (IPv6)
+        # https://en.wikipedia.org/wiki/Reserved_IP_addresses
         regex = re.compile(ur'^(?:{})'.format(ur'|'.join([
             ur'0\.', # reserved for 'self-identification'
             ur'10\.', # class A
             ur'169\.254', # link local block
-            ur'172\.(?:1[6-9]|2[0-9]|3[0-1])', # class B
+            ur'172\.(?:1[6-9]|2[0-9]|3[0-1])\.', # class B
             ur'192\.0\.2', # documentation/examples
             ur'192\.168', # class C
             ur'255\.{3}', # broadcast address

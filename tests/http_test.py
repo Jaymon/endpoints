@@ -124,18 +124,23 @@ class RequestTest(TestCase):
 
     def test_ip(self):
         r = Request()
+        r.set_header('REMOTE_ADDR', '172.252.0.1')
+        self.assertEqual('172.252.0.1', r.ip)
+
+        r = Request()
+        r.set_header('REMOTE_ADDR', '1.241.34.107')
+        self.assertEqual('1.241.34.107', r.ip)
+
+        r = Request()
         r.set_header('x-forwarded-for', '54.241.34.107')
-        ip = r.ip
-        self.assertEqual('54.241.34.107', ip)
+        self.assertEqual('54.241.34.107', r.ip)
 
         r.set_header('x-forwarded-for', '127.0.0.1, 54.241.34.107')
-        ip = r.ip
-        self.assertEqual('54.241.34.107', ip)
+        self.assertEqual('54.241.34.107', r.ip)
 
         r.set_header('x-forwarded-for', '127.0.0.1')
         r.set_header('client-ip', '54.241.34.107')
-        ip = r.ip
-        self.assertEqual('54.241.34.107', ip)
+        self.assertEqual('54.241.34.107', r.ip)
 
     def test_body_kwargs_bad_content_type(self):
         """make sure a form upload content type with json body fails correctly"""
