@@ -6,8 +6,9 @@ import base64
 import testdata
 
 import endpoints
-from endpoints import CallError
+from endpoints import CallError, Request, Response, Call
 from endpoints.decorators import param, post_param
+from endpoints.decorators.route import when
 
 
 def create_controller():
@@ -912,4 +913,61 @@ class ParamTest(TestCase):
 
         r = foo(c, 1)
         self.assertEqual(["1", 20, "bar"], r)
+
+
+class WhenTest(TestCase):
+    def test_when(self):
+
+        controller_prefix = "when1"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "",
+            "class Default(Controller):",
+            "    @when(lambda *args: (len(args) == 1))",
+            "    def GET(self, *args): return 1",
+            "",
+            "    @when(lambda *args: (len(args) == 2))",
+            "    def GET(self, *args):",
+            "        return 2",
+        ])
+
+        # TODO -- test with another child that doesn't define GET but extends Default
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/foo/bar'
+        c.request = r
+
+        res = c.handle()
+
+    def xtest_when(self):
+
+        class WhenBar(object):
+            def __init__(self):
+                self.controller = create_controller()
+            def __getattr__(self, k): return getattr(self.controller, k)
+
+            @when(lambda *args: (len(args) == 1))
+            def GET(self, *args):
+                return 1
+
+#             @when(lambda *args: (len(args) == 2))
+#             def GET(self, *args):
+#                 return 2
+
+#         class WhenBar2(WhenBar):
+#             @when(lambda *args: (len(args) == 3))
+#             def GET(self, *args):
+#                 return 3
+
+        pout.b()
+        wb = WhenBar()
+        r = wb.GET(1)
+        pout.v(r)
+
+        r = wb.GET(1, 2)
+        pout.v(r)
 
