@@ -2,10 +2,11 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
 import inspect
+import re
 
 from decorators import FuncDecorator
 
-#from ..exception import CallError, AccessDenied
+from ..exception import CallError
 
 
 logger = logging.getLogger(__name__)
@@ -36,53 +37,65 @@ class when(FuncDecorator):
     def decorate(slf, func, callback, *args, **kwargs):
         slf.add_callback(func, callback)
         def decorated(self, *args, **kwargs):
+            ret_func = slf.find_func(self, func, args, kwargs)
+            if not ret_func:
+                raise CallError(404, "No matches for request were found")
 
-            name = slf.format_name(self.__class__, func)
-            pout.v(name, slf.callbacks)
-
-            #pout.v(slf.callbacks[func.__name__])
-
-            return func(self, *args, **kwargs)
-            # TODO -- figure out how to set ETag
-            #if not self.response.has_header('ETag')
+            return ret_func(self, *args, **kwargs)
 
         return decorated
 
-    # there is a way to do this, save it globally under GET, and then when the actual
-    # method is called, at that point I will have the class, once I have the class
-    # can get it's class methods and match up the ids to the global GET methods, so
-    # then I know which ones exist? Wait, but they will actually be hidden by the
-    # decorator, so I might not be able to get them, bah
+    def find_func(self, func_self, func, func_args, func_kwargs):
+        ret_func = None
+        for klass in inspect.getmro(func_self.__class__):
+            name = self.format_name(klass.__name__, func)
+            try:
+                for d in self.callbacks[name]:
+                    if d["callback"](func_self, *func_args, **func_kwargs):
+                        ret_func = d["func"]
+                        break
+
+            except KeyError:
+                pass
+
+            finally:
+                if ret_func:
+                    break
+
+        return ret_func
 
     def get_name(self, func):
+
+        frame = inspect.currentframe()
+        frames = inspect.getouterframes(frame)
+        pout.v(frames)
+
+
         name = ""
         module = inspect.getmodule(func)
         _, line_i = inspect.getsourcelines(func)
+        pout.v(_)
         mod_lines, _ = inspect.getsourcelines(module)
-        pout.v(mod_lines)
-
-
-        #classes = (c for c in inspect.getmembers(module, inspect.isclass) if c[1].__module__ == module.__name__)
-        from ..core import Controller
-        def is_subcontroller(c):
-            try:
-                return issubclass(c, Controller)
-            except TypeError:
-                return False
-        #classes = (c for c in inspect.getmembers(module, inspect.isclass))
-        classes = (c for c in inspect.getmembers(module, is_subcontroller))
-        for clsname, klass in classes:
-            pout.v(inspect.getmro(klass))
-            cls_lines, cls_line_i = inspect.getsourcelines(klass)
-            pout.v(klass, line_i, cls_line_i, len(cls_lines))
-            if line_i >= cls_line_i and line_i <= (cls_line_i + len(cls_lines)):
-                name = self.format_name(klass, func)
+        i = line_i
+        while i >= 0:
+            # so we have a little bit of a pickle here, we need the class name but
+            # the class isn't actually loaded yet, but we can get the module, so
+            # we are going to just look at the actual source code to find the class
+            # name, because if we tried to pull the class some other way it would
+            # fail because python hasn't fully loaded the module, I'm actually
+            # surprised we can even get the module
+            m = re.match(r"^\s*class\s+([^\s\(]+)", mod_lines[i])
+            if m:
+                name = m.group(1)
                 break
 
-        return name
+            else:
+                i -= 1
 
-    def format_name(self, klass, func):
-        name = "{}.{}".format(klass.__name__, func.__name__)
+        return self.format_name(name, func)
+
+    def format_name(self, clsname, func):
+        name = "{}.{}".format(clsname, func.__name__)
         return name
 
     def add_callback(self, func, callback):

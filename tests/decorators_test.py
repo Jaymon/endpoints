@@ -916,23 +916,55 @@ class ParamTest(TestCase):
 
 
 class WhenTest(TestCase):
-    def test_when(self):
+    def test_when_parent(self):
+        controller_prefix = "when2"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "",
+            "class Foo(Controller):",
+            "    @when(lambda self, *args: (len(args) == 1))",
+            "    def GET(self, *args): return 1",
+            "",
+            "    @when(lambda self, *args: (len(args) == 2))",
+            "    def GET(self, *args):",
+            "        return 2",
+            "",
+            "class Bar(Foo): pass",
+        ])
 
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/bar/1/2'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(2, res._body)
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/bar/1'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(1, res._body)
+
+    def test_when_simple(self):
         controller_prefix = "when1"
         m = testdata.create_module(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators.route import when",
             "",
             "class Default(Controller):",
-            "    @when(lambda *args: (len(args) == 1))",
+            "    @when(lambda self, *args: (len(args) == 1))",
             "    def GET(self, *args): return 1",
             "",
-            "    @when(lambda *args: (len(args) == 2))",
+            "    @when(lambda self, *args: (len(args) == 2))",
             "    def GET(self, *args):",
             "        return 2",
         ])
-
-        # TODO -- test with another child that doesn't define GET but extends Default
 
         c = Call(controller_prefix)
         c.response = Response()
@@ -942,6 +974,66 @@ class WhenTest(TestCase):
         c.request = r
 
         res = c.handle()
+        self.assertEqual(2, res._body)
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/foo'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(1, res._body)
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(1, res._body)
+
+    def test_when_multi(self):
+        controller_prefix = "when3"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "from endpoints.decorators import param",
+            "",
+            "class Defaul(Controller):",
+            "    @when(lambda self, *args: (len(args) == 1))",
+            "    @param('foo1')",
+            "    @param('bar1')",
+            "    @param('baz1')",
+            "    def GET(self, *args, **kwargs): return 1",
+            "",
+            "    @when(lambda self, *args: (len(args) == 2))",
+            "    @param('foo2')",
+            "    @param('bar2')",
+            "    def GET(self, *args, **kwargs):",
+            "        return 2",
+            "",
+            "class Bar(Foo): pass",
+        ])
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/1/2?foo2=201&bar2=202'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(2, res._body)
+
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = 'GET'
+        r.path = '/1?foo1=101&bar1=102'
+        c.request = r
+        res = c.handle()
+        self.assertEqual(1, res._body)
 
     def xtest_when(self):
 
