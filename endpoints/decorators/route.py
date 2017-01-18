@@ -33,22 +33,42 @@ other examples:
 """
 
 class when(FuncDecorator):
+    """WARNING -- The functionality in this decorator is *highly* experimental
+
+    Restrict method calls to certain conditions, this is handy when you want to
+    do different things depending on the parameters and path variables that are
+    sent up
+
+    :example:
+        class Default(Controller):
+            # run this when /foo is requested
+            @when(lambda: self, *args, **kwargs: args[0] == "foo")
+            def GET(self, *args, **kwargs): pass
+
+            # run this when /bar is requested
+            @when(lambda: self, *args, **kwargs: args[0] == "bar")
+            def GET(self, *args, **kwargs): pass
+    """
+
     callbacks = {}
+    """class property that holds the mapping on where each call should be routed"""
+
     def decorate(slf, func, callback, *args, **kwargs):
         slf.add_callback(func, callback)
         def decorated(self, *args, **kwargs):
-            ret_func = slf.find_func(self, func, args, kwargs)
-            if not ret_func:
-                raise CallError(404, "No matches for request were found")
+            try:
+                ret_func = slf.find_func(self, func, args, kwargs)
+                return ret_func(self, *args, **kwargs)
 
-            return ret_func(self, *args, **kwargs)
+            except TypeError as e:
+                raise CallError(404, e)
 
         return decorated
 
     def find_func(self, func_self, func, func_args, func_kwargs):
         ret_func = None
         for klass in inspect.getmro(func_self.__class__):
-            name = self.format_name(klass.__name__, func)
+            name = self.format_name(klass.__name__, func.__name__)
             try:
                 for d in self.callbacks[name]:
                     if d["callback"](func_self, *func_args, **func_kwargs):
@@ -66,36 +86,43 @@ class when(FuncDecorator):
 
     def get_name(self, func):
 
+        # so we have a little bit of a pickle here, we need the class name but
+        # the class isn't actually loaded yet, but we can get the module, so
+        # we are going to just look at the actual source code to find the class
+        # name, because if we tried to pull the class some other way it would
+        # fail because python hasn't fully loaded the module, I'm actually
+        # surprised we can even get the module
+        class_name = ""
+        method_name = ""
+        method_line_i = 0
+
+        regex = re.compile(r"^\s*class\s+([^\s\(]+)")
         frame = inspect.currentframe()
         frames = inspect.getouterframes(frame)
-        pout.v(frames)
-
-
-        name = ""
-        module = inspect.getmodule(func)
-        _, line_i = inspect.getsourcelines(func)
-        pout.v(_)
-        mod_lines, _ = inspect.getsourcelines(module)
-        i = line_i
-        while i >= 0:
-            # so we have a little bit of a pickle here, we need the class name but
-            # the class isn't actually loaded yet, but we can get the module, so
-            # we are going to just look at the actual source code to find the class
-            # name, because if we tried to pull the class some other way it would
-            # fail because python hasn't fully loaded the module, I'm actually
-            # surprised we can even get the module
-            m = re.match(r"^\s*class\s+([^\s\(]+)", mod_lines[i])
+        for frame_i, frame in enumerate(frames):
+            m = regex.match("".join(frame[4]))
             if m:
-                name = m.group(1)
+                class_name = m.group(1)
+                method_line_i = frames[frame_i - 1][2]
+                break
+
+        module = inspect.getmodule(func)
+        mod_lines, _ = inspect.getsourcelines(module)
+        i = method_line_i
+        regex = re.compile(r"^\s*def\s+([^\s\(]+)")
+        while i < len(mod_lines):
+            m = regex.match(mod_lines[i])
+            if m:
+                method_name = m.group(1)
                 break
 
             else:
-                i -= 1
+                i += 1
 
-        return self.format_name(name, func)
+        return self.format_name(class_name, method_name)
 
-    def format_name(self, clsname, func):
-        name = "{}.{}".format(clsname, func.__name__)
+    def format_name(self, class_name, method_name):
+        name = "{}.{}".format(class_name, method_name)
         return name
 
     def add_callback(self, func, callback):

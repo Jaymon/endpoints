@@ -916,150 +916,180 @@ class ParamTest(TestCase):
 
 
 class WhenTest(TestCase):
+    def setUp(self):
+        when.callbacks = {}
+
+    def get_call(self, controller_prefix, path, method="GET"):
+        c = Call(controller_prefix)
+        c.response = Response()
+        r = Request()
+        r.method = method
+        r.path = path
+        c.request = r
+        return c
+
+    def get_response(self, controller_prefix, path, method="GET"):
+        c = self.get_call(controller_prefix, path, method)
+        res = c.handle()
+        return res
+
     def test_when_parent(self):
-        controller_prefix = "when2"
+        controller_prefix = "when_parent"
         m = testdata.create_module(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators.route import when",
             "",
             "class Foo(Controller):",
             "    @when(lambda self, *args: (len(args) == 1))",
-            "    def GET(self, *args): return 1",
+            "    def GET(self, *args):",
+            "        return '{}1'".format(controller_prefix),
             "",
             "    @when(lambda self, *args: (len(args) == 2))",
             "    def GET(self, *args):",
-            "        return 2",
+            "        return '{}2'".format(controller_prefix),
             "",
             "class Bar(Foo): pass",
         ])
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/bar/1/2'
-        c.request = r
-        res = c.handle()
-        self.assertEqual(2, res._body)
+        res = self.get_response(controller_prefix, "/bar/1/2")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/bar/1'
-        c.request = r
-        res = c.handle()
-        self.assertEqual(1, res._body)
+        res = self.get_response(controller_prefix, "/bar/1")
+        self.assertEqual('{}1'.format(controller_prefix), res._body)
 
     def test_when_simple(self):
-        controller_prefix = "when1"
+        controller_prefix = "when_simple"
         m = testdata.create_module(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators.route import when",
             "",
             "class Default(Controller):",
             "    @when(lambda self, *args: (len(args) == 1))",
-            "    def GET(self, *args): return 1",
+            "    def GET(self, *args):",
+            "        return '{}1'".format(controller_prefix),
             "",
             "    @when(lambda self, *args: (len(args) == 2))",
             "    def GET(self, *args):",
-            "        return 2",
+            "        return '{}2'".format(controller_prefix),
         ])
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/foo/bar'
-        c.request = r
+        res = self.get_response(controller_prefix, "/foo/bar")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
 
-        res = c.handle()
-        self.assertEqual(2, res._body)
+        res = self.get_response(controller_prefix, "/foo")
+        self.assertEqual('{}1'.format(controller_prefix), res._body)
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/foo'
-        c.request = r
-        res = c.handle()
-        self.assertEqual(1, res._body)
+        res = self.get_response(controller_prefix, "/")
+        self.assertEqual(404, res.code)
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/'
-        c.request = r
-        res = c.handle()
-        self.assertEqual(1, res._body)
-
-    def test_when_multi(self):
-        controller_prefix = "when3"
+    def test_when_multi_1(self):
+        controller_prefix = "when_multi_1"
         m = testdata.create_module(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators.route import when",
             "from endpoints.decorators import param",
             "",
-            "class Defaul(Controller):",
-            "    @when(lambda self, *args: (len(args) == 1))",
+            "class Default(Controller):",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 1))",
             "    @param('foo1')",
             "    @param('bar1')",
-            "    @param('baz1')",
-            "    def GET(self, *args, **kwargs): return 1",
+            "    def GET(self, one, **kwargs):",
+            "        return '{}1'".format(controller_prefix),
             "",
-            "    @when(lambda self, *args: (len(args) == 2))",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 2))",
             "    @param('foo2')",
             "    @param('bar2')",
-            "    def GET(self, *args, **kwargs):",
-            "        return 2",
-            "",
-            "class Bar(Foo): pass",
+            "    def GET(self, one, two, **kwargs):",
+            "        return '{}2'".format(controller_prefix),
         ])
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/1/2?foo2=201&bar2=202'
-        c.request = r
+        c = self.get_call(controller_prefix, "/1")
+        c.request.query = 'foo1=101&bar1=102'
         res = c.handle()
-        self.assertEqual(2, res._body)
+        self.assertEqual('{}1'.format(controller_prefix), res._body)
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        r = Request()
-        r.method = 'GET'
-        r.path = '/1?foo1=101&bar1=102'
-        c.request = r
+        c = self.get_call(controller_prefix, "/1/2")
+        c.request.query = 'foo2=201&bar2=202'
         res = c.handle()
-        self.assertEqual(1, res._body)
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
 
-    def xtest_when(self):
+    def test_when_multi_2(self):
+        controller_prefix = "when_multi_2"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "",
+            "class Foo(Controller):",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 1))",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}1'".format(controller_prefix),
+            "",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 2))",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}2'".format(controller_prefix),
+            "",
+            "class Bar(Foo):",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 3))",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}3'".format(controller_prefix),
+            "",
+        ])
 
-        class WhenBar(object):
-            def __init__(self):
-                self.controller = create_controller()
-            def __getattr__(self, k): return getattr(self.controller, k)
+        res = self.get_response(controller_prefix, "/bar/1/2/3")
+        self.assertEqual('{}3'.format(controller_prefix), res._body)
 
-            @when(lambda *args: (len(args) == 1))
-            def GET(self, *args):
-                return 1
+        res = self.get_response(controller_prefix, "/bar/1/2")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
 
-#             @when(lambda *args: (len(args) == 2))
-#             def GET(self, *args):
-#                 return 2
+        res = self.get_response(controller_prefix, "/bar/1")
+        self.assertEqual('{}1'.format(controller_prefix), res._body)
 
-#         class WhenBar2(WhenBar):
-#             @when(lambda *args: (len(args) == 3))
-#             def GET(self, *args):
-#                 return 3
+    def test_fail_1(self):
+        """This fails because when @when is used on one GET method, it has to be used
+        on all the GET methods to be effective, otherwise last defined GET method wins"""
+        controller_prefix = "when_fail_1"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "",
+            "class Default(Controller):",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 1))",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}1'".format(controller_prefix),
+            "",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}2'".format(controller_prefix),
+        ])
 
-        pout.b()
-        wb = WhenBar()
-        r = wb.GET(1)
-        pout.v(r)
+        res = self.get_response(controller_prefix, "/1/2/3")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
 
-        r = wb.GET(1, 2)
-        pout.v(r)
+        res = self.get_response(controller_prefix, "/1/2")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
+
+        res = self.get_response(controller_prefix, "/1")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
+
+    def test_fail_2(self):
+        """the first GET can't be seen because the second GET overrides it and has a @when defined
+        so nothing will get through that doesn't match the when callback"""
+        controller_prefix = "when_fail_2"
+        m = testdata.create_module(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators.route import when",
+            "",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}1'".format(controller_prefix),
+            "",
+            "    @when(lambda self, *args, **kwargs: (len(args) == 1))",
+            "    def GET(self, *args, **kwargs):",
+            "        return '{}2'".format(controller_prefix),
+        ])
+
+        res = self.get_response(controller_prefix, "/1")
+        self.assertEqual('{}2'.format(controller_prefix), res._body)
+
+        res = self.get_response(controller_prefix, "/1/2")
+        self.assertEqual(404, res.code)
 
