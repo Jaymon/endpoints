@@ -30,6 +30,10 @@ class HTTPClient(object):
                 "content-type": "application/json",
             })
 
+        headers = kwargs.get("headers", {})
+        if headers:
+            self.headers.update(headers)
+
     def get(self, uri, query=None, **kwargs):
         """make a GET request"""
         return self.fetch('get', uri, query, **kwargs)
@@ -60,7 +64,7 @@ class HTTPClient(object):
         the post() method, but this will only return the body because we use curl
         to do the chunked request"""
         filepath = kwargs.pop("filepath", None)
-        url = self.get_url(uri)
+        url = self.get_fetch_url(uri)
         body = body or {}
 
         # http://superuser.com/a/149335/164279
@@ -108,28 +112,23 @@ class HTTPClient(object):
         make the request
         """
         if not query: query = {}
-        fetch_url = self.get_url(uri, query)
+        fetch_url = self.get_fetch_url(uri, query)
 
         args = [fetch_url]
 
         kwargs.setdefault("timeout", self.timeout)
-
-        headers = self.headers
-        if "headers" in kwargs:
-            headers = headers.copy()
-            headers.update(kwargs["headers"])
-        kwargs["headers"] = headers
+        kwargs["headers"] = self.get_fetch_headers(kwargs.get("headers", {}))
 
         if body:
             kwargs['data'] = self.get_fetch_body(body)
 
-        #pout.v(method, args, kwargs)
-        res = requests.request(method, *args, **kwargs)
+        res = self.get_fetch_request(method, *args, **kwargs)
+        #res = requests.request(method, *args, **kwargs)
         res = self.get_fetch_response(res)
         self.response = res
         return res
 
-    def get_query(self, query_str, query):
+    def get_fetch_query(self, query_str, query):
         if query:
             more_query_str = urllib.urlencode(query, doseq=True)
             if query_str:
@@ -139,26 +138,58 @@ class HTTPClient(object):
 
         return query_str
 
-    def get_url(self, uri, query=None):
-        if re.match("^\S+://\S", uri): return uri
+    def get_fetch_host(self):
+        return self.host.host
 
-        base_url = self.host.host
-        query_str = ''
-        if '?' in uri:
-            i = uri.index('?')
-            query_str = uri[i+1:]
-            uri = uri[0:i]
+    def get_fetch_url(self, uri, query=None):
+        if not isinstance(uri, basestring):
+            # allow ["foo", "bar"] to be converted to "/foo/bar"
+            uri = "/".join(uri)
 
-        uri = uri.lstrip('/')
-        query_str = self.get_query(query_str, query)
-        if query_str:
-            uri = '{}?{}'.format(uri, query_str)
+        ret_url = uri
+        if not re.match(r"^\S+://\S", uri):
+            base_url = self.get_fetch_host()
+            base_url = base_url.rstrip('/')
+            query_str = ''
+            if '?' in uri:
+                i = uri.index('?')
+                query_str = uri[i+1:]
+                uri = uri[0:i]
 
-        ret_url = '{}/{}'.format(base_url, uri)
+            uri = uri.lstrip('/')
+            query_str = self.get_fetch_query(query_str, query)
+            if query_str:
+                uri = '{}?{}'.format(uri, query_str)
+
+            ret_url = '{}/{}'.format(base_url, uri)
+
         return ret_url
+
+    def get_fetch_headers(self, headers):
+        """merge class headers with passed in headers
+
+        :param headers: dict, all the headers passed into the fetch method
+        :returns: passed in headers merged with global class headers
+        """
+        all_headers = self.headers.copy()
+        if headers:
+            all_headers.update(headers)
+        return all_headers
 
     def get_fetch_body(self, body):
         return body
+
+    def get_fetch_request(self, method, fetch_url, *args, **kwargs):
+        """This is handy if you want to modify the request right before passing it
+        to requests, or you want to do something extra special customized
+
+        :param method: string, the http method (eg, GET, POST)
+        :param fetch_url: string, the full url with query params
+        :param *args: any other positional arguments
+        :param **kwargs: any keyword arguments to pass to requests
+        :returns: a requests.Response compatible object instance
+        """
+        return requests.request(method, fetch_url, *args, **kwargs)
 
     def get_fetch_response(self, res):
         """the goal of this method is to make the requests object more endpoints like

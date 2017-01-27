@@ -341,16 +341,19 @@ class ClientTestCase(TestCase):
 
 
 class HTTPClientTest(ClientTestCase):
-    def test_get_url(self):
+    def test_get_fetch_url(self):
         c = self.create_client()
 
         uri = "http://foo.com"
-        url = c.get_url(uri)
+        url = c.get_fetch_url(uri)
         self.assertEqual(uri, url)
 
         uri = "/foo/bar"
-        url = c.get_url(uri)
-        self.assertEqual("{}{}".format(c.host.host, uri), url)
+        url = c.get_fetch_url(uri)
+        self.assertEqual("{}{}".format(c.get_fetch_host(), uri), url)
+
+        url = c.get_fetch_url(["foo", "bar"])
+        self.assertEqual("{}{}".format(c.get_fetch_host(), "/foo/bar"), url)
 
     def test_post_file(self):
         filepath = testdata.create_file("json_post_file.txt", "json post file")
