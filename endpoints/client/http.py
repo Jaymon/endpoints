@@ -117,7 +117,7 @@ class HTTPClient(object):
         args = [fetch_url]
 
         kwargs.setdefault("timeout", self.timeout)
-        kwargs["headers"] = self.get_fetch_headers(kwargs.get("headers", {}))
+        kwargs["headers"] = self.get_fetch_headers(method, kwargs.get("headers", {}))
 
         if body:
             kwargs['data'] = self.get_fetch_body(body)
@@ -165,16 +165,18 @@ class HTTPClient(object):
 
         return ret_url
 
-    def get_fetch_headers(self, headers):
+    def get_fetch_headers(self, method, headers):
         """merge class headers with passed in headers
 
+        :param method: string, (eg, GET or POST), this is passed in so you can customize
+            headers based on the method that you are calling
         :param headers: dict, all the headers passed into the fetch method
         :returns: passed in headers merged with global class headers
         """
         all_headers = self.headers.copy()
         if headers:
             all_headers.update(headers)
-        return all_headers
+        return Headers(all_headers)
 
     def get_fetch_body(self, body):
         return body
