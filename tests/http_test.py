@@ -142,6 +142,17 @@ class RequestTest(TestCase):
         r.set_header('client-ip', '54.241.34.107')
         self.assertEqual('54.241.34.107', r.ip)
 
+    def test_ip_bad(self):
+        r = Request()
+        r.set_header('REMOTE_ADDR', "10.0.2.2")
+        r.set_header("Via", "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)")
+        self.assertEqual("", r.ip)
+
+        r = Request()
+        r.set_header('REMOTE_ADDR', "54.241.34.107")
+        r.set_header("Via", "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)")
+        self.assertEqual("54.241.34.107", r.ip)
+
     def test_body_kwargs_bad_content_type(self):
         """make sure a form upload content type with json body fails correctly"""
         r = Request()

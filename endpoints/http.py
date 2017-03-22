@@ -716,7 +716,8 @@ class Request(Http):
         # http://www.ietf.org/rfc/rfc3330.txt (IPv4)
         # http://www.ietf.org/rfc/rfc5156.txt (IPv6)
         # https://en.wikipedia.org/wiki/Reserved_IP_addresses
-        regex = re.compile(ur'^(?:{})'.format(ur'|'.join([
+        format_regex = re.compile(r'\s')
+        ip_regex = re.compile(r'^(?:{})'.format(r'|'.join([
             ur'0\.', # reserved for 'self-identification'
             ur'10\.', # class A
             ur'169\.254', # link local block
@@ -734,7 +735,7 @@ class Request(Http):
 
         ips = self.ips
         for ip in ips:
-            if not regex.match(ip):
+            if not format_regex.search(ip) and not ip_regex.match(ip):
                 r = ip
                 break
 
