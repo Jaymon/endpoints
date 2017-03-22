@@ -722,7 +722,7 @@ class Request(Http):
             ur'10\.', # class A
             ur'169\.254', # link local block
             ur'172\.(?:1[6-9]|2[0-9]|3[0-1])\.', # class B
-            ur'192\.0\.2', # documentation/examples
+            ur'192\.0\.2\.', # documentation/examples
             ur'192\.168', # class C
             ur'255\.{3}', # broadcast address
             ur'2001\:db8', # documentation/examples
