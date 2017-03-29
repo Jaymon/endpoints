@@ -5,6 +5,7 @@ import json
 
 from ..http import Request, Response
 from ..call import Call
+from ..decorators import _property
 
 
 logger = logging.getLogger(__name__)
@@ -80,11 +81,33 @@ class BaseServer(object):
     """the endpoints.call.Call compatible class that should be used to make a
     Call() instance"""
 
+    @_property
+    def interface(self):
+        return self.create_interface()
+
+    @_property
+    def backend(self):
+        return self.create_backend()
+
     def __init__(self, controller_prefix='', **kwargs):
         if controller_prefix:
             self.controller_prefix = controller_prefix
-        if not self.controller_prefix:
+        else:
             self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
+
+        classes = [
+            "interface_class",
+            "backend_class",
+            "request_class",
+            "response_class",
+            "call_class",
+        ]
+        for k in classes:
+            if k in kwargs:
+                setattr(self, k, kwargs[k])
+
+#         self.interface = self.create_interface(**kwargs)
+#         self.backend = self.create_backend(**kwargs)
 
     def create_interface(self, **kwargs):
         kwargs.setdefault('call_class', self.call_class)
@@ -100,7 +123,6 @@ class BaseServer(object):
         raise NotImplemented()
 
     def serve_forever(self):
-        self.prepare()
         try:
             while True: self.handle_request()
         except Exception as e:
@@ -108,7 +130,6 @@ class BaseServer(object):
             raise
 
     def serve_count(self, count):
-        self.prepare()
         try:
             handle_count = 0
             while handle_count < count:
@@ -118,12 +139,15 @@ class BaseServer(object):
             logger.exception(e)
             raise
 
-    def prepare(self):
-        """this should be called in all request handling methods to make sure the
-        internal object is "ready" to process requests"""
-        if not hasattr(self, "interface"):
-            self.interface = self.create_interface()
-
-        if not hasattr(self, "backend"):
-            self.backend = self.create_backend()
+#     def prepare(self):
+#         """this should be called in all request handling methods to make sure the
+#         internal object is "ready" to process requests
+# 
+#         The reason this is outside of __init__ is to give a chance 
+#         """
+#         if not hasattr(self, "interface"):
+#             self.interface = self.create_interface()
+# 
+#         if not hasattr(self, "backend"):
+#             self.backend = self.create_backend()
 

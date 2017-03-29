@@ -15,6 +15,7 @@ except ImportError:
 
 from . import BaseInterface, BaseServer
 from ..http import Url
+from ..decorators import _property
 
 
 class uWSGIChunkedBody(object):
@@ -136,9 +137,9 @@ class Application(BaseServer):
     """
     interface_class = WSGIInterface
 
-    def __init__(self, *args, **kwargs):
-        super(Application, self).__init__(*args, **kwargs)
-        self.prepare()
+#     def __init__(self, *args, **kwargs):
+#         super(Application, self).__init__(*args, **kwargs)
+#         #self.prepare()
 
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server handles"""
@@ -170,11 +171,9 @@ class Server(BaseServer):
     """
     application_class = Application
 
-    interface_class = WSGIInterface
-
     backend_class = WSGIHTTPServer
 
-    @property
+    @_property
     def application(self):
         """if no application has been set, then create it using application_class"""
         app = getattr(self, "_application", None)
@@ -189,6 +188,10 @@ class Server(BaseServer):
         your own application callable that will be used to handle requests, see
         bin/wsgiserver.py script as an example of usage"""
         self._application = v
+        self.backend.set_app(v)
+
+    def create_interface(self, **kwargs):
+        return None
 
     def create_backend(self, **kwargs):
         host = kwargs.pop('host', '')
@@ -207,11 +210,11 @@ class Server(BaseServer):
         return s
 
     def handle_request(self):
-        self.prepare()
+        #self.prepare()
         return self.backend.handle_request()
 
     def serve_forever(self):
-        self.prepare()
+        #self.prepare()
         return self.backend.serve_forever()
 
 
