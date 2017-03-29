@@ -137,10 +137,6 @@ class Application(BaseServer):
     """
     interface_class = WSGIInterface
 
-#     def __init__(self, *args, **kwargs):
-#         super(Application, self).__init__(*args, **kwargs)
-#         #self.prepare()
-
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server handles"""
         res = self.interface.handle(environ)
@@ -156,8 +152,7 @@ class Application(BaseServer):
     def handle_request(self):
         raise NotImplementedError()
 
-    def serve_forever(self):
-        raise NotImplementedError()
+    def serve_forever(self): raise NotImplementedError()
 
     def serve_count(self, count):
         raise NotImplementedError()
@@ -168,6 +163,9 @@ class Server(BaseServer):
 
     you would normally only use this with the bin/wsgiserver.py script, if you
     want to use it outside of that, then look at that script for inspiration
+
+    All the interface stuff for wsgi goes through the Application, so this doesn't
+    ever create an interface directly (notice the create_interface() method returns nothing)
     """
     application_class = Application
 
@@ -176,10 +174,7 @@ class Server(BaseServer):
     @_property
     def application(self):
         """if no application has been set, then create it using application_class"""
-        app = getattr(self, "_application", None)
-        if not app:
-            app = self.application_class()
-            self._application = app
+        app = self.application_class()
         return app
 
     @application.setter

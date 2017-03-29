@@ -18,7 +18,6 @@ class BaseInterface(object):
     The interface is what will translate raw requests into something that can be
     understood by endpoints
     """
-
     def __init__(self, controller_prefix, request_class, response_class, call_class, **kwargs):
         self.controller_prefix = controller_prefix
         self.request_class = request_class
@@ -106,9 +105,6 @@ class BaseServer(object):
             if k in kwargs:
                 setattr(self, k, kwargs[k])
 
-#         self.interface = self.create_interface(**kwargs)
-#         self.backend = self.create_backend(**kwargs)
-
     def create_interface(self, **kwargs):
         kwargs.setdefault('call_class', self.call_class)
         kwargs.setdefault('request_class', self.request_class)
@@ -138,16 +134,4 @@ class BaseServer(object):
         except Exception as e:
             logger.exception(e)
             raise
-
-#     def prepare(self):
-#         """this should be called in all request handling methods to make sure the
-#         internal object is "ready" to process requests
-# 
-#         The reason this is outside of __init__ is to give a chance 
-#         """
-#         if not hasattr(self, "interface"):
-#             self.interface = self.create_interface()
-# 
-#         if not hasattr(self, "backend"):
-#             self.backend = self.create_backend()
 

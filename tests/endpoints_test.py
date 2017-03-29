@@ -55,8 +55,8 @@ def create_modules(controller_prefix):
 
 
 class ControllerTest(TestCase):
-    def test_cors_mixin(self):
-        class Cors(endpoints.Controller, endpoints.CorsMixin):
+    def test_cors(self):
+        class Cors(endpoints.Controller):
             def POST(self): pass
 
         res = endpoints.Response()

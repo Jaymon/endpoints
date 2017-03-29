@@ -1,61 +1,6 @@
-import inspect
 import re
 
 from .exception import CallError
-
-
-class CorsMixin(object):
-    """
-    Use this mixin if you want your controller to support cross site scripting
-    requests. Adding this to your controller should be all you need to do to allow
-    the endpoint to start accepting CORS requests
-
-    ---------------------------------------------------------------------------
-    import endpoints
-
-    class Cors(endpoints.Controller, endpoints.CorsMixin):
-        def POST(self, *args, **kwargs):
-            return "you just made a POST preflighted cors request"
-    ---------------------------------------------------------------------------
-
-    spec -- http://www.w3.org/TR/cors/
-    """
-    def __init__(self, *args, **kwargs):
-        super(CorsMixin, self).__init__(*args, **kwargs)
-        self.set_cors_common_headers()
-
-    def OPTIONS(self, *args, **kwargs):
-        req = self.request
-
-        origin = req.get_header('origin')
-        if not origin:
-            raise CallError(400, 'Need Origin header')
-
-        call_headers = [
-            ('Access-Control-Request-Headers', 'Access-Control-Allow-Headers'),
-            ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
-        ]
-        for req_header, res_header in call_headers:
-            v = req.get_header(req_header)
-            if v:
-                self.response.set_header(res_header, v)
-            else:
-                raise CallError(400, 'Need {} header'.format(req_header))
-
-        other_headers = {
-            'Access-Control-Allow-Credentials': 'true',
-            'Access-Control-Max-Age': 3600
-        }
-        self.response.add_headers(other_headers)
-
-    def set_cors_common_headers(self):
-        """
-        This will set the headers that are needed for any cors request (OPTIONS or real)
-        """
-        req = self.request
-        origin = req.get_header('origin')
-        if origin:
-            self.response.set_header('Access-Control-Allow-Origin', origin)
 
 
 class Controller(object):
@@ -108,8 +53,50 @@ class Controller(object):
     """set this to True if the controller should not be picked up by reflection, the controller
     will still be available, but reflection will not reveal it as an endpoint"""
 
+    cors = True
+    """Activates CORS support, http://www.w3.org/TR/cors/"""
+
     def __init__(self, request, response, *args, **kwargs):
         self.request = request
         self.response = response
         super(Controller, self).__init__(*args, **kwargs)
+        self.set_cors_common_headers()
+
+    def OPTIONS(self, *args, **kwargs):
+        if not self.cors:
+            raise CallError(405)
+
+        req = self.request
+
+        origin = req.get_header('origin')
+        if not origin:
+            raise CallError(400, 'Need Origin header')
+
+        call_headers = [
+            ('Access-Control-Request-Headers', 'Access-Control-Allow-Headers'),
+            ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
+        ]
+        for req_header, res_header in call_headers:
+            v = req.get_header(req_header)
+            if v:
+                self.response.set_header(res_header, v)
+            else:
+                raise CallError(400, 'Need {} header'.format(req_header))
+
+        other_headers = {
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': 3600
+        }
+        self.response.add_headers(other_headers)
+
+    def set_cors_common_headers(self):
+        """
+        This will set the headers that are needed for any cors request (OPTIONS or real)
+        """
+        if not self.cors: return
+
+        req = self.request
+        origin = req.get_header('origin')
+        if origin:
+            self.response.set_header('Access-Control-Allow-Origin', origin)
 

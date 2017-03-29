@@ -11,7 +11,7 @@ from endpoints.decorators import param, post_param
 
 
 def create_controller():
-    class FakeController(endpoints.Controller, endpoints.CorsMixin):
+    class FakeController(endpoints.Controller):
         def POST(self): pass
         def GET(self): pass
 

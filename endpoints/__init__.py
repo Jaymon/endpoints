@@ -6,7 +6,7 @@ from .call import Call
 from .exception import CallError, Redirect, CallStop, AccessDenied
 from .http import Request, Response, Url
 from .utils import AcceptHeader
-from .core import Controller, CorsMixin
+from .core import Controller
 from . import decorators
 
 
