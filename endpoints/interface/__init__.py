@@ -12,7 +12,12 @@ logger = logging.getLogger(__name__)
 
 class BaseInterface(object):
     """all interfaces should extend this class to be able to interact correctly
-    with the server"""
+    with the server
+
+    The interface is what will translate raw requests into something that can be
+    understood by endpoints
+    """
+
     def __init__(self, controller_prefix, request_class, response_class, call_class, **kwargs):
         self.controller_prefix = controller_prefix
         self.request_class = request_class
@@ -40,40 +45,25 @@ class BaseInterface(object):
         c = self.create_call(raw_request=raw_request, **kwargs)
         return c.handle()
 
-    def normalize_body_kwargs(self, content_type, body, raw_request):
-        body_kwargs = {}
-        ct = content_type.lower()
-        if ct.rfind("json") >= 0:
-            body_kwargs = json.loads(body)
-
-        else:
-        #elif ct.rfind(u"x-www-form-urlencoded") >= 0:
-            body_fields = cgi.FieldStorage(
-                fp=body,
-                environ=raw_request,
-                keep_blank_values=True
-            )
-            for field_name in body_fields.keys():
-                body_field = body_fields[field_name]
-                if body_field.filename:
-                    body_kwargs[field_name] = body_field
-                else:
-                    body_kwargs[field_name] = body_field.value
-
-        # elif ct.rfind(u"multipart/form-data") >= 0:
-        return body_kwargs
-
 
 class BaseServer(object):
     """all servers should extend this and implemented the NotImplemented methods,
-    this ensures a similar interface among all the different servers"""
+    this ensures a similar interface among all the different servers
+
+    A server is different from the interface because the server is actually responsible
+    for serving the requests, while the interface will translate the requests to
+    and from endpoints itself into something the server backend can understand
+
+    So the path is backend -> Server (this class) -> interface request -> endpoints
+    -> interface response -> Server (this class) -> backend
+    """
     controller_prefix = ''
     """the controller prefix you want to use to find your Controller subclasses"""
 
     interface_class = None
     """the interface that should be used to translate between the supported server"""
 
-    server_class = None
+    backend_class = None
     """the supported server's interface, there is no common interface for this class.
     Basically it is the raw backend class that the BaseServer child is translating
     for endpoints compatibility"""
@@ -103,8 +93,8 @@ class BaseServer(object):
         kwargs.setdefault('controller_prefix', self.controller_prefix)
         return self.interface_class(**kwargs)
 
-    def create_server(self, **kwargs):
-        return self.server_class(**kwargs)
+    def create_backend(self, **kwargs):
+        return self.backend_class(**kwargs)
 
     def handle_request(self):
         raise NotImplemented()
@@ -134,6 +124,6 @@ class BaseServer(object):
         if not hasattr(self, "interface"):
             self.interface = self.create_interface()
 
-        if not hasattr(self, "server"):
-            self.server = self.create_server()
+        if not hasattr(self, "backend"):
+            self.backend = self.create_backend()
 

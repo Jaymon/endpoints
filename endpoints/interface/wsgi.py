@@ -123,13 +123,7 @@ class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
     pass
 
 
-class WSGIBaseServer(BaseServer):
-    """Common WSGI base configuration"""
-    interface_class = WSGIInterface
-    server_class = WSGIHTTPServer
-
-
-class Application(WSGIBaseServer):
+class Application(BaseServer):
     """The Application that a WSGI server needs
 
     this extends Server just to make it easier on the end user, basically, all you
@@ -140,6 +134,8 @@ class Application(WSGIBaseServer):
 
     and be good to go
     """
+    interface_class = WSGIInterface
+
     def __init__(self, *args, **kwargs):
         super(Application, self).__init__(*args, **kwargs)
         self.prepare()
@@ -153,7 +149,7 @@ class Application(WSGIBaseServer):
         )
         return res
 
-    def create_server(self, **kwargs):
+    def create_backend(self, **kwargs):
         return None
 
     def handle_request(self):
@@ -166,13 +162,17 @@ class Application(WSGIBaseServer):
         raise NotImplementedError()
 
 
-class Server(WSGIBaseServer):
+class Server(BaseServer):
     """A simple python WSGI Server
 
     you would normally only use this with the bin/wsgiserver.py script, if you
     want to use it outside of that, then look at that script for inspiration
     """
-    application_class=Application
+    application_class = Application
+
+    interface_class = WSGIInterface
+
+    backend_class = WSGIHTTPServer
 
     @property
     def application(self):
@@ -190,7 +190,7 @@ class Server(WSGIBaseServer):
         bin/wsgiserver.py script as an example of usage"""
         self._application = v
 
-    def create_server(self, **kwargs):
+    def create_backend(self, **kwargs):
         host = kwargs.pop('host', '')
         if not host:
             host = os.environ['ENDPOINTS_HOST']
@@ -202,16 +202,16 @@ class Server(WSGIBaseServer):
             raise RuntimeError("Please specify a port using the format host:PORT")
         server_address = (hostname, port)
 
-        s = self.server_class(server_address, WSGIRequestHandler, **kwargs)
+        s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)
         return s
 
     def handle_request(self):
         self.prepare()
-        return self.server.handle_request()
+        return self.backend.handle_request()
 
     def serve_forever(self):
         self.prepare()
-        return self.server.serve_forever()
+        return self.backend.serve_forever()
 
 
