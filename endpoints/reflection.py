@@ -9,8 +9,7 @@ import collections
 #import keyword
 import __builtin__
 
-from .core import Controller
-from .call import Router
+from .call import Router, Controller
 from .decorators import _property
 
 

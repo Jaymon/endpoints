@@ -652,7 +652,7 @@ class Request(Http):
         """The encoding the client requested the response to use"""
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Charset
         ret = ""
-        accept_encoding = self.request.get_header("Accept-Charset", "")
+        accept_encoding = self.get_header("Accept-Charset", "")
         if accept_encoding:
             bits = re.split(r"\s+", accept_encoding)
             bits = bits[0].split(";")
@@ -914,7 +914,7 @@ class Request(Http):
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
         """
         v = None
-        accept_header = self.request.get_header('accept', "")
+        accept_header = self.get_header('accept', "")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a.filter(content_type):

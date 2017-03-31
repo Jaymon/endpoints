@@ -2,9 +2,10 @@ import os
 import logging
 import cgi
 import json
+import sys
 
 from ..http import Request, Response
-from ..call import Call, Router
+from ..call import Router
 from ..decorators import _property
 from ..exception import CallError, Redirect, CallStop, AccessDenied
 
@@ -23,11 +24,10 @@ class BaseInterface(object):
     def router(self):
         return self.create_router()
 
-    def __init__(self, controller_prefix, request_class, response_class, call_class, router_class, **kwargs):
+    def __init__(self, controller_prefix, request_class, response_class, router_class, **kwargs):
         self.controller_prefix = controller_prefix
         self.request_class = request_class
         self.response_class = response_class
-        self.call_class = call_class
         self.router_class = router_class
 
     def create_request(self, raw_request, **kwargs):
@@ -39,13 +39,13 @@ class BaseInterface(object):
         return output to the client"""
         return self.response_class()
 
-    def create_call(self, raw_request, **kwargs):
-        """create a call object that has endpoints understandable request and response
-        instances"""
-        c = self.call_class(self.controller_prefix)
-        c.request = self.create_request(raw_request, **kwargs)
-        c.response = self.create_response(**kwargs)
-        return c
+#     def create_call(self, raw_request, **kwargs):
+#         """create a call object that has endpoints understandable request and response
+#         instances"""
+#         c = self.call_class(self.controller_prefix)
+#         c.request = self.create_request(raw_request, **kwargs)
+#         c.response = self.create_response(**kwargs)
+#         return c
 
     def create_router(self, **kwargs):
         kwargs.setdefault('controller_prefix', self.controller_prefix)
@@ -79,10 +79,10 @@ class BaseInterface(object):
                 )
             )
 
-        finally:
-            res.controller_info = controller_info
-            controller_info['instance'].router = rou
-            controller_info['instance'].interface = self
+        else:
+            instance = controller_info['class_instance']
+            #req.controller_info = controller_info
+            instance.interface = self
 
             logger.debug("handling request with callback {}.{}.{}".format(
                 controller_info['module_name'],
@@ -90,7 +90,7 @@ class BaseInterface(object):
                 controller_info['method_name']
             ))
 
-            body = controller_info['instance'].handle()
+            body = instance.handle()
 
         return body
 
@@ -98,9 +98,9 @@ class BaseInterface(object):
         body, res, req = None, None, None
 
         try:
+            rou = self.router
             req = self.create_request(raw_request, **kwargs)
             res = self.create_response(**kwargs)
-            rou = self.router
             body = self._handle(req, res, rou)
 
         except Exception as e:
@@ -109,11 +109,10 @@ class BaseInterface(object):
             body = self.handle_error(e, req=req, res=res)
 
         finally:
+            res.body = body # setting body will set code
             if res.code == 204:
                 res.headers.pop('Content-Type', None)
-                res.body = None
-            else:
-                res.body = body
+                res.body = None # just to be sure since body could've been ""
 
         return res
 
@@ -194,10 +193,6 @@ class BaseServer(object):
     response_class = Response
     """the endpoints.http.Response compatible class that should be used to make
     Response() instances"""
-
-    call_class = Call
-    """the endpoints.call.Call compatible class that should be used to make a
-    Call() instance"""
 
     router_class = Router
     """the endpoints.call.Router compatible class that hadnles translating a request

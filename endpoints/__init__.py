@@ -2,11 +2,10 @@ import logging
 from logging import NullHandler
 
 from .reflection import Reflect
-from .call import Call
 from .exception import CallError, Redirect, CallStop, AccessDenied
 from .http import Request, Response, Url
 from .utils import AcceptHeader
-from .core import Controller
+from .call import Controller, Router
 from . import decorators
 
 

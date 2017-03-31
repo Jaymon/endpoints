@@ -118,7 +118,7 @@ class WSGIInterface(BaseInterface):
         return r
 
 
-# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server-using-socketserver-framework-in-python?rq=1
+# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
 class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
     """This is here to make the standard wsgi server multithreaded"""
     pass
