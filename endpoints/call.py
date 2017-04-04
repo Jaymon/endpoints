@@ -21,6 +21,138 @@ from .decorators import _property
 logger = logging.getLogger(__name__)
 
 
+class Call(object):
+    def __init__(self, req, res, rou):
+        self.request = req
+        self.response = res
+        self.router = rou
+        self.controller = None
+
+    def create_controller(self):
+        body = None
+        req = self.request
+        res = self.response
+        rou = self.router
+        con = None
+
+        controller_info = {}
+        try:
+            controller_info = rou.find(req, res)
+
+        except IOError as e:
+            logger.warning(str(e), exc_info=True)
+            raise CallError(
+                408,
+                "The client went away before the request body was retrieved."
+            )
+
+        except (ImportError, AttributeError, TypeError) as e:
+            exc_info = sys.exc_info()
+            logger.warning(str(e), exc_info=exc_info)
+            raise CallError(
+                404,
+                "{} not found because of {} \"{}\" on {}:{}".format(
+                    req.path,
+                    exc_info[0].__name__,
+                    str(e),
+                    os.path.basename(exc_info[2].tb_frame.f_code.co_filename),
+                    exc_info[2].tb_lineno
+                )
+            )
+
+        else:
+            con = controller_info['class_instance']
+
+        return con
+
+    def handle(self):
+        body = None
+        req = self.request
+        res = self.response
+        rou = self.router
+        con = None
+
+        try:
+            con = self.create_controller(req, res, rou)
+            con.interface = self
+            self.controller = con
+
+            logger.debug("handling request with callback {}.{}.{}".format(
+                req.controller_info['module_name'],
+                req.controller_info['class_name'],
+                req.controller_info['method_name']
+            ))
+
+            con.handle() # this will manipulate self.response
+
+        except Exception as e:
+            # if anything gets to here we've messed up because we threw an error before
+            # the controller's error handler could handle it :(
+            self.handle_error(e) # this will manipulate self.response
+
+        finally:
+            if res.code == 204:
+                res.headers.pop('Content-Type', None)
+                res.body = None # just to be sure since body could've been ""
+
+        return res
+
+    def handle_error(self, e, **kwargs):
+        """if an exception is raised while trying to handle the request it will
+        go through this method
+
+        :param e: Exception, the error that was raised
+        :param **kwargs: dict, any other information that might be handy
+        :returns: mixed, the body for the response
+        """
+        req = self.request
+        res = self.response
+        con = self.controller
+
+        if isinstance(e, CallStop):
+            logger.info(str(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = e.body
+
+        elif isinstance(e, Redirect):
+            logger.info(str(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = None
+
+        elif isinstance(e, (AccessDenied, CallError)):
+            logger.warning(str(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = e
+
+        elif isinstance(e, NotImplementedError):
+            logger.warning(str(e), exc_info=True)
+            res.code = 501
+            res.body = e
+
+        elif isinstance(e, TypeError):
+            e_msg = unicode(e)
+            if e_msg.startswith(req.method) and 'argument' in e_msg:
+                logger.debug(e_msg, exc_info=True)
+                res.code = 404
+
+            else:
+                logger.exception(e)
+                res.code = 500
+
+            res.body = e
+
+        else:
+            logger.exception(e)
+            res.code = 500
+            res.body = e
+
+        if con:
+            con.handle_error(e, **kwargs)
+
+
 class Router(object):
     """
     Where all the routing magic happens
@@ -305,7 +437,6 @@ class Controller(object):
         """handles the request and returns the response
 
         :returns: Response instance, the response object with a body already"""
-        body = None
         start = time.time()
         try:
             self.log_start(start)
@@ -320,15 +451,10 @@ class Controller(object):
             controller_method = self.request.controller_info["method"]
             controller_args = self.request.controller_info["method_args"]
             controller_kwargs = self.request.controller_info["method_kwargs"]
-            body = controller_method(*controller_args, **controller_kwargs)
-
-        except Exception as e:
-            body = self.handle_error(e)
+            self.response.body = controller_method(*controller_args, **controller_kwargs)
 
         finally:
             self.log_stop(start)
-
-        return body
 
     def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
@@ -337,7 +463,7 @@ class Controller(object):
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
         """
-        return self.interface.handle_error(e, req=self.request, res=self.response, **kwargs)
+        pass
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""
