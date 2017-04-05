@@ -71,7 +71,32 @@ class uWSGIChunkedBody(object):
         return line
 
 
-class WSGIInterface(BaseInterface):
+# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
+class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
+    """This is here to make the standard wsgi server multithreaded"""
+    pass
+
+
+class Application(BaseServer):
+    """The Application that a WSGI server needs
+
+    this extends Server just to make it easier on the end user, basically, all you
+    need to do to use this is in your wsgi-file, you can just do:
+
+        from endpoints.interface.wsgi import Application
+        application = Application()
+
+    and be good to go
+    """
+    def __call__(self, environ, start_response):
+        """this is what will be called for each request that that WSGI server handles"""
+        res = self.interface.handle(environ)
+        start_response(
+            '{} {}'.format(res.code, res.status),
+            [(k, str(v)) for k, v in res.headers.items()]
+        )
+        return res
+
     def create_request(self, raw_request, **kwargs):
         """
         create instance of request
@@ -117,42 +142,14 @@ class WSGIInterface(BaseInterface):
 
         return r
 
-
-# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
-class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
-    """This is here to make the standard wsgi server multithreaded"""
-    pass
-
-
-class Application(BaseServer):
-    """The Application that a WSGI server needs
-
-    this extends Server just to make it easier on the end user, basically, all you
-    need to do to use this is in your wsgi-file, you can just do:
-
-        from endpoints.interface.wsgi import Application
-        application = Application()
-
-    and be good to go
-    """
-    interface_class = WSGIInterface
-
-    def __call__(self, environ, start_response):
-        """this is what will be called for each request that that WSGI server handles"""
-        res = self.interface.handle(environ)
-        start_response(
-            '{} {}'.format(res.code, res.status),
-            [(k, str(v)) for k, v in res.headers.items()]
-        )
-        return res
-
     def create_backend(self, **kwargs):
-        return None
+        raise NotImplementedError()
 
     def handle_request(self):
         raise NotImplementedError()
 
-    def serve_forever(self): raise NotImplementedError()
+    def serve_forever(self):
+        raise NotImplementedError()
 
     def serve_count(self, count):
         raise NotImplementedError()
@@ -163,9 +160,6 @@ class Server(BaseServer):
 
     you would normally only use this with the bin/wsgiserver.py script, if you
     want to use it outside of that, then look at that script for inspiration
-
-    All the interface stuff for wsgi goes through the Application, so this doesn't
-    ever create an interface directly (notice the create_interface() method returns nothing)
     """
     application_class = Application
 
@@ -184,9 +178,6 @@ class Server(BaseServer):
         bin/wsgiserver.py script as an example of usage"""
         self._application = v
         self.backend.set_app(v)
-
-    def create_interface(self, **kwargs):
-        return None
 
     def create_backend(self, **kwargs):
         host = kwargs.pop('host', '')

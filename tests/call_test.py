@@ -7,17 +7,17 @@ import endpoints
 from endpoints.http import Request, Response
 from endpoints.call import Controller, Router
 from endpoints.exception import CallError
-from endpoints.interface import BaseInterface
+from endpoints.interface import BaseServer
 
 
-class Call(BaseInterface):
+class Server(BaseServer):
     """This is just a wrapper to get access to the Interface handling code"""
     def __init__(self, controller_prefix, contents):
-        super(Call, self).__init__(
+        super(Server, self).__init__(
             controller_prefix=controller_prefix,
-            request_class=Request,
-            response_class=Response,
-            router_class=Router
+            #request_class=Request,
+            #response_class=Response,
+            #router_class=Router
         )
 
         if isinstance(contents, dict):
@@ -32,68 +32,28 @@ class Call(BaseInterface):
         else:
             self.controller = testdata.create_module(controller_prefix, contents=contents)
 
-        self.method = "GET"
+        #self.request = self.request_class()
 
     def create_request(self, path):
         req = self.request_class()
         req.method = self.method
+        for k, v in self.kwargs.items():
+            setattr(req, k, v)
+
         req.path = path
         return req
 
-    def handle(self, path):
+    def handle(self, path, method="GET", **kwargs):
         """This isn't technically needed but just makes it explicit you pass in the
         path you want and this will translate that and handle the request
 
         :param path: string, full URI you are requesting (eg, /foo/bar)
         """
-        return super(Call, self).handle(path)
-
-
-def create_modules(controller_prefix):
-    d = {
-        controller_prefix: os.linesep.join([
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ]),
-        "{}.default".format(controller_prefix): os.linesep.join([
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ]),
-        "{}.foo".format(controller_prefix): os.linesep.join([
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            "",
-            "class Bar(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            "    def POST(*args, **kwargs): pass",
-            ""
-        ]),
-        "{}.foo.baz".format(controller_prefix): os.linesep.join([
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            "",
-            "class Che(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ]),
-        "{}.foo.boom".format(controller_prefix): os.linesep.join([
-            "from endpoints import Controller",
-            "",
-            "class Bang(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            ""
-        ]),
-    }
-    r = testdata.create_modules(d)
-
-    s = set(d.keys())
-    return s
+        self.method = method
+        self.kwargs = kwargs
+        c = self.create_call(path)
+        c.handle()
+        return c.response
 
 
 class ControllerTest(TestCase):
@@ -126,7 +86,7 @@ class ControllerTest(TestCase):
     def test_bad_typeerror(self):
         """There is a bug that is making the controller method is throw a 404 when it should throw a 500"""
         controller_prefix = "badtyperr"
-        c = Call(controller_prefix, [
+        c = Server(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
@@ -136,7 +96,7 @@ class ControllerTest(TestCase):
         self.assertEqual(500, res.code)
 
         controller_prefix = "badtyperr2"
-        c = Call(controller_prefix, [
+        c = Server(controller_prefix, [
             "from endpoints import Controller",
             "class Bogus(object):",
             "    def handle_controller(self, foo):",
@@ -248,7 +208,49 @@ class RouterTest(TestCase):
 
     def test_controllers(self):
         controller_prefix = "get_controllers"
-        s = create_modules(controller_prefix)
+        d = {
+            controller_prefix: [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.default".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Bar(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo.baz".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Che(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo.boom".format(controller_prefix): [
+                "from endpoints import Controller",
+                "",
+                "class Bang(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+        }
+        r = testdata.create_modules(d)
+        s = set(d.keys())
+
 
         r = Router(controller_prefix)
         controllers = r.controllers
@@ -262,7 +264,7 @@ class RouterTest(TestCase):
         """when the default controller is used, make sure it falls back to default class
         name if the path bit fails to be a controller class name"""
         controller_prefix = "nomodcontroller2"
-        c = Call(controller_prefix, {"nmcon": [
+        c = Server(controller_prefix, {"nmcon": [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self, *args, **kwargs):",
@@ -300,7 +302,7 @@ class RouterTest(TestCase):
     def test_import_error(self):
 
         controller_prefix = "importerrorcontroller"
-        c = Call(controller_prefix, [
+        c = Server(controller_prefix, [
             "from endpoints import Controller",
             "from does_not_exist import FairyDust",
             "class Default(Controller):",
@@ -350,7 +352,46 @@ class RouterTest(TestCase):
 
     def test_get_controller_info(self):
         controller_prefix = "controller_info_advanced"
-        s = create_modules(controller_prefix)
+        r = testdata.create_modules({
+            controller_prefix: [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.default".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Bar(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo.baz".format(controller_prefix): [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Che(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "{}.foo.boom".format(controller_prefix): [
+                "from endpoints import Controller",
+                "",
+                "class Bang(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+        })
 
         ts = [
             {
@@ -431,71 +472,47 @@ class RouterTest(TestCase):
 
 
 
-#class CallTest(TestCase):
-class CallXXXX(object):
+class CallTest(TestCase):
+    def test_lowercase_method(self):
 
-
-    def test_public_controller(self):
-        contents = os.linesep.join([
+        c = Server("controller2", {"foo2": [
             "from endpoints import Controller",
             "class Bar(Controller):",
             "    def get(*args, **kwargs): pass"
-        ])
-        testdata.create_module("controller2.foo2", contents=contents)
+        ]})
 
-        r = Request()
-        r.path = u"/foo2/bar"
-        r.path_args = [u"foo2", u"bar"]
-        r.query_kwargs = {u'foo2': u'bar', u'che': u'baz'}
-        r.method = u"GET"
-        c = Call("controller2")
-        c.request = r
-
-        # if it succeeds, then it passed the test :)
-        with self.assertRaises(CallError):
-            d = c.get_callback_info()
+        res = c.handle("/foo2/bar", query_kwargs={'foo2': 'bar', 'che': 'baz'})
+        self.assertEqual(405, res.code)
 
     def test_handle_redirect(self):
-        contents = os.linesep.join([
+        c = Server("controllerhr", {"handle": [
             "from endpoints import Controller, Redirect",
             "class Testredirect(Controller):",
             "    def GET(*args, **kwargs):",
             "        raise Redirect('http://example.com')"
-        ])
-        testdata.create_module("controllerhr.handle", contents=contents)
+        ]})
 
-        r = Request()
-        r.path = u"/handle/testredirect"
-        r.path_args = [u'handle', u'testredirect']
-        r.query_kwargs = {}
-        r.method = u"GET"
-        c = Call("controllerhr")
-        c.response = Response()
-        c.request = r
-
-        res = c.handle()
+        res = c.handle("/handle/testredirect")
         self.assertEqual(302, res.code)
         self.assertEqual('http://example.com', res.headers['Location'])
 
-    def test_handle_404_typeerror(self):
+    def test_handle_404_typeerror_1(self):
         """make sure not having a controller is correctly identified as a 404"""
         controller_prefix = "h404te"
-        s = create_modules(controller_prefix)
-        r = Request()
-        r.method = u'GET'
-        r.path = u'/foo/boom'
+        c = Server(controller_prefix, [
+            "from endpoints import Controller, Redirect",
+            "class NoFoo(Controller):",
+            "    def GET(*args, **kwargs):",
+            "        pass",
+        ])
 
-        c = Call(controller_prefix)
-        c.response = Response()
-        c.request = r
-
-        res = c.handle()
+        res = c.handle("/foo/boom")
         self.assertEqual(404, res.code)
 
     def test_handle_404_typeerror_2(self):
         """make sure 404 works when a path bit is missing"""
         controller_prefix = "h404te2"
-        contents = os.linesep.join([
+        c = Server(controller_prefix, [
             "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    def GET(self, needed_bit, **kwargs):",
@@ -514,64 +531,37 @@ class CallXXXX(object):
             "       return ''",
             "",
         ])
-        testdata.create_module(controller_prefix, contents=contents)
-        c = Call(controller_prefix)
-        c.response = Response()
 
-        r = Request()
-        r.method = u'POST'
-        r.path = u'/hdec'
-        c.request = r
-        res = c.handle()
+        res = c.handle("/hdec", "POST")
         self.assertEqual(404, res.code)
 
-        r = Request()
-        r.method = u'POST'
-        r.path = u'/htype'
-        c.request = r
-        res = c.handle()
+        res = c.handle("/htype", "POST")
         self.assertEqual(404, res.code)
 
-        r = Request()
-        r.method = u'GET'
-        r.path = u'/'
-        c.request = r
-        res = c.handle()
+        res = c.handle("/")
         self.assertEqual(404, res.code)
 
-        r = Request()
-        r.method = u'POST'
-        r.path = u'/'
-        c.request = r
-        res = c.handle()
+        res = c.handle("/", "POST")
         self.assertEqual(404, res.code)
 
     def test_handle_404_typeerror_3(self):
         """there was an error when there was only one expected argument, turns out
         the call was checking for "arguments" when the message just had "argument" """
         controller_prefix = "h404te3"
-        contents = os.linesep.join([
+        c = Server(controller_prefix, [
             "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self): pass",
             "",
         ])
-        testdata.create_module(controller_prefix, contents=contents)
-        c = Call(controller_prefix)
-        c.response = Response()
 
-        r = Request()
-        r.method = u'GET'
-        r.path = u'/foo/bar/baz'
-        r.query = 'che=1&boo=2'
-        c.request = r
-        res = c.handle()
+        res = c.handle("/foo/bar/baz", query='che=1&boo=2')
         self.assertEqual(404, res.code)
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct header"""
         controller_prefix = "haccessdenied"
-        contents = os.linesep.join([
+        c = Server(controller_prefix, [
             "from endpoints import Controller, AccessDenied",
             "class Default(Controller):",
             "    def GET(*args, **kwargs):",
@@ -580,31 +570,18 @@ class CallXXXX(object):
             "    def GET(*args, **kwargs):",
             "        raise AccessDenied()",
         ])
-        testdata.create_module(controller_prefix, contents=contents)
 
-        r = Request()
-        r.method = u'GET'
-        r.path = u'/'
-        c = Call(controller_prefix)
-        c.response = Response()
-        c.request = r
-        res = c.handle()
-        res.body # we need to cause the body to be handled
+        res = c.handle("/")
         self.assertEqual(401, res.code)
         self.assertTrue('Basic' in res.headers['WWW-Authenticate'])
 
-        r = Request()
-        r.method = u'GET'
-        r.path = u'/bar'
-        c = Call(controller_prefix)
-        c.response = Response()
-        c.request = r
-        res = c.handle()
+        res = c.handle("/bar")
         self.assertEqual(401, res.code)
         self.assertTrue('Auth' in res.headers['WWW-Authenticate'])
 
     def test_handle_callstop(self):
-        contents = os.linesep.join([
+        controller_prefix = "handlecallstop"
+        c = Server(controller_prefix, [
             "from endpoints import Controller, CallStop",
             "class Testcallstop(Controller):",
             "    def GET(*args, **kwargs):",
@@ -618,37 +595,23 @@ class CallXXXX(object):
             "    def GET(*args, **kwargs):",
             "        raise CallStop(204, 'this is ignored')",
         ])
-        testdata.create_module("handlecallstop", contents=contents)
 
-        r = Request()
-        r.path = u"/testcallstop"
-        r.path_args = [u'testcallstop']
-        r.query_kwargs = {}
-        r.method = u"GET"
-        c = Call("handlecallstop")
-        c.response = Response()
-        c.request = r
-
-        res = c.handle()
+        res = c.handle("/testcallstop")
         self.assertEqual('', res.body)
         self.assertEqual(None, res._body)
         self.assertEqual(205, res.code)
 
-        r.path = u"/testcallstop2"
-        r.path_args = [u'testcallstop2']
-        res = c.handle()
+        res = c.handle("/testcallstop2")
         self.assertEqual('"this is the body"', res.body)
         self.assertEqual(200, res.code)
 
-        r.path = u"/testcallstop3"
-        r.path_args = [u'testcallstop3']
-        res = c.handle()
+        res = c.handle("/testcallstop3")
         self.assertEqual(None, res._body)
         self.assertEqual(204, res.code)
 
 
-
-class CallVersioningTest(TestCase):
+#class CallVersioningTest(TestCase):
+class CallVersioning(object):
     def test_get_version(self):
         r = Request()
         r.headers = {u'accept': u'application/json;version=v1'}

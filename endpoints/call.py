@@ -73,7 +73,7 @@ class Call(object):
         con = None
 
         try:
-            con = self.create_controller(req, res, rou)
+            con = self.create_controller()
             con.interface = self
             self.controller = con
 
@@ -385,10 +385,10 @@ class Controller(object):
     """Activates CORS support, http://www.w3.org/TR/cors/"""
 
     content_type = "application/json"
-    """the response content type this endpoint is going to send"""
+    """the response content type this controller will set"""
 
     encoding = 'UTF-8'
-    """the response charset of this endpoint"""
+    """the response charset of this controller"""
 
     def __init__(self, request, response, *args, **kwargs):
         self.request = request
