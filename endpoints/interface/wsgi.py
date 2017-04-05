@@ -13,7 +13,7 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-from . import BaseInterface, BaseServer
+from . import BaseServer
 from ..http import Url
 from ..decorators import _property
 
@@ -90,10 +90,11 @@ class Application(BaseServer):
     """
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server handles"""
-        res = self.interface.handle(environ)
+        c = self.create_call(environ)
+        res = c.handle()
         start_response(
             '{} {}'.format(res.code, res.status),
-            [(k, str(v)) for k, v in res.headers.items()]
+            [(str(k), str(v)) for k, v in res.headers.items()]
         )
         return res
 

@@ -535,7 +535,7 @@ class param(object):
                             val = ptype(val)
 
                     elif issubclass(ptype, str):
-                        charset = request.charset
+                        charset = request.encoding
                         if charset and isinstance(val, unicode):
                             val = val.encode(charset)
                         else:

@@ -571,7 +571,7 @@ class ParamTest(TestCase):
         c = create_controller()
         r = endpoints.Request()
         r.set_header("content-type", "application/json;charset=UTF-8")
-        charset = r.charset
+        charset = r.encoding
         c.request = r
         #self.assertEqual("UTF-8", charset)
 
