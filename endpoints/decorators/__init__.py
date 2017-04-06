@@ -11,6 +11,7 @@ from decorators import FuncDecorator
 from ..exception import CallError, AccessDenied
 from . import auth
 from .base import TargetDecorator
+from .call import route
 
 
 logger = logging.getLogger(__name__)

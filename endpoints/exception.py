@@ -83,3 +83,9 @@ class CallStop(CallError):
         self.body = body
         super(CallStop, self).__init__(code, msg, **kwargs)
 
+
+class RouteError(CallError):
+    def __init__(self):
+        super(RouteError, self).__init__(-1)
+
+

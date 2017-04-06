@@ -14,7 +14,7 @@ import pkgutil
 
 from .utils import AcceptHeader
 from .http import Response, Request
-from .exception import CallError, Redirect, CallStop, AccessDenied
+from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError
 from .decorators import _property
 
 
@@ -77,11 +77,11 @@ class Call(object):
             con.interface = self
             self.controller = con
 
-            logger.debug("handling request with callback {}.{}.{}".format(
-                req.controller_info['module_name'],
-                req.controller_info['class_name'],
-                req.controller_info['method_name']
-            ))
+#             logger.debug("handling request with {}.{}.{}".format(
+#                 req.controller_info['module_name'],
+#                 req.controller_info['class_name'],
+#                 req.method, #req.controller_info['method_name']
+#             ))
 
             con.handle() # this will manipulate self.response
 
@@ -239,8 +239,8 @@ class Router(object):
 
         ret['method_args'] = controller_method_args
         ret['method_kwargs'] = req.kwargs
-        ret['method_name'] = self.get_method_name(req, controller_class)
-        ret['method'] = self.get_method(req, ret['class_instance'], ret['method_name'])
+        #ret['method_name'] = self.get_method_name(req, controller_class)
+        #ret['method'] = self.get_method(req, ret['class_instance'], ret['method_name'])
 
         req.controller_info = ret
         #pout.v(ret)
@@ -438,20 +438,41 @@ class Controller(object):
 
         :returns: Response instance, the response object with a body already"""
         start = time.time()
+        req = self.request
+        res = self.response
         try:
             self.log_start(start)
-            self.response.set_header('Content-Type', "{};charset={}".format(
+            res.set_header('Content-Type', "{};charset={}".format(
                 self.content_type,
                 self.encoding
             ))
 
-            encoding = self.request.accept_encoding
-            self.response.encoding = encoding if encoding else self.encoding
+            encoding = req.accept_encoding
+            res.encoding = encoding if encoding else self.encoding
 
-            controller_method = self.request.controller_info["method"]
-            controller_args = self.request.controller_info["method_args"]
-            controller_kwargs = self.request.controller_info["method_kwargs"]
-            self.response.body = controller_method(*controller_args, **controller_kwargs)
+            controller_args = req.controller_info["method_args"]
+            controller_kwargs = req.controller_info["method_kwargs"]
+
+            controller_methods = self.find_methods()
+            for controller_method_name, controller_method in controller_methods:
+                try:
+                    logger.debug("Attempting to handle request with {}.{}.{}".format(
+                        req.controller_info['module_name'],
+                        req.controller_info['class_name'],
+                        controller_method_name
+                    ))
+                    res.body = controller_method(
+                        *controller_args,
+                        **controller_kwargs
+                    )
+                    break
+
+                except RouteError:
+                    logger.debug("Request {}.{}.{} failed routing check".format(
+                        req.controller_info['module_name'],
+                        req.controller_info['class_name'],
+                        controller_method_name
+                    ))
 
         finally:
             self.log_stop(start)
@@ -464,6 +485,52 @@ class Controller(object):
         :param **kwargs: dict, any other information that might be handy
         """
         pass
+
+    def find_methods(self):
+        methods = []
+        req = self.request
+        method_name = req.method.upper()
+        member = getattr(self, method_name, None)
+        if member:
+            methods.append((method_name, member))
+
+        else:
+            members = inspect.getmembers(self)
+            for member_name, member in members:
+                if member_name.startswith(method_name):
+                    methods.append((member_name, member))
+
+        return methods
+
+    def get_method_name(self, req, controller_class):
+        """
+        perform any normalization of the controller's method
+
+        return -- string -- the full method name to be used
+        """
+        method = req.method.upper()
+        version = req.version(controller_class.content_type)
+        if version:
+            method += "_{}".format(version)
+
+        return method
+
+    def get_method(self, req, controller_instance, method_name):
+        """using the controller_info retrieved from get_controller_info(), get the
+        actual controller callback method that will be used to handle the request"""
+        callback = None
+        try:
+            callback = getattr(controller_instance, method_name)
+
+        except AttributeError as e:
+            logger.warning(str(e), exc_info=True)
+            raise CallError(405, "{} {} not supported".format(req.method, req.path))
+
+        return callback
+
+    def get_method_params(self, request, controller_args, controller_kwargs):
+        pass
+
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""

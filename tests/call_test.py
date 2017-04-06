@@ -1,4 +1,4 @@
-from . import TestCase, skipIf, SkipTest
+from . import TestCase, skipIf, SkipTest, Server
 import os
 
 import testdata
@@ -7,53 +7,6 @@ import endpoints
 from endpoints.http import Request, Response
 from endpoints.call import Controller, Router
 from endpoints.exception import CallError
-from endpoints.interface import BaseServer
-
-
-class Server(BaseServer):
-    """This is just a wrapper to get access to the Interface handling code"""
-    def __init__(self, controller_prefix, contents):
-        super(Server, self).__init__(
-            controller_prefix=controller_prefix,
-            #request_class=Request,
-            #response_class=Response,
-            #router_class=Router
-        )
-
-        if isinstance(contents, dict):
-            d = {}
-            for k, v in contents.items():
-                if k:
-                    d[".".join([controller_prefix, k])] = v
-                else:
-                    d[controller_prefix] = v
-            self.controllers = testdata.create_modules(d)
-
-        else:
-            self.controller = testdata.create_module(controller_prefix, contents=contents)
-
-        #self.request = self.request_class()
-
-    def create_request(self, path):
-        req = self.request_class()
-        req.method = self.method
-        for k, v in self.kwargs.items():
-            setattr(req, k, v)
-
-        req.path = path
-        return req
-
-    def handle(self, path, method="GET", **kwargs):
-        """This isn't technically needed but just makes it explicit you pass in the
-        path you want and this will translate that and handle the request
-
-        :param path: string, full URI you are requesting (eg, /foo/bar)
-        """
-        self.method = method
-        self.kwargs = kwargs
-        c = self.create_call(path)
-        c.handle()
-        return c.response
 
 
 class ControllerTest(TestCase):

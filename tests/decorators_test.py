@@ -1,4 +1,4 @@
-from . import TestCase, skipIf, SkipTest
+from . import TestCase, skipIf, SkipTest, Server
 import time
 import re
 import base64
@@ -24,7 +24,7 @@ def create_controller():
     return c
 
 
-class DecoratorsRatelimitTest(TestCase):
+class RatelimitTest(TestCase):
     def test_throttle(self):
 
         class TARA(object):
@@ -73,7 +73,7 @@ class DecoratorsRatelimitTest(TestCase):
                 c.foo()
 
 
-class DecoratorsAuthTest(TestCase):
+class AuthTest(TestCase):
     def get_basic_auth_header(self, username, password):
         credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
         return 'Basic {}'.format(credentials)
@@ -912,4 +912,43 @@ class ParamTest(TestCase):
 
         r = foo(c, 1)
         self.assertEqual(["1", 20, "bar"], r)
+
+
+class RouteTest(TestCase):
+    def test_multi(self):
+        controller_prefix = "route_multi"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import route",
+            "class Foo(Controller):",
+            "    @route(lambda req: len(req.path_args) == 1)",
+            "    def GET_1(*args, **kwargs):",
+            "        return len(args)",
+            "",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    def GET_2(*args, **kwargs):",
+            "        return len(args)",
+            "",
+            "    @route(lambda req: len(req.path_args) == 3)",
+            "    def GET_3(*args, **kwargs):",
+            "        return len(args)",
+            "",
+            "    def POST(*args, **kwargs):",
+            "        return 4",
+        ])
+
+        res = c.handle("/foo")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo/2")
+        self.assertEqual(2, res._body)
+
+        res = c.handle("/foo/2/3")
+        self.assertEqual(3, res._body)
+
+        res = c.handle("/foo", "POST")
+        self.assertEqual(4, res._body)
+        pout.v(res.code, res._body)
+
+
 
