@@ -353,7 +353,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo",
                     'class_name': 'Bar',
                     'method_args': ['happy', 'sad'],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -362,7 +362,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced",
                     'class_name': 'Default',
                     'method_args': [],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -371,7 +371,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced",
                     'class_name': 'Default',
                     'method_args': ["happy"],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -380,7 +380,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo.baz",
                     'class_name': 'Default',
                     'method_args': [],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -389,7 +389,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo.baz",
                     'class_name': 'Che',
                     'method_args': [],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -398,7 +398,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo.baz",
                     'class_name': 'Default',
                     'method_args': ["happy"],
-                    'method_name': "GET",
+                    #'method_name': "GET",
                 }
             },
             {
@@ -407,7 +407,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo",
                     'class_name': 'Default',
                     'method_args': ["happy"],
-                    'method_name': u"GET",
+                    #'method_name': u"GET",
                 }
             },
         ]
@@ -435,7 +435,7 @@ class CallTest(TestCase):
         ]})
 
         res = c.handle("/foo2/bar", query_kwargs={'foo2': 'bar', 'che': 'baz'})
-        self.assertEqual(405, res.code)
+        self.assertEqual(501, res.code)
 
     def test_handle_redirect(self):
         c = Server("controllerhr", {"handle": [
@@ -563,61 +563,35 @@ class CallTest(TestCase):
         self.assertEqual(204, res.code)
 
 
-#class CallVersioningTest(TestCase):
-class CallVersioning(object):
+class CallVersioningTest(TestCase):
     def test_get_version(self):
         r = Request()
-        r.headers = {u'accept': u'application/json;version=v1'}
+        r.set_header('accept', 'application/json;version=v1')
 
-        c = Call("controller")
-        c.request = r
+        v = r.version()
+        self.assertEqual("v1", v)
 
-        v = c.version
-        self.assertEqual(u'v1', v)
+        v = r.version("application/json")
+        self.assertEqual("v1", v)
+
+        v = r.version("plain/text")
+        self.assertEqual("", v)
 
     def test_get_version_default(self):
         """turns out, calls were failing if there was no accept header even if there were defaults set"""
         r = Request()
         r.headers = {}
+        self.assertEqual("", r.version('application/json'))
 
-        c = Call("controller")
-        c.request = r
-        r.headers = {}
-        c.content_type = u'application/json'
-        self.assertEqual(None, c.version)
-
-        c = Call("controller")
-        c.request = r
-        r.headers = {u'accept': u'application/json;version=v1'}
-        self.assertEqual(u'v1', c.version)
-
-        c = Call("controller")
-        c.request = r
-        c.content_type = None
-        with self.assertRaises(ValueError):
-            v = c.version
-
-        c = Call("controller")
-        c.request = r
-        r.headers = {u'accept': u'*/*'}
-        c.content_type = u'application/json'
-        self.assertEqual(None, c.version)
-
-        c = Call("controller")
-        c.request = r
-        r.headers = {u'accept': u'*/*;version=v8'}
-        c.content_type = u'application/json'
-        self.assertEqual(u'v8', c.version)
-
-    def test_normalize_method(self):
         r = Request()
-        r.headers = {u'accept': u'application/json;version=v1'}
-        r.method = 'POST'
+        r.set_header('accept', 'application/json;version=v1')
+        self.assertEqual('v1', r.version())
 
-        c = Call("foo.bar")
-        c.content_type = u'application/json'
-        c.request = r
+        r = Request()
+        r.set_header('accept', '*/*')
+        self.assertEqual("", r.version('application/json'))
 
-        method = c.get_normalized_method()
-        self.assertEqual(u"POST_v1", method)
+        r = Request()
+        r.set_header('accept', '*/*;version=v8')
+        self.assertEqual('v8', r.version('application/json'))
 

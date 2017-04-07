@@ -85,7 +85,13 @@ class CallStop(CallError):
 
 
 class RouteError(CallError):
-    def __init__(self):
-        super(RouteError, self).__init__(-1)
+    def __init__(self, code=-1, msg=""):
+        super(RouteError, self).__init__(code=code, msg=msg)
 
+
+class VersionError(RouteError):
+    def __init__(self, request_version, versions):
+        self.request_version = request_version
+        self.versions = versions
+        super(VersionError, self).__init__(code=-2)
 

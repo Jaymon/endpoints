@@ -913,12 +913,12 @@ class Request(Http):
         versioning is based off of this post 
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
         """
-        v = None
+        v = ""
         accept_header = self.get_header('accept', "")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a.filter(content_type):
-                v = mt[2].get("version", None)
+                v = mt[2].get("version", "")
                 if v: break
 
         return v

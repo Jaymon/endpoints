@@ -28,9 +28,6 @@ class Server(BaseServer):
     def __init__(self, controller_prefix, contents):
         super(Server, self).__init__(
             controller_prefix=controller_prefix,
-            #request_class=Request,
-            #response_class=Response,
-            #router_class=Router
         )
 
         if isinstance(contents, dict):
@@ -45,11 +42,14 @@ class Server(BaseServer):
         else:
             self.controller = testdata.create_module(controller_prefix, contents=contents)
 
-        #self.request = self.request_class()
-
     def create_request(self, path):
         req = self.request_class()
         req.method = self.method.upper()
+
+        version = self.kwargs.pop("version", None)
+        if version is not None:
+            req.set_header('Accept', '*/*;version={}'.format(version))
+
         for k, v in self.kwargs.items():
             setattr(req, k, v)
 

@@ -14,7 +14,7 @@ import pkgutil
 
 from .utils import AcceptHeader
 from .http import Response, Request
-from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError
+from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError, VersionError
 from .decorators import _property
 
 
@@ -71,18 +71,13 @@ class Call(object):
         res = self.response
         rou = self.router
         con = None
+        start = time.time()
 
         try:
             con = self.create_controller()
             con.interface = self
             self.controller = con
-
-#             logger.debug("handling request with {}.{}.{}".format(
-#                 req.controller_info['module_name'],
-#                 req.controller_info['class_name'],
-#                 req.method, #req.controller_info['method_name']
-#             ))
-
+            con.log_start(start)
             con.handle() # this will manipulate self.response
 
         except Exception as e:
@@ -94,6 +89,9 @@ class Call(object):
             if res.code == 204:
                 res.headers.pop('Content-Type', None)
                 res.body = None # just to be sure since body could've been ""
+
+            if con:
+                con.log_stop(start)
 
         return res
 
@@ -136,7 +134,7 @@ class Call(object):
             e_msg = unicode(e)
             if e_msg.startswith(req.method) and 'argument' in e_msg:
                 logger.debug(e_msg, exc_info=True)
-                res.code = 404
+                res.code = 405
 
             else:
                 logger.exception(e)
@@ -397,6 +395,11 @@ class Controller(object):
         self.set_cors_common_headers()
 
     def OPTIONS(self, *args, **kwargs):
+        """Handles CORS requests for this controller
+
+        if self.cors is False then this will raise a 405, otherwise it sets everything
+        necessary to satisfy the request in self.response
+        """
         if not self.cors:
             raise CallError(405)
 
@@ -437,45 +440,57 @@ class Controller(object):
         """handles the request and returns the response
 
         :returns: Response instance, the response object with a body already"""
-        start = time.time()
         req = self.request
         res = self.response
-        try:
-            self.log_start(start)
-            res.set_header('Content-Type', "{};charset={}".format(
-                self.content_type,
-                self.encoding
+        res.set_header('Content-Type', "{};charset={}".format(
+            self.content_type,
+            self.encoding
+        ))
+
+        encoding = req.accept_encoding
+        res.encoding = encoding if encoding else self.encoding
+
+        res_method_name = ""
+        controller_methods = self.find_methods()
+        controller_args, controller_kwargs = self.find_method_params()
+        for controller_method_name, controller_method in controller_methods:
+            try:
+                logger.debug("Attempting to handle request with {}.{}.{}".format(
+                    req.controller_info['module_name'],
+                    req.controller_info['class_name'],
+                    controller_method_name
+                ))
+                res.body = controller_method(
+                    *controller_args,
+                    **controller_kwargs
+                )
+                res_method_name = controller_method_name
+                break
+
+            except VersionError as e:
+                logger.debug("Request {}.{}.{} failed version check [{} not in {}]".format(
+                    req.controller_info['module_name'],
+                    req.controller_info['class_name'],
+                    controller_method_name,
+                    e.request_version,
+                    e.versions
+                ))
+
+            except RouteError:
+                logger.debug("Request {}.{}.{} failed routing check".format(
+                    req.controller_info['module_name'],
+                    req.controller_info['class_name'],
+                    controller_method_name
+                ))
+
+        if not res_method_name:
+            # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+            # An origin server SHOULD return the status code 405 (Method Not Allowed)
+            # if the method is known by the origin server but not allowed for the
+            # requested resource
+            raise CallError(405, "Could not find a method to satisfy {}".format(
+                req.path
             ))
-
-            encoding = req.accept_encoding
-            res.encoding = encoding if encoding else self.encoding
-
-            controller_args = req.controller_info["method_args"]
-            controller_kwargs = req.controller_info["method_kwargs"]
-
-            controller_methods = self.find_methods()
-            for controller_method_name, controller_method in controller_methods:
-                try:
-                    logger.debug("Attempting to handle request with {}.{}.{}".format(
-                        req.controller_info['module_name'],
-                        req.controller_info['class_name'],
-                        controller_method_name
-                    ))
-                    res.body = controller_method(
-                        *controller_args,
-                        **controller_kwargs
-                    )
-                    break
-
-                except RouteError:
-                    logger.debug("Request {}.{}.{} failed routing check".format(
-                        req.controller_info['module_name'],
-                        req.controller_info['class_name'],
-                        controller_method_name
-                    ))
-
-        finally:
-            self.log_stop(start)
 
     def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
@@ -487,50 +502,60 @@ class Controller(object):
         pass
 
     def find_methods(self):
+        """Find the methods that could satisfy this request
+
+        This will go through and find any method that starts with the request.method,
+        so if the request was GET /foo then this would find any methods that start
+        with GET
+
+        https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+
+        :returns: list of tuples (method_name, method), all the found methods
+        """
         methods = []
         req = self.request
         method_name = req.method.upper()
-        member = getattr(self, method_name, None)
-        if member:
-            methods.append((method_name, member))
+        method_names = set()
 
-        else:
-            members = inspect.getmembers(self)
-            for member_name, member in members:
-                if member_name.startswith(method_name):
+        members = inspect.getmembers(self)
+        for member_name, member in members:
+            if member_name.startswith(method_name):
+                if member:
                     methods.append((member_name, member))
+                    method_names.add(member_name)
+
+        if len(methods) == 0:
+            # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+            # and 501 (Not Implemented) if the method is unrecognized or not
+            # implemented by the origin server
+            logger.warning("No methods to handle {} found".format(method_name), exc_info=True)
+            raise CallError(501, "{} {} not implemented".format(req.method, req.path))
+
+        elif len(methods) > 1 and method_name in method_names:
+            raise ValueError(
+                " ".join([
+                    "A multi method {} request should not have any methods named {}.",
+                    "Instead, all {} methods should use use an appropriate decorator",
+                    "like @route or @version and have a unique name starting with {}_"
+                ]).format(
+                    method_name,
+                    method_name,
+                    method_name,
+                    method_name
+                )
+            )
 
         return methods
 
-    def get_method_name(self, req, controller_class):
+    def find_method_params(self):
+        """Return the method params
+
+        :returns: tuple (args, kwargs) that will be passed as *args, **kwargs
         """
-        perform any normalization of the controller's method
-
-        return -- string -- the full method name to be used
-        """
-        method = req.method.upper()
-        version = req.version(controller_class.content_type)
-        if version:
-            method += "_{}".format(version)
-
-        return method
-
-    def get_method(self, req, controller_instance, method_name):
-        """using the controller_info retrieved from get_controller_info(), get the
-        actual controller callback method that will be used to handle the request"""
-        callback = None
-        try:
-            callback = getattr(controller_instance, method_name)
-
-        except AttributeError as e:
-            logger.warning(str(e), exc_info=True)
-            raise CallError(405, "{} {} not supported".format(req.method, req.path))
-
-        return callback
-
-    def get_method_params(self, request, controller_args, controller_kwargs):
-        pass
-
+        req = self.request
+        args = req.controller_info["method_args"]
+        kwargs = req.controller_info["method_kwargs"]
+        return args, kwargs
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""

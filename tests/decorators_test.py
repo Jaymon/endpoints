@@ -915,8 +915,8 @@ class ParamTest(TestCase):
 
 
 class RouteTest(TestCase):
-    def test_multi(self):
-        controller_prefix = "route_multi"
+    def test_simple(self):
+        controller_prefix = "route_simple"
         c = Server(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators import route",
@@ -948,7 +948,182 @@ class RouteTest(TestCase):
 
         res = c.handle("/foo", "POST")
         self.assertEqual(4, res._body)
-        pout.v(res.code, res._body)
 
+    def test_extend_1(self):
+        controller_prefix = "route_extend1"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import route",
+            "",
+            "class Foo1(Controller):",
+            "    def GET(self): return 1",
+            "    def POST(*args, **kwargs): return 5",
+            ""
+            "class Foo2(Foo1):",
+            "    GET = None",
+            "    @route(lambda req: len(req.path_args) == 1)",
+            "    def GET_1(self): return super(Foo2, self).GET()",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    def GET_2(*args, **kwargs): return len(args)",
+            "",
+            "class Foo3(Foo2):",
+            "    @route(lambda req: len(req.path_args) == 3)",
+            "    def GET_3(*args, **kwargs): return len(args)",
+            "",
+            "class Foo4(Foo3):",
+            "    @route(lambda req: len(req.path_args) == 4)",
+            "    def GET_4(*args, **kwargs): return len(args)",
+        ])
+
+        for path in ["/foo1", "/foo2", "/foo3", "/foo4"]:
+            res = c.handle(path)
+            self.assertEqual(1, res._body)
+
+        for path in ["/foo2/2", "/foo3/2", "/foo4/2"]:
+            res = c.handle(path)
+            self.assertEqual(2, res._body)
+
+        res = c.handle("/foo1/2")
+        self.assertEqual(405, res.code)
+
+        for path in ["/foo3/2/3", "/foo4/2/3"]:
+            res = c.handle(path)
+            self.assertEqual(3, res._body)
+
+        res = c.handle("/foo1/2/3")
+        self.assertEqual(405, res.code)
+        res = c.handle("/foo2/2/3")
+        self.assertEqual(405, res.code)
+
+        for path in ["/foo1/2/3/4", "/foo2/2/3/4", "/foo3/2/3/4"]:
+            res = c.handle(path)
+            self.assertEqual(405, res.code)
+
+        res = c.handle("/foo4/2/3/4")
+        self.assertEqual(4, res._body)
+
+        for path in ["/foo1", "/foo2", "/foo3", "/foo4"]:
+            res = c.handle(path, "POST")
+            self.assertEqual(5, res._body)
+
+    def test_extend_2(self):
+        controller_prefix = "route_extend2"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import route",
+            "",
+            "class Foo1(Controller):",
+            "    def GET(self): return 1",
+            "    def POST(*args, **kwargs): return 5",
+            ""
+            "class Foo2(Foo1):",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    def GET_2(*args, **kwargs): return len(args)",
+        ])
+
+        res = c.handle("/foo1")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo2")
+        self.assertEqual(500, res.code)
+
+    def test_mixed(self):
+        """make sure plays nice with param"""
+        controller_prefix = "route_mixed"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import route, param",
+            "class Foo(Controller):",
+            "    @route(lambda req: len(req.path_args) == 1)",
+            "    @param('bar')",
+            "    def GET_1(*args, **kwargs):",
+            "        return len(args)",
+            "",
+            "    @param('bar')",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    def GET_2(*args, **kwargs):",
+            "        return len(args)",
+            "",
+        ])
+
+        res = c.handle("/foo")
+        self.assertEqual(400, res.code)
+        res = c.handle("/foo", query="bar=1")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo/2")
+        self.assertEqual(400, res.code)
+        res = c.handle("/foo/2", query="bar=1")
+        self.assertEqual(2, res._body)
+
+
+class VersionTest(TestCase):
+    def test_simple(self):
+        controller_prefix = "version_simple"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import version",
+            "class Foo(Controller):",
+            "    @version('', 'v1')",
+            "    def GET_1(self):",
+            "        return 1",
+            "",
+            "    @version('v2')",
+            "    def GET_2(self):",
+            "        return 2",
+        ])
+
+        res = c.handle("/foo", version="v1")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo", version="")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo")
+        self.assertEqual(1, res._body)
+
+        res = c.handle("/foo", version="v2")
+        self.assertEqual(2, res._body)
+
+        res = c.handle("/foo", version="v3")
+        self.assertEqual(405, res.code)
+
+    def test_complex(self):
+        controller_prefix = "version_complex"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import version, route",
+            "",
+            "class Foo(Controller):",
+            "    @version('v1')",
+            "    @route(lambda req: len(req.path_args) == 1)",
+            "    def GET_1_v1(self):",
+            "        return 1",
+            "",
+            "    @version('v2')",
+            "    @route(lambda req: len(req.path_args) == 1)",
+            "    def GET_1_v2(self):",
+            "        return 12",
+            "",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    @version('v1')",
+            "    def GET_2_v1(self, bit):",
+            "        return 2",
+            "",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    @version('v2')",
+            "    def GET_2_v2(self, bit):",
+            "        return 22",
+        ])
+
+        res = c.handle("/foo", version="v1")
+        self.assertEqual(1, res._body)
+        res = c.handle("/foo", version="v2")
+        self.assertEqual(12, res._body)
+
+        res = c.handle("/foo/2", version="v1")
+        self.assertEqual(2, res._body)
+        res = c.handle("/foo/2", version="v2")
+        self.assertEqual(22, res._body)
 
 
