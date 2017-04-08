@@ -10,7 +10,38 @@ import collections
 import __builtin__
 
 from .call import Router, Controller
-from .decorators import _property
+from .decorators import _property, version, param, require_params
+
+
+class ReflectDecorator(object):
+
+    @_property
+    def parents(self):
+        ret = []
+        decor = self.decorator
+        if inspect.isclass(decor):
+            parents = inspect.getmro(decor)
+            ret = parents[1:]
+        return ret
+
+    def __init__(self, name, args, kwargs, decorator):
+        self.name = name
+        self.args = args
+        self.kwargs = kwargs
+        self.decorator = decorator
+
+    def contains(self, obj):
+        ret = obj == self.decorator
+        if not ret:
+            for parent in self.parents:
+                if parent == obj:
+                    ret = True
+                    break
+
+        return ret
+
+    def __contains__(self, obj):
+        return self.contains(obj)
 
 
 class ReflectMethod(object):
@@ -18,83 +49,86 @@ class ReflectMethod(object):
 
     @_property
     def version(self):
-        bits = self.controller_method_name.split("_", 2)
-        return bits[1] if len(bits) > 1 else None
+        ret = ""
+        for decor in self.decorators:
+            if version in decor:
+                ret = filter(None, decor.args)[0]
+                break
+        return ret
 
     @property
     def headers(self):
         headers = {}
         version = self.version
         if version:
-            headers['Accept'] = "{};version={}".format(self.content_type, version)
+            headers['Accept'] = "{};version={}".format(self.controller.content_type, version)
         return headers
 
     @_property
     def name(self):
         """return the method name (GET, POST)"""
-        bits = self.controller_method_name.split("_", 2)
+        bits = self.method_name.split("_", 2)
         return bits[0]
 
     @_property
     def decorators(self):
-        decorators = self.endpoint.decorators
-        return decorators.get(self.controller_method_name, [])
+        decorators = self.controller.decorators
+        return decorators.get(self.method_name, [])
 
     @_property
     def desc(self):
         """return the description of this endpoint"""
         doc = None
-        if self.endpoint:
-            def visit_FunctionDef(node):
-                """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
-                if node.name != self.controller_method_name:
-                    return
+        def visit_FunctionDef(node):
+            """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
+            if node.name != self.method_name:
+                return
 
-                doc = ast.get_docstring(node)
-                raise StopIteration(doc if doc else u"")
+            doc = ast.get_docstring(node)
+            raise StopIteration(doc if doc else "")
 
-            target = self.endpoint.controller_class
-            try:
-                node_iter = ast.NodeVisitor()
-                node_iter.visit_FunctionDef = visit_FunctionDef
-                node_iter.visit(ast.parse(inspect.getsource(target)))
+        target = self.controller.controller_class
+        try:
+            node_iter = ast.NodeVisitor()
+            node_iter.visit_FunctionDef = visit_FunctionDef
+            node_iter.visit(ast.parse(inspect.getsource(target)))
 
-            except StopIteration as e:
-                doc = str(e)
+        except StopIteration as e:
+            doc = str(e)
 
-        else:
-            doc = inspect.getdoc(self.controller_method)
-
-        if not doc: doc = u""
+        if not doc: doc = ""
         return doc
 
     @_property
     def params(self):
         """return information about the params that the given http option takes"""
         ret = {}
-        for name, args, kwargs in self.decorators:
-            if name == 'param':
+        for rd in self.decorators:
+            args = rd.args
+            kwargs = rd.kwargs
+            if param in rd:
                 is_required =  kwargs.get('required', 'default' not in kwargs)
                 ret[args[0]] = {'required': is_required, 'other_names': args[1:], 'options': kwargs}
 
-            if name == 'require_params':
+            elif require_params in rd:
                 for a in args:
                     ret[a] = {'required': True, 'other_names': [], 'options': {}}
 
         return ret
 
-    def __init__(self, controller_method_name, controller_method, *args, **kwargs):
-        self.controller_method_name = controller_method_name
-        self.controller_method = controller_method
-        self.endpoint = kwargs.get("endpoint", None)
-        self.content_type = kwargs.get("content_type", None)
+    def __init__(self, method_name, method, controller):
+        self.method_name = method_name
+        self.method = method
+        self.controller = controller
 
 
-class ReflectEndpoint(object):
-    """This will encompass an entire Controller and have information on all the verbs
-    (eg, GET and POST)"""
+class ReflectController(object):
+    """This will encompass an entire Controller and have information on all the http
+    methods (eg, GET and POST)"""
 
     method_class = ReflectMethod
+
+    decorator_class = ReflectDecorator
 
     @_property
     def decorators(self):
@@ -105,7 +139,6 @@ class ReflectEndpoint(object):
         """
         res = collections.defaultdict(list)
         mmap = {}
-        target = self.controller_class
 
         def get_val(na, default=None):
             ret = None
@@ -148,7 +181,6 @@ class ReflectEndpoint(object):
 
             return ret
 
-
         def is_super(childnode, parentnode):
             """returns true if child node has a super() call to parent node"""
             ret = False
@@ -171,7 +203,6 @@ class ReflectEndpoint(object):
                     ret = False
 
             return ret
-
 
         def visit_FunctionDef(node):
             """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
@@ -199,12 +230,22 @@ class ReflectEndpoint(object):
                     else:
                         name = n.attr if isinstance(n, ast.Attribute) else n.id
 
-                    res[node.name].append((name, args, kwargs))
+                    d = {
+                        "name": name,
+                        "args": args,
+                        "kwargs": kwargs
+                    }
+                    m = self.module
+                    decor = getattr(m, name, None)
+                    if decor:
+                        d["decorator"] = decor
 
+                    #res[node.name].append((name, args, kwargs))
+                    res[node.name].append(self.decorator_class(**d))
 
         node_iter = ast.NodeVisitor()
         node_iter.visit_FunctionDef = visit_FunctionDef
-        for target_cls in inspect.getmro(target):
+        for target_cls in inspect.getmro(self.controller_class):
             if target_cls == Controller: break
             node_iter.visit(ast.parse(inspect.getsource(target_cls)))
 
@@ -216,7 +257,11 @@ class ReflectEndpoint(object):
 
     @_property
     def module_name(self):
-        return self.controller_module.__name__
+        return self.controller_class.__module__
+
+    @_property
+    def module(self):
+        return importlib.import_module(self.module_name)
 
     @_property
     def bits(self):
@@ -237,7 +282,7 @@ class ReflectEndpoint(object):
     def desc(self):
         """return the description of this endpoint"""
         doc = inspect.getdoc(self.controller_class)
-        if not doc: doc = u''
+        if not doc: doc = ''
         return doc
 
     @_property
@@ -251,32 +296,26 @@ class ReflectEndpoint(object):
         return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
         """
         ret = {}
-        method_regex = re.compile(ur"^[A-Z][A-Z0-9]+(_|$)")
-        # won't pick up class decorators
-        #methods = inspect.getmembers(v, inspect.ismethod)
-        # won't pick up class decorators that haven't been functools wrapped
-        #methods = inspect.getmembers(v, inspect.isroutine)
+        method_regex = re.compile(r"^[A-Z][A-Z0-9]+(_|$)")
         controller_methods = inspect.getmembers(self.controller_class)
         for controller_method_name, controller_method in controller_methods:
-            if controller_method_name.startswith(u'_'): continue
+            if controller_method_name.startswith('_'): continue
 
             if method_regex.match(controller_method_name):
                 method = self.method_class(
                     controller_method_name,
                     controller_method,
-                    content_type=self.content_type,
-                    endpoint=self
+                    controller=self
                 )
                 ret.setdefault(method.name, [])
                 ret[method.name].append(method)
 
         return ret
 
-    def __init__(self, controller_prefix, controller_module, controller_class, **kwargs):
+    def __init__(self, controller_prefix, controller_class):
         self.controller_prefix = controller_prefix
-        self.controller_module = controller_module
         self.controller_class = controller_class
-        self.content_type = kwargs.get('content_type', None)
+        self.content_type = controller_class.content_type
 
     def is_private(self):
         """return True if this endpoint is considered private"""
@@ -287,87 +326,39 @@ class Reflect(object):
     """
     Reflect the controllers to reveal information about what endpoints are live
     """
-    controller_prefix = ''
+    controller_class = ReflectController
 
-    endpoint_class = ReflectEndpoint
+    @property
+    def modules(self):
+        for module in self.router.modules:
+            if module.__name__.startswith(u'_'): continue
+            yield module
 
-    def __init__(self, controller_prefix, content_type='*/*'):
-        self.controller_prefix = controller_prefix
-        self.content_type = content_type
-        if not controller_prefix:
-            raise ValueError("controller_prefix was empty")
+    @property
+    def controllers(self):
+        for module in self.modules:
+            classes = inspect.getmembers(module, inspect.isclass)
+            for controller_class_name, controller_class in classes:
+                if controller_class_name.startswith('_'): continue
+                if not issubclass(controller_class, Controller): continue
+                if controller_class == Controller: continue
 
-    def get_controller_modules(self):
-        """
-        get all the controller modules
+                endpoint = self.create_controller(
+                    controller_prefix=self.router.controller_prefix,
+                    controller_class=controller_class,
+                )
 
-        this will find any valid controller modules and yield them
+                # filter out base classes like endpoints.Controller
+                if endpoint.methods:
+                    yield endpoint
 
-        return -- generator of tuples -- module, dict
-        """
-        router = Router(self.controller_prefix)
-        controller_prefix = self.controller_prefix
+    def __init__(self, router):
+        self.controller_prefix = router.controller_prefix
+        self.router = router
 
-        # NOTE -- this method previously tried to clean up after itself by deleting
-        # any new modules that were added, but that leads to really subtle errors
-        # that are really difficult to track down and fix and I can't guarrantee we've
-        # caught them all, so my solution is to no longer try and clean up, this
-        # method imports all the modules, live with it
-
-        #new_modules = set()
-        #orig_modules = set(sys.modules.keys())
-
-        for controller_name in router.controllers:
-            if controller_name.startswith(u'_'): continue
-
-            controller_module = importlib.import_module(controller_name)
-
-            # what new modules were added?
-            #snapshot_modules = set(sys.modules.keys())
-            #new_modules.update(snapshot_modules.difference(orig_modules))
-
-            yield controller_module
-
-        # leave no trace, if the module wasn't there previously, get rid of it now
-        #for module_name in new_modules:
-        #    sys.modules.pop(module_name, None)
-
-    def get_controller_classes(self, controller_module):
-        """
-        get all the endpoints in this controller
-
-        return -- list -- a list of dicts with information about each endpoint in the controller
-        """
-        classes = inspect.getmembers(controller_module, inspect.isclass)
-        for controller_class_name, controller_class in classes:
-            if not issubclass(controller_class, Controller): continue
-            if controller_class_name.startswith(u'_'): continue
-
-            endpoint = self.create_endpoint(
-                controller_prefix=self.controller_prefix,
-                controller_module=controller_module,
-                controller_class=controller_class,
-                content_type=self.content_type
-            )
-
-            # filter out base classes like endpoints.Controller
-            if endpoint.methods:
-                yield endpoint
-
-    def create_endpoint(self, *args, **kwargs):
-        return self.endpoint_class(*args, **kwargs)
-
-    def get_endpoints(self):
-        """
-        go through all the controllers in controller prefix and return them
-
-        return -- list -- a list of endpoints found
-        """
-
-        for controller_module in self.get_controller_modules():
-            for endpoint in self.get_controller_classes(controller_module):
-                yield endpoint
+    def create_controller(self, *args, **kwargs):
+        return self.controller_class(*args, **kwargs)
 
     def __iter__(self):
-        return self.get_endpoints()
+        return self.controllers
 

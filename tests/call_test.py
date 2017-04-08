@@ -94,7 +94,7 @@ class RouterTest(TestCase):
             ]),
         })
         r = Router(controller_prefix)
-        self.assertEqual(set(['mmp.foo', 'mmp', 'mmp.foo.bar', 'mmp.che']), r.controllers)
+        self.assertEqual(set(['mmp.foo', 'mmp', 'mmp.foo.bar', 'mmp.che']), r.module_names)
 
         # make sure just a file will resolve correctly
         controller_prefix = "mmp2"
@@ -103,7 +103,7 @@ class RouterTest(TestCase):
             "class Bar(Controller): pass",
         ]))
         r = Router(controller_prefix)
-        self.assertEqual(set(['mmp2']), r.controllers)
+        self.assertEqual(set(['mmp2']), r.module_names)
 
     def test_routing_module(self):
         controller_prefix = "callback_info"
@@ -114,8 +114,8 @@ class RouterTest(TestCase):
         ]
         testdata.create_module("{}.foo".format(controller_prefix), contents=contents)
         r = Router(controller_prefix)
-        self.assertTrue(controller_prefix in r.controllers)
-        self.assertEqual(2, len(r.controllers))
+        self.assertTrue(controller_prefix in r.module_names)
+        self.assertEqual(2, len(r.module_names))
 
     def test_routing_package(self):
         controller_prefix = "routepack"
@@ -129,8 +129,8 @@ class RouterTest(TestCase):
         f = testdata.create_package(controller_prefix, contents=contents)
 
         r = Router(controller_prefix)
-        self.assertTrue(controller_prefix in r.controllers)
-        self.assertEqual(1, len(r.controllers))
+        self.assertTrue(controller_prefix in r.module_names)
+        self.assertEqual(1, len(r.module_names))
 
     def test_routing(self):
         """there was a bug that caused errors raised after the yield to return another
@@ -206,11 +206,11 @@ class RouterTest(TestCase):
 
 
         r = Router(controller_prefix)
-        controllers = r.controllers
+        controllers = r.module_names
         self.assertEqual(s, controllers)
 
         # just making sure it always returns the same list
-        controllers = r.controllers
+        controllers = r.module_names
         self.assertEqual(s, controllers)
 
     def test_default_match_with_path(self):
@@ -462,8 +462,8 @@ class CallTest(TestCase):
         res = c.handle("/foo/boom")
         self.assertEqual(404, res.code)
 
-    def test_handle_404_typeerror_2(self):
-        """make sure 404 works when a path bit is missing"""
+    def test_handle_405_typeerror_2(self):
+        """make sure 405 works when a path bit is missing"""
         controller_prefix = "h404te2"
         c = Server(controller_prefix, [
             "from endpoints import Controller, decorators",
@@ -486,18 +486,18 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/hdec", "POST")
-        self.assertEqual(404, res.code)
+        self.assertEqual(405, res.code)
 
         res = c.handle("/htype", "POST")
-        self.assertEqual(404, res.code)
+        self.assertEqual(405, res.code)
 
         res = c.handle("/")
-        self.assertEqual(404, res.code)
+        self.assertEqual(405, res.code)
 
         res = c.handle("/", "POST")
-        self.assertEqual(404, res.code)
+        self.assertEqual(405, res.code)
 
-    def test_handle_404_typeerror_3(self):
+    def test_handle_405_typeerror_3(self):
         """there was an error when there was only one expected argument, turns out
         the call was checking for "arguments" when the message just had "argument" """
         controller_prefix = "h404te3"
@@ -509,7 +509,7 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/foo/bar/baz", query='che=1&boo=2')
-        self.assertEqual(404, res.code)
+        self.assertEqual(405, res.code)
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct header"""

@@ -162,12 +162,12 @@ class Router(object):
     GET /foo/bar/che -> controller_prefix.version.foo.Bar.get(che)
     POST /foo/bar/che?baz=foo -> controller_prefix.version.foo.Bar.post(che, baz=foo)
     """
-
     @property
-    def controllers(self):
+    def module_names(self):
         """get all the modules in the controller_prefix
 
-        returns -- set -- a set of string module names"""
+        :returns: set, a set of string module names
+        """
         controller_prefix = self.controller_prefix
         _module_name_cache = self._module_name_cache
         if controller_prefix in _module_name_cache:
@@ -187,6 +187,16 @@ class Router(object):
         _module_name_cache[controller_prefix] = modules
 
         return modules
+
+    @property
+    def modules(self):
+        """Returns an iterator of the actual modules, not just their names
+
+        :returns: generator, each module under self.controller_prefix
+        """
+        for modname in self.module_names:
+            module = importlib.import_module(modname)
+            yield module
 
     def __init__(self, controller_prefix):
         if not controller_prefix:
@@ -237,8 +247,6 @@ class Router(object):
 
         ret['method_args'] = controller_method_args
         ret['method_kwargs'] = req.kwargs
-        #ret['method_name'] = self.get_method_name(req, controller_class)
-        #ret['method'] = self.get_method(req, ret['class_instance'], ret['method_name'])
 
         req.controller_info = ret
         #pout.v(ret)
@@ -248,32 +256,6 @@ class Router(object):
         instance = controller_class(req, res)
         instance.router = self
         return instance
-
-    def get_method_name(self, req, controller_class):
-        """
-        perform any normalization of the controller's method
-
-        return -- string -- the full method name to be used
-        """
-        method = req.method.upper()
-        version = req.version(controller_class.content_type)
-        if version:
-            method += "_{}".format(version)
-
-        return method
-
-    def get_method(self, req, controller_instance, method_name):
-        """using the controller_info retrieved from get_controller_info(), get the
-        actual controller callback method that will be used to handle the request"""
-        callback = None
-        try:
-            callback = getattr(controller_instance, method_name)
-
-        except AttributeError as e:
-            logger.warning(str(e), exc_info=True)
-            raise CallError(405, "{} {} not supported".format(req.method, req.path))
-
-        return callback
 
     def find_modules(self, path, prefix):
         """recursive method that will find all the submodules of the given module
@@ -301,7 +283,7 @@ class Router(object):
 
         return -- tuple -- (module_name, path_args)"""
         controller_prefix = self.controller_prefix
-        cset = self.controllers
+        cset = self.module_names
         module_name = controller_prefix
         mod_name = module_name
         while path_args:
