@@ -28,7 +28,7 @@ you will need to install pip using the following command.
 
 Create a controller file with the following command:
 
-    $ touch mycontroller.py
+    $ touch controllers.py
 
 Add the following code to your new Controller file. These classes are examples of possible *endpoints*.
 
@@ -47,11 +47,12 @@ class Foo(Controller):
     return "bang"
 ```
 
+
 ### Start a Server
 
-Now that you have your `mycontroller.py`, let's use the built-in WSGI server to serve them:
+Now that you have your `controllers.py`, let's use the built-in WSGI server to serve them:
 
-    $ endpoints --prefix=mycontroller --host=localhost:8000
+    $ endpoints --prefix=controllers --host=localhost:8000
 
 
 ### Test it out
@@ -66,6 +67,14 @@ Using curl:
     "hello Awesome you"
 
 That's it. Easy peasy!
+
+Can you figure out what path endpoints was following in each request?
+
+We see in the ***first request*** that the Controller module was accessed, then the Default class, and then the GET method.
+
+In the ***second request***, the Controller module was accessed, then the Foo class as specified, and then the GET method.
+
+Finally, in the ***last request***, the Controller module was accessed, then the Default class, and finally the POST method with the passed in argument as JSON.
 
 
 ## How does it work?
@@ -101,7 +110,7 @@ Below are some examples of HTTP requests and how they would be interpreted using
 As shown above, we see that **endpoints essentially travels the path from the base module down to the appropriate submodule according to the request given.**
 
 
-### Example
+### One more example
 
 Let's say your site had the following setup:
 
@@ -128,213 +137,10 @@ then your call requests would be translated like this:
 |GET /          | controllers.Default.GET() |
 |GET /foo       | controllers.Foo.GET()     |
 
-
-### Try it!
-
-Run the following requests on the simple server you created. You should see the following output following each request.
-
-    $ curl "http://localhost:8000/"
-    boom
-    $ curl "http://localhost:8000/foo"
-    bang
-    $ curl -H "Content-Type: application/json" -d '{"name": "world"}'
-    "http://localhost:8000/"
-    hello world
-
-Can you figure out what path endpoints was following in each request?
-
-We see in the ***first request*** that the Controller module was accessed, then the Default class, and then the GET method.
-
-In the ***second request***, the Controller module was accessed, then the Foo class as specified, and then the GET method.
-
-Finally, in the ***last request***, the Controller module was accessed, then the Default class, and finally the POST method with the passed in argument as JSON.
-
-
-## Fun with parameters, decorators, and more
-
 If you have gotten to this point, congratulations. You understand the basics of endpoints. If you don't understand endpoints then please go back and read from the top again before reading any further.
 
-There are a few tricks and features of endpoints that are important to cover as they will add *fun*ctionality to your program.
 
+## Learn more about Endpoints
 
-### Handling path parameters and query vars
-
-You can define your controller methods to accept certain path params and to accept query params:
-
-```python
-class Foo(Controller):
-  def GET(self, one, two=None, **params): pass
-  def POST(self, **params): pass
-```
-
-your call requests would be translated like this:
-
-|HTTP Request                           | Path Followed                                         |
-|-------------------------------------- | ----------------------------------------------------- |
-|GET /foo/one                           | controllers.Default.GET()                             |
-|GET /foo/one?param1=val1&param2=val2   | prefix.Foo.GET("one", param1="val1", param2="val2")   |
-|GET /foo                               | 404, no `one` path param to pass to GET               |
-|GET /foo/one/two                       | prefix.Foo.GET("one", "two")                          |
-
-Post requests are also merged with the `**params` on the controller method, with the `POST` params taking precedence:
-
-For example, if the HTTP request is:
-
-    POST /foo?param1=GET1&param2=GET2 body: param1=POST1&param3=val3
-
-The following path would be:
-
-    prefix.Foo.POST(param1="POST1", param2="GET2", param3="val3")
-
-
-### Handy decorators
-
-The `endpoints.decorators` module gives you some handy decorators to make parameter handling and error checking easier:
-
-For example, the `param` decorator can be used similarly to Python's built-in [argparse.add_argument()](https://docs.python.org/2/library/argparse.html#the-add-argument-method) method as shown below.
-
-```python
-from endpoints import Controller
-from endpoints.decorators import param
-
-class Foo(Controller):
-  @param('param1', default="some val")
-  @param('param2', choices=['one', 'two'])
-  def GET(self, **params): pass
-```
-
-Other examples of decorators include `get_param` and `post_param`. The former checks that a query parameter exists, the latter is only concerned with POSTed parameters.
-
-There is also a `require_params` decorator that provides a quick way to ensure certain parameters were provided.
-
-```python
-from endpoints import Controller
-from endpoints.decorators import param
-
-class Foo(Controller):
-  @require_params('param1', 'param2', 'param3')
-  def GET(self, **params): pass
-```
-
-The require_params decorator as used above will make sure `param1`, `param2`, and `param3` were all present in the `**params` dict.
-
-#### Authentication
-
-Endpoints tries to make user authentication easier, so it includes some handy authentication decorators in [endpoints.decorators.auth](https://github.com/firstopinion/endpoints). 
-
-Perform `basic` authentication:
-
-```python
-from endpoints import Controller
-from endpoints.decorators.auth import basic_auth
-
-def target(request, username, password):
-  return username == "foo" and password == "bar"
-
-class Foo(Controller):
-  @auth(target)
-  def GET(self, **params): pass
-```
-
-The auth decorators can also be subclassed and customized by just overriding the `target()` method.
-
-
-### Versioning requests
-
-Endpoints has support for `Accept` [header](http://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html) versioning, inspired by this [series of blog posts](http://urthen.github.io/2013/05/09/ways-to-version-your-api/).
-
-You can activate versioning just by adding a new method to your controller using the format:
-
-    METHOD_VERSION
-
-So, let's say you have a `controllers.py` which contained:
-
-
-```python
-# controllers.py
-from endpoints import Controller
-
-class Default(Controller):
-  def GET(self):
-    return "called version 1 /"
-  def GET_v2(self):
-    return "called version 2 /"
-
-class Foo(Controller):
-  def GET(self):
-    return "called version 1 /foo"
-  def GET_v2(self):
-    return "called version 2 /foo"
-```
-
-Then, your call requests would be translated like this:
-
-|HTTP Request                           | Path Followed                 |
-|-------------------------------------- | ----------------------------- |
-|GET / with Accept: */*                 | controllers.Default.GET()     |
-|GET /foo with Accept: */*              | controllers.Foo.GET()         |
-|GET / with Accept: */*;version=v2      | controllers.Default.GET_v2()  |
-|GET /foo with Accept: */*;version=v2   | controllers.Foo.GET_v2()      |
-
-**Note:** attaching the `;version=v2` to the `Accept` header changes the method that is called to handle the request.
-
-
-### CORS support
-
-Endpoints has a `CorsMixin` you can add to your controllers to support [CORS requests](http://www.w3.org/TR/cors/):
-
-```python
-from endpoints import Controller, CorsMixin
-
-class Default(Controller, CorsMixin):
-  def GET(self):
-    return "called / supports cors"
-```
-
-The `CorsMixin` will handle all the `OPTION` requests, and setting all the headers, so you don't have to worry about them (unless you want to).
-
-
-## Built in servers
-
-Endpoints comes with wsgi support and has a built-in python wsgi server:
-
-    $ endpoints-wsgiserver --help
-
-
-### Sample wsgi script for uWSGI
-
-```python
-import os
-from endpoints.interface.wsgi import Application
-
-os.environ['ENDPOINTS_PREFIX'] = 'mycontroller'
-application = Application()
-```
-
-That's all you need to set it up if you need it. Then you can start a [uWSGI](http://uwsgi-docs.readthedocs.org/) server to test it out:
-
-    $ uwsgi --http :9000 --wsgi-file YOUR_FILE_NAME.py --master --processes 1 --thunder-lock --chdir=/PATH/WITH/YOUR_FILE_NAME/FILE
-
-
-## Development
-
-### Unit Tests
-
-After cloning the repo, `cd` into the repo's directory and run:
-
-    $ python -m unittest endpoints_test
-
-Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests because there are dependencies that the tests need that the rest of the package does not.
-
-### Refreshing server on changing files
-
-If you are manually testing, `entr` (run arbitrary commands when files change) might be handy, it can be installed on Ubuntu via apt-get:
-
-    $ apt-get install entr
-
-and used with endpoints like so:
-
-    $ ls -d * | entr sh -c "killall endpoints; endpoints --prefix=mycontroller --host=localhost:8000 &"
-
-Hat tip to [Mindey](https://github.com/firstopinion/endpoints/issues/57).
+Now you should dive into some of the other features discussed in the [docs folder](https://github.com/firstopinion/endpoints/tree/master/docs).
 

@@ -157,10 +157,10 @@ class Router(object):
 
     we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
 
-    GET /foo -> controller_prefix.version.foo.Default.get
-    POST /foo/bar -> controller_prefix.version.foo.Bar.post
-    GET /foo/bar/che -> controller_prefix.version.foo.Bar.get(che)
-    POST /foo/bar/che?baz=foo -> controller_prefix.version.foo.Bar.post(che, baz=foo)
+    GET /foo -> controller_prefix.foo.Default.get
+    POST /foo/bar -> controller_prefix.foo.Bar.post
+    GET /foo/bar/che -> controller_prefix.foo.Bar.get(che)
+    POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.post(che, baz=foo)
     """
     @property
     def module_names(self):
