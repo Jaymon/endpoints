@@ -22,6 +22,11 @@ logger = logging.getLogger(__name__)
 
 
 class Call(object):
+    """The middleman
+
+    This class is created in the interface and is responsible for taking the request
+    and handling it and setting everything into the body of response so the interface
+    can respond to the request"""
     def __init__(self, req, res, rou):
         self.request = req
         self.response = res
@@ -29,6 +34,11 @@ class Call(object):
         self.controller = None
 
     def create_controller(self):
+        """Create a controller to handle the request
+
+        :returns: Controller, this Controller instance should be able to handle
+            the request
+        """
         body = None
         req = self.request
         res = self.response
@@ -66,6 +76,7 @@ class Call(object):
         return con
 
     def handle(self):
+        """Called from the interface to actually handle the request."""
         body = None
         req = self.request
         res = self.response
@@ -75,7 +86,7 @@ class Call(object):
 
         try:
             con = self.create_controller()
-            con.interface = self
+            con.call = self
             self.controller = con
             con.log_start(start)
             con.handle() # this will manipulate self.response
@@ -99,9 +110,11 @@ class Call(object):
         """if an exception is raised while trying to handle the request it will
         go through this method
 
+        This method will set the response body and then also call Controller.handle_error
+        for further customization if the Controller is available
+
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
-        :returns: mixed, the body for the response
         """
         req = self.request
         res = self.response
@@ -153,7 +166,8 @@ class Call(object):
 
 class Router(object):
     """
-    Where all the routing magic happens
+    Where all the routing magic happens, this takes an incoming URI and gathers
+    the information needed to turn that URI into a Controller
 
     we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
 
@@ -249,7 +263,6 @@ class Router(object):
         ret['method_kwargs'] = req.kwargs
 
         req.controller_info = ret
-        #pout.v(ret)
         return ret
 
     def get_class_instance(self, req, res, controller_class):
@@ -318,7 +331,7 @@ class Controller(object):
     All your controllers MUST extend this base class, since it ensures a proper interface :)
 
     to activate a new endpoint, just add a module on your PYTHONPATH.controller_prefix that has a class
-    that extends this class, and then defines at least one option method (like GET or POST), so if you
+    that extends this class, and then defines at least one http method (like GET or POST), so if you
     wanted to create the endpoint /foo/bar (with controller_prefix che), you would just need to:
 
     ---------------------------------------------------------------------------
@@ -355,7 +368,10 @@ class Controller(object):
     """holds a Response() instance"""
 
     call = None
-    """holds the call() instance that invoked this Controller"""
+    """holds the call() instance that created this Controller"""
+
+    router = None
+    """holds the Router() instance that found this controller"""
 
     private = False
     """set this to True if the controller should not be picked up by reflection, the controller
@@ -421,7 +437,8 @@ class Controller(object):
     def handle(self):
         """handles the request and returns the response
 
-        :returns: Response instance, the response object with a body already"""
+        This should set any response information directly onto self.response
+        """
         req = self.request
         res = self.response
         res.set_header('Content-Type', "{};charset={}".format(

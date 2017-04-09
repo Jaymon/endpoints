@@ -143,7 +143,7 @@ class Foo(Controller):
 ```
 
 
-### require_params
+## require_params decorator
 
 There is also a `require_params` decorator that provides a quick way to ensure certain parameters were provided.
 

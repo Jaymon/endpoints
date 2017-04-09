@@ -14,6 +14,8 @@ from .decorators import _property, version, param, require_params
 
 
 class ReflectDecorator(object):
+    """The information of each individual decorator on a given ReflectMethod will
+    be wrapped in this class"""
 
     @_property
     def parents(self):
@@ -184,11 +186,6 @@ class ReflectController(object):
         def is_super(childnode, parentnode):
             """returns true if child node has a super() call to parent node"""
             ret = False
-            #pout.b(node.name)
-            #pout.v(node)
-#             for n in node.body:
-#                 if isinstance(n, ast.Expr):
-#                     pout.v(n.value.func, n.value.func.ctx, n.value.func.value)
             for n in childnode.body:
                 if not isinstance(n, ast.Expr): continue
 
@@ -291,9 +288,10 @@ class ReflectController(object):
         return the supported http method options that this class supports
         return what http method options this endpoint supports (eg, POST, GET)
 
-        link -- http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+        http://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
-        return -- set -- the http methods (eg, ['GET', 'POST']) this endpoint supports
+        :returns: dict, each http method (eg, GET, POST) will have a key with the value
+            being every method from the controller that can satisfy the http method
         """
         ret = {}
         method_regex = re.compile(r"^[A-Z][A-Z0-9]+(_|$)")
@@ -348,7 +346,7 @@ class Reflect(object):
                     controller_class=controller_class,
                 )
 
-                # filter out base classes like endpoints.Controller
+                # filter out controllers that can't handle any requests
                 if endpoint.methods:
                     yield endpoint
 
