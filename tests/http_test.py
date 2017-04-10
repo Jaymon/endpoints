@@ -109,17 +109,15 @@ class RequestTest(TestCase):
         u = r.url
         self.assertTrue(":10000" in u.geturl())
 
-        # TODO -- simple server configuration
-
     def test_charset(self):
         r = Request()
         r.set_header("content-type", "application/json;charset=UTF-8")
-        charset = r.charset
+        charset = r.encoding
         self.assertEqual("UTF-8", charset)
 
         r = Request()
         r.set_header("content-type", "application/json")
-        charset = r.charset
+        charset = r.encoding
         self.assertEqual(None, charset)
 
     def test_ip(self):

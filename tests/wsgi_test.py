@@ -4,15 +4,19 @@ import codecs
 import hashlib
 import json
 
-import requests
 import testdata
 
 from endpoints.client.http import HTTPClient
 from endpoints.client.wsgi import WSGIServer, UWSGIServer
 
 
+# def setUpModule():
+#     if requests is None:
+#         raise SkipTest("Skipping (u)wsgi server tests because no requests module")
+
+
 ###############################################################################
-# UWSGI support
+# Custom clients
 ###############################################################################
 class UWSGIClient(object):
 
@@ -81,6 +85,13 @@ class UWSGIClient(object):
         return m
 
 
+class WSGIClient(UWSGIClient):
+    server_class = WSGIServer
+
+
+###############################################################################
+# Actual tests
+###############################################################################
 class UWSGITest(TestCase):
 
     client_class = UWSGIClient
@@ -184,14 +195,24 @@ class UWSGITest(TestCase):
         controller_prefix = 'wsgi.post'
         c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
+            "from endpoints.decorators import version",
             "class Default(Controller):",
             "    def GET(*args, **kwargs): pass",
-            "    def POST(*args, **kwargs): pass",
+            "    @version('', 'v1')",
+            "    def POST_v1(*args, **kwargs): pass",
+            "    @version('v2')",
             "    def POST_v2(*args, **kwargs): return kwargs['foo']",
             "",
         ])
 
-        r = c.post('/', json.dumps({"foo": "bar"}), headers={"content-type": "application/json", "Accept": "application/json;version=v2"})
+        r = c.post(
+            '/',
+            {"foo": "bar"},
+            headers={
+                "content-type": "application/json",
+                "Accept": "application/json;version=v2"
+            }
+        )
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
 
@@ -204,7 +225,7 @@ class UWSGITest(TestCase):
         r = c.post('/', None)
         self.assertEqual(204, r.code)
 
-        r = c.post('/', json.dumps({}), headers={"content-type": "application/json"})
+        r = c.post('/', {}, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
         r = c.post('/', {"foo": "bar"}, headers={"Accept": "application/json;version=v2"})
@@ -250,8 +271,8 @@ class UWSGITest(TestCase):
         )
         self.assertEqual(408, r.code)
 
-    def test_404_request(self):
-        controller_prefix = 'wsgi404.request404'
+    def test_405_request(self):
+        controller_prefix = 'request_405'
         c = self.create_client(controller_prefix, [
             "from endpoints import Controller",
             "class Foo(Controller):",
@@ -260,7 +281,7 @@ class UWSGITest(TestCase):
         ])
 
         r = c.get('/foo/bar/baz?che=1&boo=2')
-        self.assertEqual(404, r.code)
+        self.assertEqual(405, r.code)
 
     def test_response_headers(self):
         controller_prefix = 'resp_headers.resp'
@@ -296,14 +317,6 @@ class UWSGITest(TestCase):
         #self.assertTrue(r.body)
 
 
-###############################################################################
-# WSGI Server support
-###############################################################################
-class WSGIClient(UWSGIClient):
-    server_class = WSGIServer
-
-
-@skipIf(requests is None, "Skipping wsgi server Test because no requests module")
 class WSGITest(UWSGITest):
     client_class = WSGIClient
 
@@ -411,6 +424,6 @@ class WSGIServerTest(ClientTestCase):
         self.assertEqual("foo bar", r._body)
 
 
-class UWSGIServer(WSGIServerTest):
+class UWSGIServerTest(WSGIServerTest):
     server_class = UWSGIServer
 

@@ -1,6 +1,7 @@
 # Authentication
 
-Validating access to certain endpoints is pretty common and so _endpoints_ provides helper decorators to make this process easier and customizable.
+Validating access to certain resources is pretty common and so _endpoints_ provides [helper decorators](https://github.com/firstopinion/endpoints) to make this process easier and customizable.
+
 
 ## Http basic authentication
 
@@ -53,8 +54,7 @@ class auth_user(basic_auth):
     def decorate(self, f):
         # get rid of letting the decorator take a target keyword since we use self.target
         return super(auth_user, self).decorate(f, target=None)
-```
-
+``` 
 
 But there is an `AuthDecorator` specifically designed for easy overriding for general purpose authentication, it expects that the child class will implement a `target` method that takes same params as a controller and, also like a controller, request is available through the instance property `self.request`.
 

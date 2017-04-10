@@ -47,6 +47,19 @@ class Foo(Controller):
         pass
 ```
 
+Another example:
+
+```python
+from endpoints import Controller
+from endpoints.decorators import param
+
+class Foo(Controller):
+  @param('param1', default="some val")
+  @param('param2', choices=['one', 'two'])
+  def GET(self, **params): pass
+```
+
+
 ### Positional arguments
 
 What happens if you want to pass up values in the path part of the url (eg, the _/foo/bar_ part of _http://example.com/foo/bar_ url?). You can use integers in place of the name value of the param, like so:
@@ -129,4 +142,19 @@ class Foo(Controller):
         pass
 ```
 
+
+## require_params decorator
+
+There is also a `require_params` decorator that provides a quick way to ensure certain parameters were provided.
+
+```python
+from endpoints import Controller
+from endpoints.decorators import require_params
+
+class Foo(Controller):
+  @require_params('param1', 'param2', 'param3')
+  def GET(self, **params): pass
+```
+
+The require_params decorator as used above will make sure `param1`, `param2`, and `param3` were all present in the `**params` dict.
 

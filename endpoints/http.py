@@ -647,17 +647,29 @@ class Request(Http):
     controller_info = None
     """will hold the controller information for the request, populated from the Call"""
 
+    @property
+    def accept_encoding(self):
+        """The encoding the client requested the response to use"""
+        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Charset
+        ret = ""
+        accept_encoding = self.get_header("Accept-Charset", "")
+        if accept_encoding:
+            bits = re.split(r"\s+", accept_encoding)
+            bits = bits[0].split(";")
+            ret = bits[0]
+        return ret
+
     @_property
-    def charset(self):
+    def encoding(self):
         """the character encoding of the request, usually only set in POST type requests"""
-        charset = None
+        encoding = None
         ct = self.get_header('content-type')
         if ct:
             ah = AcceptHeader(ct)
             if ah.media_types:
-                charset = ah.media_types[0][2].get("charset", None)
+                encoding = ah.media_types[0][2].get("charset", None)
 
-        return charset
+        return encoding
 
     @property
     def access_token(self):
@@ -883,9 +895,33 @@ class Request(Http):
         self._body_kwargs = body_kwargs
         self._body = self._build_body_str(body_kwargs)
 
+    @property
+    def kwargs(self):
+        """combine GET and POST params to be passed to the controller"""
+        kwargs = dict(self.query_kwargs)
+        if self.has_body():
+            kwargs.update(self.body_kwargs)
+
+        return kwargs
+
     def __init__(self):
         self.environ = Headers()
         super(Request, self).__init__()
+
+    def version(self, content_type="*/*"):
+        """
+        versioning is based off of this post 
+        http://urthen.github.io/2013/05/09/ways-to-version-your-api/
+        """
+        v = ""
+        accept_header = self.get_header('accept', "")
+        if accept_header:
+            a = AcceptHeader(accept_header)
+            for mt in a.filter(content_type):
+                v = mt[2].get("version", "")
+                if v: break
+
+        return v
 
     def is_method(self, method):
         """return True if the request method matches the passed in method"""

@@ -13,8 +13,9 @@ try:
 except ImportError:
     from StringIO import StringIO
 
-from . import BaseInterface, BaseServer
+from . import BaseServer
 from ..http import Url
+from ..decorators import _property
 
 
 class uWSGIChunkedBody(object):
@@ -70,7 +71,33 @@ class uWSGIChunkedBody(object):
         return line
 
 
-class WSGIInterface(BaseInterface):
+# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
+class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
+    """This is here to make the standard wsgi server multithreaded"""
+    pass
+
+
+class Application(BaseServer):
+    """The Application that a WSGI server needs
+
+    this extends Server just to make it easier on the end user, basically, all you
+    need to do to use this is in your wsgi-file, you can just do:
+
+        from endpoints.interface.wsgi import Application
+        application = Application()
+
+    and be good to go
+    """
+    def __call__(self, environ, start_response):
+        """this is what will be called for each request that that WSGI server handles"""
+        c = self.create_call(environ)
+        res = c.handle()
+        start_response(
+            '{} {}'.format(res.code, res.status),
+            [(str(k), str(v)) for k, v in res.headers.items()]
+        )
+        return res
+
     def create_request(self, raw_request, **kwargs):
         """
         create instance of request
@@ -116,45 +143,8 @@ class WSGIInterface(BaseInterface):
 
         return r
 
-
-# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server-using-socketserver-framework-in-python?rq=1
-class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
-    """This is here to make the standard wsgi server multithreaded"""
-    pass
-
-
-class WSGIBaseServer(BaseServer):
-    """Common WSGI base configuration"""
-    interface_class = WSGIInterface
-    server_class = WSGIHTTPServer
-
-
-class Application(WSGIBaseServer):
-    """The Application that a WSGI server needs
-
-    this extends Server just to make it easier on the end user, basically, all you
-    need to do to use this is in your wsgi-file, you can just do:
-
-        from endpoints.interface.wsgi import Application
-        application = Application()
-
-    and be good to go
-    """
-    def __init__(self, *args, **kwargs):
-        super(Application, self).__init__(*args, **kwargs)
-        self.prepare()
-
-    def __call__(self, environ, start_response):
-        """this is what will be called for each request that that WSGI server handles"""
-        res = self.interface.handle(environ)
-        start_response(
-            '{} {}'.format(res.code, res.status),
-            [(k, str(v)) for k, v in res.headers.items()]
-        )
-        return res
-
-    def create_server(self, **kwargs):
-        return None
+    def create_backend(self, **kwargs):
+        raise NotImplementedError()
 
     def handle_request(self):
         raise NotImplementedError()
@@ -166,21 +156,20 @@ class Application(WSGIBaseServer):
         raise NotImplementedError()
 
 
-class Server(WSGIBaseServer):
+class Server(BaseServer):
     """A simple python WSGI Server
 
     you would normally only use this with the bin/wsgiserver.py script, if you
     want to use it outside of that, then look at that script for inspiration
     """
-    application_class=Application
+    application_class = Application
 
-    @property
+    backend_class = WSGIHTTPServer
+
+    @_property
     def application(self):
         """if no application has been set, then create it using application_class"""
-        app = getattr(self, "_application", None)
-        if not app:
-            app = self.application_class()
-            self._application = app
+        app = self.application_class()
         return app
 
     @application.setter
@@ -189,8 +178,9 @@ class Server(WSGIBaseServer):
         your own application callable that will be used to handle requests, see
         bin/wsgiserver.py script as an example of usage"""
         self._application = v
+        self.backend.set_app(v)
 
-    def create_server(self, **kwargs):
+    def create_backend(self, **kwargs):
         host = kwargs.pop('host', '')
         if not host:
             host = os.environ['ENDPOINTS_HOST']
@@ -202,16 +192,16 @@ class Server(WSGIBaseServer):
             raise RuntimeError("Please specify a port using the format host:PORT")
         server_address = (hostname, port)
 
-        s = self.server_class(server_address, WSGIRequestHandler, **kwargs)
+        s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)
         return s
 
     def handle_request(self):
-        self.prepare()
-        return self.server.handle_request()
+        #self.prepare()
+        return self.backend.handle_request()
 
     def serve_forever(self):
-        self.prepare()
-        return self.server.serve_forever()
+        #self.prepare()
+        return self.backend.serve_forever()
 
 
