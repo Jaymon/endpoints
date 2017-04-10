@@ -7,6 +7,7 @@ import testdata
 
 import endpoints
 from endpoints import CallError
+from endpoints.http import Request
 from endpoints.decorators import param, post_param
 
 
@@ -458,6 +459,23 @@ class PropertyTest(TestCase):
 
 
 class ParamTest(TestCase):
+    def test_metavar(self):
+        class MockMetavar(object):
+            request = Request()
+
+            @param(0, metavar="bar")
+            def foo(self, bar, **kwargs): return 1
+
+
+        o = MockMetavar()
+        o.request.method = 'GET'
+        o.request.path = "/0"
+
+        o.foo("0")
+
+
+
+
     def test_require_params(self):
         class MockObject(object):
             request = endpoints.Request()

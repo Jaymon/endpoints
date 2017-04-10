@@ -376,3 +376,22 @@ class ReflectControllerTest(TestCase):
         for rm in rc.methods["GET"]:
             self.assertTrue(rm.version in ["v1", "v2"])
 
+    def test_metavar(self):
+        # https://github.com/firstopinion/endpoints/issues/58
+        controller_prefix = "metavar_rct"
+        mp = testdata.create_module(controller_prefix, [
+            "import endpoints",
+            "from endpoints.decorators import param, version",
+            "class Bar(endpoints.Controller):",
+            "    @param(0, metavar='bar')",
+            "    @param(1, metavar='che')",
+            "    def GET(self, bar, che): pass",
+            "",
+        ])
+
+        rc = ReflectController(controller_prefix, mp.module.Bar)
+
+        for rm in rc.methods["GET"]:
+            for name, pr in rm.params.items():
+                self.assertTrue("metavar" in pr["options"])
+
