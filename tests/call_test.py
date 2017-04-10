@@ -562,6 +562,19 @@ class CallTest(TestCase):
         self.assertEqual(None, res._body)
         self.assertEqual(204, res.code)
 
+    def test_nice_error_405(self):
+        controller_prefix = "nicerr405"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self, bar): pass",
+            "",
+        ])
+
+        # TODO -- capture stdout to make sure the error printed out, until then
+        # you will just have to manually check to make sure the warning was raised
+        # correctly
+        res = c.handle("/foo/bar/che")
 
 class CallVersioningTest(TestCase):
     def test_get_version(self):

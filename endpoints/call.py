@@ -147,6 +147,19 @@ class Call(object):
             e_msg = unicode(e)
             if e_msg.startswith(req.method) and 'argument' in e_msg:
                 logger.debug(e_msg, exc_info=True)
+                logger.warning(
+                    " ".join([
+                        "Either the path arguments ({} args) or the keyword arguments",
+                        "({} args) for {}.{} do not match the {} handling method's",
+                        "definition"
+                    ]).format(
+                        len(req.controller_info["method_args"]),
+                        len(req.controller_info["method_kwargs"]),
+                        req.controller_info['module_name'],
+                        req.controller_info['class_name'],
+                        req.method
+                    )
+                )
                 res.code = 405
 
             else:
