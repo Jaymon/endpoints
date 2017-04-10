@@ -2,6 +2,8 @@
 
 Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/).
 
+This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/firstopinion/endpoints/tree/v1) of the codea.
+
 
 ## 5 Minute Getting Started
 
