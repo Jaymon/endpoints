@@ -1,5 +1,7 @@
 # Endpoints
 
+This is the version 1 branch, for the latest changes use the master branch.
+
 Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/).
 
 
