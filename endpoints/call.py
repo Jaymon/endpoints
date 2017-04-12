@@ -89,11 +89,24 @@ class Call(object):
             con.call = self
             self.controller = con
             con.log_start(start)
-            con.handle() # this will manipulate self.response
+
+            # the controller handle method will manipulate self.response, it first
+            # tries to find a handle_HTTP_METHOD method, if it can't find that it
+            # will default to the handle method (which is implemented on Controller).
+            # method arguments are passed in so child classes can add decorators
+            # just like the HTTP_METHOD that will actually handle the request
+            controller_args, controller_kwargs = con.find_method_params()
+            controller_method = getattr(con, "handle_{}".format(req.method), None)
+            if not controller_method:
+                controller_method = getattr(con, "handle")
+
+            logger.debug("Using handle method: {}.{}".format(
+                con.__class__.__name__,
+                controller_method.__name__
+            ))
+            controller_method(*controller_args, **controller_kwargs)
 
         except Exception as e:
-            # if anything gets to here we've messed up because we threw an error before
-            # the controller's error handler could handle it :(
             self.handle_error(e) # this will manipulate self.response
 
         finally:
@@ -174,7 +187,15 @@ class Call(object):
             res.body = e
 
         if con:
-            con.handle_error(e, **kwargs)
+            error_method = getattr(con, "handle_{}_error".format(req.method), None)
+            if not error_method:
+                error_method = getattr(con, "handle_error")
+
+            logger.debug("Using error method: {}.{}".format(
+                con.__class__.__name__,
+                error_method.__name__
+            ))
+            error_method(e, **kwargs)
 
 
 class Router(object):
@@ -447,10 +468,17 @@ class Controller(object):
         if origin:
             self.response.set_header('Access-Control-Allow-Origin', origin)
 
-    def handle(self):
+    def handle(self, *controller_args, **controller_kwargs):
         """handles the request and returns the response
 
         This should set any response information directly onto self.response
+
+        this method has the same signature as the request handling methods
+        (eg, GET, POST) so subclasses can override this method and add decorators
+
+        :param *controller_args: tuple, the path arguments that will be passed to
+            the request handling method (eg, GET, POST)
+        :param **controller_kwargs: dict, the query and body params merged together
         """
         req = self.request
         res = self.response
@@ -464,7 +492,7 @@ class Controller(object):
 
         res_method_name = ""
         controller_methods = self.find_methods()
-        controller_args, controller_kwargs = self.find_method_params()
+        #controller_args, controller_kwargs = self.find_method_params()
         for controller_method_name, controller_method in controller_methods:
             try:
                 logger.debug("Attempting to handle request with {}.{}.{}".format(

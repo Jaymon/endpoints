@@ -576,6 +576,30 @@ class CallTest(TestCase):
         # correctly
         res = c.handle("/foo/bar/che")
 
+    def test_handle_method_chain(self):
+        controller_prefix = "handle_method_chain"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def handle_GET(self, *args, **kwargs):",
+            "        self.response.handle_GET_called = True",
+            "        self.handle(*args, **kwargs)",
+            "",
+            "    def handle(self, *args, **kwargs):",
+            "        self.response.handle_called = True",
+            "        super(Foo, self).handle(*args, **kwargs)",
+            "",
+            "    def GET(self, *args, **kwargs):",
+            "        self.response.GET_called = True",
+            "",
+        ])
+
+        res = c.handle("/foo")
+        self.assertTrue(res.handle_GET_called)
+        self.assertTrue(res.handle_called)
+        self.assertTrue(res.GET_called)
+
+
 class CallVersioningTest(TestCase):
     def test_get_version(self):
         r = Request()
