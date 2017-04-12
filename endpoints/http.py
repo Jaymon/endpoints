@@ -168,7 +168,7 @@ class Headers(dict):
         raise NotImplementedError()
 
 
-class Body(object):
+class RequestBody(object):
     """this is the normalized request environment that every interface needs to
     conform to, it primarily acts like a wsgi environment, which is compatible with
     python's internal cgi.FieldStorage stuff"""
@@ -200,6 +200,13 @@ class Body(object):
 
             else:
                 yield field_name, body_field.value
+
+
+class ResponseBody(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, types.GeneratorType):
+            return [x for x in obj]
+        return json.JSONEncoder.default(self, obj)
 
 
 class Url(object):
@@ -873,7 +880,7 @@ class Request(Http):
 
             else:
                 if self.body_input:
-                    body = Body(
+                    body = RequestBody(
                         fp=self.body_input,
                         headers=self.headers,
                         environ=self.environ
@@ -1038,7 +1045,7 @@ class Response(Http):
                     # my thought is we could have a body_type_subtype method that would 
                     # make it possible to easily handle custom types
                     # eg, "application/json" would become: self.body_application_json(b, is_error)
-                    b = json.dumps(b)
+                    b = json.dumps(b, cls=ResponseBody)
 
             else:
                 # no idea what to do here because we don't know how to handle the type

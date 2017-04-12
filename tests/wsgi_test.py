@@ -316,6 +316,21 @@ class UWSGITest(TestCase):
         self.assertEqual(content, r.body)
         #self.assertTrue(r.body)
 
+    def test_generators(self):
+        controller_prefix = 'wsgi_generator'
+        c = self.create_client(controller_prefix, [
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        for x in range(100):",
+            "            yield x",
+        ])
+
+        r = c.get('/')
+        content = list(range(100))
+        self.assertEqual(200, r.code)
+        self.assertEqual(content, r._body)
+
 
 class WSGITest(UWSGITest):
     client_class = WSGIClient
