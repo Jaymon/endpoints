@@ -669,3 +669,30 @@ class require_params(object):
 
         return decorated
 
+
+class code_error(FuncDecorator):
+    """
+    When placed on HTTPMETHOD methods (eg, GET) this will allow you to easily map
+    raised exceptions to http status codes
+
+    :example:
+        class Foo(Controller):
+            @code_error(406, AttributeError, IndexError)
+            def GET(self): raise AttributeError()
+
+    :param code: integer, an http status code
+        https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+    :param **exc_classes: tuple, one or more exception classes that will be checked
+        against the raised error
+    """
+    def decorate(self, func, code, *exc_classes):
+        def decorated(self, *args, **kwargs):
+            try:
+                return func(self, *args, **kwargs)
+
+            except exc_classes as e:
+                raise CallError(code, e)
+
+        return decorated
+
+

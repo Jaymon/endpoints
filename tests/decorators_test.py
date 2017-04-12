@@ -1143,3 +1143,34 @@ class VersionTest(TestCase):
         self.assertEqual(22, res._body)
 
 
+class CodeErrorTest(TestCase):
+    def test_raise(self):
+        controller_prefix = "ce_raise"
+        c = Server(controller_prefix, [
+            "from endpoints import Controller",
+            "from endpoints.decorators import code_error, param",
+            "",
+            "class Foo(Controller):",
+            "    @code_error(330, ValueError, IndexError)",
+            "    @param(0, metavar='error_type', choices=['value', 'index', 'another'])",
+            "    def GET(self, error_type):",
+            "        if error_type.startswith('value'):",
+            "            raise ValueError()",
+            "        elif error_type.startswith('index'):",
+            "            raise IndexError()",
+            "        else:",
+            "            raise RuntimeError()",
+        ])
+
+        res = c.handle("/foo/value")
+        self.assertEqual(330, res.code)
+
+        res = c.handle("/foo/index")
+        self.assertEqual(330, res.code)
+
+        res = c.handle("/foo/another")
+        self.assertEqual(500, res.code)
+
+        res = c.handle("/foo/bar")
+        self.assertEqual(400, res.code)
+
