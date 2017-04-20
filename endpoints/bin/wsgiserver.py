@@ -1,5 +1,6 @@
 #!/usr/bin/env python
-
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import sys
 import os
 import argparse
@@ -22,17 +23,38 @@ def console():
     '''
     parser = argparse.ArgumentParser(description='Start an endpoints WSGI server', add_help=True)
     #parser.add_argument('--debug', dest='debug', action='store_true', help='print debugging info')
-    parser.add_argument("-v", "--version", action='version', version="%(prog)s {}".format(endpoints.__version__))
-    parser.add_argument("--quiet", action='store_true', dest='quiet')
-    parser.add_argument('--prefix', "--controller-prefix", "-P", required=True, help='The endpoints prefix')
+    parser.add_argument(
+        "-v", "--version",
+        action='version',
+        version="%(prog)s {}".format(endpoints.__version__)
+    )
+    parser.add_argument(
+        "--quiet",
+        action='store_true',
+        dest='quiet'
+    )
+    parser.add_argument(
+        '--prefix', "--controller-prefix", "-P",
+        required=True,
+        help='The endpoints prefix'
+    )
     parser.add_argument(
         '--file', "-F", "--wsgi-file", "--wsgifile",
         dest="file",
         default="",
         help='The wsgi file, the file that has an application callable'
     )
-    parser.add_argument('--host', "-H", required=True, help='The host to serve on in the form host:port')
-    parser.add_argument('--count', "-C", help='How many requests to process until self termination', type=int, default=0)
+    parser.add_argument(
+        '--host', "-H",
+        required=True,
+        help='The host to serve on in the form host:port'
+    )
+    parser.add_argument(
+        '--count', "-C",
+        help='How many requests to process until self termination',
+        type=int,
+        default=0
+    )
     parser.add_argument(
         '--dir', "-D", "--directory",
         dest="directory",

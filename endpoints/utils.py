@@ -1,64 +1,28 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import os
-import re
 import mimetypes
-try:
-    import urlparse
-except ImportError:
-    import urllib.parse as urlparse #py3
+import sys
+
+
+class ByteString(bytes):
+    def __new__(cls, val, encoding=""):
+        if not encoding:
+            encoding = sys.getdefaultencoding()
+
+        if isinstance(val, unicode):
+            val = val.encode(encoding)
+
+        #instance = super(ByteString, cls).__new__(cls, val)
+        instance = bytes(val)
+        #instance.encoding = encoding
+        return instance
 
 
 class Path(str):
     def __new__(cls, s):
         s = os.path.abspath(os.path.expanduser(str(s)))
         return super(Path, cls).__new__(cls, s)
-
-
-# class Host(str):
-#     """A host string is defined as hostname:port for my purposes
-# 
-#     This class attempts to sooth the rough edges to make sure there is access to
-#     what is needed
-# 
-#     example --
-#         h = Host("https://foo.com:8080")
-#         print h # foo.com:8080
-#         print h.hostname # foo.com
-#         print h.url # http://foo.com:8080
-#         print h.port # 8080
-#     """
-#     @property
-#     def hostname(self):
-#         b = self.split(":")
-#         return b[0]
-# 
-#     @property
-#     def port(self):
-#         b = self.split(":")
-#         return int(b[1]) if len(b) > 1 else 0
-# 
-#     @property
-#     def netloc(self):
-#         return self
-# 
-#     @property
-#     def url(self):
-#         return "{}://{}".format(self.scheme, self)
-# 
-#     def __new__(cls, host):
-#         b = urlparse.urlparse(host.rstrip("/"))
-#         if b.scheme:
-#             scheme = b.scheme.lower()
-#             netloc = b.netloc
-# 
-#         else:
-#             scheme = "http"
-#             netloc = b.path
-# 
-#         netloc = netloc.lower()
-#         instance = super(Host, cls).__new__(cls, netloc)
-# 
-#         instance.scheme = scheme
-#         return instance
 
 
 class MimeType(object):
@@ -99,10 +63,10 @@ class AcceptHeader(object):
         self.media_types = []
 
         if header:
-            accepts = header.split(u',')
+            accepts = header.split(',')
             for accept in accepts:
                 accept = accept.strip()
-                a = accept.split(u';')
+                a = accept.split(';')
 
                 # first item is the media type:
                 media_type = self._split_media_type(a[0])
@@ -111,8 +75,8 @@ class AcceptHeader(object):
                 params = {}
                 q = 1.0 # default according to spec
                 for p in a[1:]:
-                    pk, pv = p.strip().split(u'=')
-                    if pk == u'q':
+                    pk, pv = p.strip().split('=')
+                    if pk == 'q':
                         q = float(pv)
                     else:
                         params[pk] = pv
@@ -122,7 +86,7 @@ class AcceptHeader(object):
 
     def _split_media_type(self, media_type):
         """return type, subtype from media type: type/subtype"""
-        media_type_bits = media_type.split(u'/')
+        media_type_bits = media_type.split('/')
         return media_type_bits
 
     def _sort(self, a, b):
@@ -140,8 +104,8 @@ class AcceptHeader(object):
             for i in xrange(2):
                 ai = a[0][i]
                 bi = b[0][i]
-                if ai == u'*':
-                    if bi != u'*':
+                if ai == '*':
+                    if bi != '*':
                         ret = -1
                         found = True
                         break
@@ -150,7 +114,7 @@ class AcceptHeader(object):
                         ret = cmp(len(a[2]), len(b[2]))
                         found = True
                         break
-                elif bi == u'*':
+                elif bi == '*':
                     ret = 1
                     found = True
                     break
@@ -184,25 +148,25 @@ class AcceptHeader(object):
                     break
 
             if matched:
-                if x[0][0] == u'*':
-                    if x[0][1] == u'*':
+                if x[0][0] == '*':
+                    if x[0][1] == '*':
                         yield x
 
                     elif x[0][1] == msubtype:
                         yield x
 
-                elif mtype == u'*':
-                    if msubtype == u'*':
+                elif mtype == '*':
+                    if msubtype == '*':
                         yield x
 
                     elif x[0][1] == msubtype:
                         yield x
 
                 elif x[0][0] == mtype:
-                    if msubtype == u'*':
+                    if msubtype == '*':
                         yield x
 
-                    elif x[0][1] == u'*':
+                    elif x[0][1] == '*':
                         yield x
 
                     elif x[0][1] == msubtype:

@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 from . import TestCase, SkipTest
 import os
 
@@ -328,7 +330,7 @@ class ReflectTest(TestCase):
             self.assertFalse(params[p]['required'])
 
         self.assertEqual(1, len(l))
-        self.assertEqual(u'/foo', r.uri)
+        self.assertEqual('/foo', r.uri)
         self.assertSetEqual(set(['GET', 'POST', 'OPTIONS']), set(r.methods.keys()))
 
     def test_decorators_param_help(self):

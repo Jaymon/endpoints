@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import threading
 import os
 import inspect
@@ -63,7 +65,7 @@ class WSGIThread(threading.Thread):
 
         except Exception as e:
             if not self.server.quiet:
-                print e
+                print(e)
             raise
 
         finally:

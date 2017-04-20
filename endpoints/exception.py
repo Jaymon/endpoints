@@ -1,3 +1,6 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
+
 
 class CallError(Exception):
     """
@@ -85,11 +88,13 @@ class CallStop(CallError):
 
 
 class RouteError(CallError):
+    """Raised when @route fails on a Controller method"""
     def __init__(self, code=-1, msg=""):
         super(RouteError, self).__init__(code=code, msg=msg)
 
 
 class VersionError(RouteError):
+    """Raised when @version fails on a Controller method"""
     def __init__(self, request_version, versions):
         self.request_version = request_version
         self.versions = versions

@@ -16,6 +16,7 @@ except ImportError:
 from . import BaseServer
 from ..http import Url
 from ..decorators import _property
+from ..utils import ByteString
 
 
 class uWSGIChunkedBody(object):
@@ -93,9 +94,12 @@ class Application(BaseServer):
         c = self.create_call(environ)
         res = c.handle()
         start_response(
-            '{} {}'.format(res.code, res.status),
-            [(str(k), str(v)) for k, v in res.headers.items()]
+            ByteString('{} {}'.format(res.code, res.status), res.encoding),
+            [(ByteString(k, res.encoding), ByteString(v, res.encoding)) for k, v in res.headers.items()]
         )
+
+        # returning the Response, it needs to have an __iter__ for internal wsgi 
+        # methods to know how to handle the Response
         return res
 
     def create_request(self, raw_request, **kwargs):

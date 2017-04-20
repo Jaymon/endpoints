@@ -1,4 +1,5 @@
-from __future__ import absolute_import
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import types
 import re
 import cgi
@@ -118,6 +119,8 @@ class httpcache(FuncDecorator):
 class nohttpcache(FuncDecorator):
     """
     sets all the no cache headers so the response won't be cached by the client
+
+    https://devcenter.heroku.com/articles/increasing-application-performance-with-http-cache-headers#cache-prevention
     """
     def decorate(self, func):
         def decorated(self, *args, **kwargs):

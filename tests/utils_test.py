@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 from unittest import TestCase
 
 import testdata
@@ -42,21 +44,21 @@ class AcceptHeaderTest(TestCase):
     def test_init(self):
         ts = [
             (
-                u"text/*, text/html, text/html;level=1, */*",
+                "text/*, text/html, text/html;level=1, */*",
                 [
-                    u"text/html;level=1",
-                    u"text/html",
-                    u"text/*",
-                    u"*/*"
+                    "text/html;level=1",
+                    "text/html",
+                    "text/*",
+                    "*/*"
                 ]
             ),
             (
-                u'text/*;q=0.3, text/html;q=0.7, text/html;level=1, text/html;level=2;q=0.4, */*;q=0.5',
+                'text/*;q=0.3, text/html;q=0.7, text/html;level=1, text/html;level=2;q=0.4, */*;q=0.5',
                 [
-                    u"text/html;level=1",
-                    u"text/html;q=0.7",
-                    u"*/*;q=0.5",
-                    u"text/html;level=2;q=0.4",
+                    "text/html;level=1",
+                    "text/html;q=0.7",
+                    "*/*;q=0.5",
+                    "text/html;level=2;q=0.4",
                     "text/*;q=0.3",
                 ]
             ),
@@ -70,38 +72,38 @@ class AcceptHeaderTest(TestCase):
     def test_filter(self):
         ts = [
             (
-                u"*/*;version=v5", # accept header that is parsed
-                (u"application/json", {}), # filter args, kwargs
+                "*/*;version=v5", # accept header that is parsed
+                ("application/json", {}), # filter args, kwargs
                 1 # how many matches are expected
             ),
             (
-                u"*/*;version=v5",
-                (u"application/json", {u'version': u'v5'}),
+                "*/*;version=v5",
+                ("application/json", {'version': 'v5'}),
                 1
             ),
             (
-                u"application/json",
-                (u"application/json", {}),
+                "application/json",
+                ("application/json", {}),
                 1
             ),
             (
-                u"application/json",
-                (u"application/*", {}),
+                "application/json",
+                ("application/*", {}),
                 1
             ),
             (
-                u"application/json",
-                (u"text/html", {}),
+                "application/json",
+                ("text/html", {}),
                 0
             ),
             (
-                u"application/json;version=v1",
-                (u"application/json", {u"version": u"v1"}),
+                "application/json;version=v1",
+                ("application/json", {"version": "v1"}),
                 1
             ),
             (
-                u"application/json;version=v2",
-                (u"application/json", {u"version": u"v1"}),
+                "application/json;version=v2",
+                ("application/json", {"version": "v1"}),
                 0
             ),
 

@@ -1,4 +1,5 @@
-from __future__ import absolute_import
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import urllib
 import subprocess
 import json
@@ -135,7 +136,7 @@ class HTTPClient(object):
         if query:
             more_query_str = urllib.urlencode(query, doseq=True)
             if query_str:
-                query_str += u'&{}'.format(more_query_str)
+                query_str += '&{}'.format(more_query_str)
             else:
                 query_str = more_query_str
 

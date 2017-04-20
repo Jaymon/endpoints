@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 import sys
 import importlib
@@ -329,7 +331,7 @@ class Reflect(object):
     @property
     def modules(self):
         for module in self.router.modules:
-            if module.__name__.startswith(u'_'): continue
+            if module.__name__.startswith('_'): continue
             yield module
 
     @property

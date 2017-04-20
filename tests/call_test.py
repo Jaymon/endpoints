@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 from . import TestCase, skipIf, SkipTest, Server
 import os
 
@@ -286,7 +288,7 @@ class RouterTest(TestCase):
     def test_callback_info(self):
         controller_prefix = "callback_info"
         req, res = self.get_http_instances("/foo/bar")
-        req.query_kwargs = {u'foo': u'bar', u'che': u'baz'}
+        req.query_kwargs = {'foo': 'bar', 'che': 'baz'}
 
         r = Router(controller_prefix)
 
@@ -407,7 +409,7 @@ class RouterTest(TestCase):
                     'module_name': "controller_info_advanced.foo",
                     'class_name': 'Default',
                     'method_args': ["happy"],
-                    #'method_name': u"GET",
+                    #'method_name': "GET",
                 }
             },
         ]

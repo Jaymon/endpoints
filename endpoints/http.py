@@ -1,3 +1,5 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import urllib
 import json
 import types
@@ -12,7 +14,7 @@ except ImportError:
     from urllib import parse as urlparse
 
 from .decorators import _property
-from .utils import AcceptHeader
+from .utils import AcceptHeader, ByteString
 
 
 # import wsgiref.headers
@@ -609,13 +611,13 @@ class Http(object):
         ct = self.get_header('content-type')
         if ct:
             ct = ct.lower()
-            if ct.rfind(u"json") >= 0:
+            if ct.rfind("json") >= 0:
                 if b:
                     b = json.dumps(b)
                 else:
                     b = None
 
-            elif ct.rfind(u"x-www-form-urlencoded") >= 0:
+            elif ct.rfind("x-www-form-urlencoded") >= 0:
                 b = urllib.urlencode(b, doseq=True)
 
         return b
@@ -737,19 +739,19 @@ class Request(Http):
         # https://en.wikipedia.org/wiki/Reserved_IP_addresses
         format_regex = re.compile(r'\s')
         ip_regex = re.compile(r'^(?:{})'.format(r'|'.join([
-            ur'0\.', # reserved for 'self-identification'
-            ur'10\.', # class A
-            ur'169\.254', # link local block
-            ur'172\.(?:1[6-9]|2[0-9]|3[0-1])\.', # class B
-            ur'192\.0\.2\.', # documentation/examples
-            ur'192\.168', # class C
-            ur'255\.{3}', # broadcast address
-            ur'2001\:db8', # documentation/examples
-            ur'fc00\:', # private
-            ur'fe80\:', # link local unicast
-            ur'ff00\:', # multicast
-            ur'127\.', # localhost
-            ur'\:\:1' # localhost
+            r'0\.', # reserved for 'self-identification'
+            r'10\.', # class A
+            r'169\.254', # link local block
+            r'172\.(?:1[6-9]|2[0-9]|3[0-1])\.', # class B
+            r'192\.0\.2\.', # documentation/examples
+            r'192\.168', # class C
+            r'255\.{3}', # broadcast address
+            r'2001\:db8', # documentation/examples
+            r'fc00\:', # private
+            r'fe80\:', # link local unicast
+            r'ff00\:', # multicast
+            r'127\.', # localhost
+            r'\:\:1' # localhost
         ])))
 
         ips = self.ips
@@ -809,7 +811,7 @@ class Request(Http):
         """path part of a url (eg, http://host.com/path?query=string)"""
         self._path = ''
         path_args = self.path_args
-        path = u"/{}".format(u"/".join(path_args))
+        path = "/{}".format("/".join(path_args))
         return path
 
     @_property
@@ -817,13 +819,13 @@ class Request(Http):
         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
         self._path_args = []
         path = self.path
-        path_args = filter(None, path.split(u'/'))
+        path_args = filter(None, path.split('/'))
         return path_args
 
     @_property
     def query(self):
         """query_string part of a url (eg, http://host.com/path?query=string)"""
-        self._query = query = u""
+        self._query = query = ""
 
         query_kwargs = self.query_kwargs
         if query_kwargs: query = urllib.urlencode(query_kwargs, doseq=True)
@@ -867,7 +869,7 @@ class Request(Http):
 
             self.body = '{"foo":{"name":"bar"}}'
             b = self.body_kwargs # dict with: {"foo": { "name": "bar"}}
-            print self.body # string with: u'{"foo":{"name":"bar"}}'
+            print self.body # string with: '{"foo":{"name":"bar"}}'
         """
         body_kwargs = {}
         ct = self.get_header("content-type")
@@ -942,7 +944,7 @@ class Request(Http):
         access_token = ''
         auth_header = self.get_header('authorization')
         if auth_header:
-            m = re.search(ur"^Bearer\s+(\S+)$", auth_header, re.I)
+            m = re.search(r"^Bearer\s+(\S+)$", auth_header, re.I)
             if m: access_token = m.group(1)
 
         return access_token
@@ -953,7 +955,7 @@ class Request(Http):
         password = ''
         auth_header = self.get_header('authorization')
         if auth_header:
-            m = re.search(ur"^Basic\s+(\S+)$", auth_header, re.I)
+            m = re.search(r"^Basic\s+(\S+)$", auth_header, re.I)
             if m:
                 auth_str = base64.b64decode(m.group(1))
                 username, password = auth_str.split(':', 1)
@@ -962,6 +964,9 @@ class Request(Http):
 
 
 class Response(Http):
+
+    encoding = ""
+
     """
     an instance of this class is used to create the text response that will be sent 
     back to the client
@@ -1025,13 +1030,13 @@ class Response(Http):
 
     def normalize_body(self, b):
         """return the body as a string, formatted to the appropriate content type"""
-        if b is None: return ''
+        if b is None: return ByteString(b'', self.encoding)
 
         is_error = isinstance(b, Exception)
         ct = self.get_header('Content-Type')
         if ct:
             ct = ct.lower()
-            if ct.rfind(u"json") >= 0: # fuzzy, not sure I like that
+            if ct.rfind("json") >= 0: # fuzzy, not sure I like that
                 if is_error:
                     b = json.dumps({
                         "errmsg": str(b),
@@ -1049,11 +1054,11 @@ class Response(Http):
 
             else:
                 # no idea what to do here because we don't know how to handle the type
-                b = str(b)
+                b = ByteString(b, self.encoding)
 
         else:
             # just return a string representation of body if no content type
-            b = str(b)
+            b = ByteString(b, self.encoding)
 
         return b
 
@@ -1065,7 +1070,7 @@ class Response(Http):
 
             # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
             for chunk in iter(partial(fp.read, 8192), ''):
-                yield chunk
+                yield ByteString(chunk)
 
             # close the pointer since we've consumed it
             fp.close()

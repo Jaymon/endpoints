@@ -1,5 +1,10 @@
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 from . import TestCase
-import urlparse
+try:
+    import urlparse
+except ImportError:
+    import urllib.parse as urlparse #py3
 from BaseHTTPServer import BaseHTTPRequestHandler
 import json
 
@@ -154,29 +159,29 @@ class RequestTest(TestCase):
     def test_body_kwargs_bad_content_type(self):
         """make sure a form upload content type with json body fails correctly"""
         r = Request()
-        r.body = u"foo=bar&che=baz&foo=che"
+        r.body = "foo=bar&che=baz&foo=che"
         r.headers = {'content-type': 'application/json'}
         with self.assertRaises(ValueError):
             br = r.body_kwargs
 
-        r.body = u'{"foo": ["bar", "che"], "che": "baz"}'
+        r.body = '{"foo": ["bar", "che"], "che": "baz"}'
         r.headers = {'content-type': "application/x-www-form-urlencoded"}
 
         with self.assertRaises(ValueError):
             br = r.body_kwargs
 
     def test_body_kwargs(self):
-        #body = u"foo=bar&che=baz&foo=che"
-        #body_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        #body = "foo=bar&che=baz&foo=che"
+        #body_kwargs = {'foo': ['bar', 'che'], 'che': 'baz'}
         #body_json = '{"foo": ["bar", "che"], "che": "baz"}'
         cts = {
-            u"application/x-www-form-urlencoded": (
-                u"foo=bar&che=baz&foo=che",
-                {u'foo': [u'bar', u'che'], u'che': u'baz'}
+            "application/x-www-form-urlencoded": (
+                "foo=bar&che=baz&foo=che",
+                {'foo': ['bar', 'che'], 'che': 'baz'}
             ),
-#             u'application/json': (
+#             'application/json': (
 #                 '{"foo": ["bar", "che"], "che": "baz"}',
-#                 {u'foo': [u'bar', u'che'], u'che': u'baz'}
+#                 {'foo': ['bar', 'che'], 'che': 'baz'}
 #             ),
         }
 
@@ -201,8 +206,8 @@ class RequestTest(TestCase):
 
     def test_properties(self):
 
-        path = u'/foo/bar'
-        path_args = [u'foo', u'bar']
+        path = '/foo/bar'
+        path_args = ['foo', 'bar']
 
         r = Request()
         r.path = path
@@ -214,8 +219,8 @@ class RequestTest(TestCase):
         self.assertEqual(r.path, path)
         self.assertEqual(r.path_args, path_args)
 
-        query = u"foo=bar&che=baz&foo=che"
-        query_kwargs = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        query = "foo=bar&che=baz&foo=che"
+        query_kwargs = {'foo': ['bar', 'che'], 'che': 'baz'}
 
         r = Request()
         r.query = query
@@ -233,25 +238,25 @@ class RequestTest(TestCase):
         r.method = 'GET'
         r.body = ""
         r.set_headers({
-            'PATTERN': u"/",
-            'x-forwarded-for': u"127.0.0.1",
-            'URI': u"/",
-            'accept': u"*/*",
-            'user-agent': u"curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8y zlib/1.2.5",
-            'host': u"localhost",
-            'VERSION': u"HTTP/1.1",
-            'PATH': u"/",
-            'METHOD': u"GET",
-            'authorization': u"Basic SOME_HASH_THAT_DOES_NOT_MATTER="
+            'PATTERN': "/",
+            'x-forwarded-for': "127.0.0.1",
+            'URI': "/",
+            'accept': "*/*",
+            'user-agent': "curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8y zlib/1.2.5",
+            'host': "localhost",
+            'VERSION': "HTTP/1.1",
+            'PATH': "/",
+            'METHOD': "GET",
+            'authorization': "Basic SOME_HASH_THAT_DOES_NOT_MATTER="
         })
         self.assertEqual("", r.body)
 
         r = Request()
         r.method = 'POST'
 
-        r.set_header('content-type', u"application/x-www-form-urlencoded")
-        r.body = u"foo=bar&che=baz&foo=che"
-        body_r = {u'foo': [u'bar', u'che'], u'che': u'baz'}
+        r.set_header('content-type', "application/x-www-form-urlencoded")
+        r.body = "foo=bar&che=baz&foo=che"
+        body_r = {'foo': ['bar', 'che'], 'che': 'baz'}
         self.assertEqual(body_r, r.body_kwargs)
 
 
@@ -260,15 +265,15 @@ class RequestTest(TestCase):
         body_r = {}
         self.assertEqual(body_r, r.body_kwargs)
 
-        r.set_header('content-type', u"application/json")
+        r.set_header('content-type', "application/json")
         r.body = '{"person":{"name":"bob"}}'
         #del(r._body_kwargs)
-        body_r = {u'person': {"name":"bob"}}
+        body_r = {'person': {"name":"bob"}}
         self.assertEqual(body_r, r.body_kwargs)
 
-        r.body = u''
+        r.body = ''
         #del(r._body_kwargs)
-        body_r = u''
+        body_r = ''
         self.assertEqual(body_r, r.body)
 
         r.headers = {}
@@ -277,7 +282,7 @@ class RequestTest(TestCase):
         self.assertEqual(body, r.body)
 
         r.method = 'GET'
-        r.set_header('content-type', u"application/json")
+        r.set_header('content-type', "application/json")
         r.body = None
         self.assertEqual(None, r.body)
 
