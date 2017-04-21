@@ -8,6 +8,10 @@ import re
 import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
 from functools import partial
+from wsgiref.headers import Headers as BaseHeaders
+from collections import Mapping
+import itertools
+
 try:
     import urlparse
 except ImportError:
@@ -17,37 +21,21 @@ from .decorators import _property
 from .utils import AcceptHeader, ByteString
 
 
-# import wsgiref.headers
-# class Headers(wsgiref.headers.Headers):
-# 
-#     def get(self, name, default=None):
-#         name = name.lower().replace('_', '-')
-#         ret = default
-#         for k, v in self._headers:
-# 
-#             klower = k.lower()
-# 
-#             if klower == name:
-#                 ret = v
-# 
-#             elif klower.replace('_', '-') == name:
-#                 ret = v
-# 
-#         return ret
-# 
+class Headers(BaseHeaders, Mapping):
+    """handles headers, see wsgiref.Headers link for method and use information
 
-class Headers(dict):
-    """Handles normalizing of header names, the problem with headers is they can
+    Handles normalizing of header names, the problem with headers is they can
     be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
     so this handles normalizing the header names so you can request Content-Type
-    or CONTENT_TYPE and get the same value
+    or CONTENT_TYPE and get the same value.
 
+    This has the same interface as Python's built-in wsgiref.Headers class but
+    makes it even more dict-like and will return titled header names when iterated
+    or anything (eg, Content-Type instead of all lowercase content-type)
+
+    https://docs.python.org/2/library/wsgiref.html#module-wsgiref.headers
     https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
-
-    You could almost replace this with wsgiref.headers.Headers class, but that doesn't
-    extend dict or object
     """
-
     @classmethod
     def normalize_name(cls, k):
         """converts things like FOO_BAR to Foo-Bar which is the normal form"""
@@ -55,119 +43,219 @@ class Headers(dict):
         bits = klower.split('-')
         return "-".join((bit.title() for bit in bits))
 
-    def derive_names(self, k):
-        """here is where all the magic happens, this will generate all the different
-        variations of the header name looking for one that is set"""
+    def __init__(self, headers=None, **kwargs):
+        super(Headers, self).__init__([])
+        self.update(headers, **kwargs)
 
-        # foo-bar
-        yield k
+    def __setitem__(self, name, val):
+        name = self.normalize_name(name)
+        return super(Headers, self).__setitem__(name, val)
 
-        # FOO_BAR
-        kupper = k.upper()
-        kunderscore = kupper.replace('-', '_')
-        yield kunderscore
+    def __delitem__(self, name):
+        name = self.normalize_name(name)
+        return super(Headers, self).__delitem__(name)
 
-        # FOO-BAR
-        kdash = kupper.replace('_', '-')
-        yield kdash
+    def get_all(self, name):
+        name = self.normalize_name(name)
+        return super(Headers, self).get_all(name)
 
-        # foo-bar
-        yield kdash.lower()
+    def get(self, name, default=None):
+        name = self.normalize_name(name)
+        return super(Headers, self).get(name, default)
 
-        # foo_bar
-        kunderscore = kunderscore.lower()
-        yield kunderscore
+    def setdefault(self, name, val):
+        name = self.normalize_name(name)
+        return super(Headers, self).setdefault(name, val)
 
-        # Foo-Bar
-        bits = kunderscore.split('_')
-        yield "-".join((bit.title() for bit in bits))
-
-        # Foo-bar
-        krare = "{}-{}".format(bits[0].title(), "-".join(bits[1:]))
-        yield krare
-
-        # Foo_bar
-        yield krare.replace("-", "_")
-
-        # handle any strange keys like fOO-baR
-        krare = krare.lower()
-        for ak in super(Headers, self).keys():
-            akrare = ak.lower().replace("_", "-")
-            if krare == akrare:
-                yield ak
-
-    def __setitem__(self, k, v):
-        nk = self.realkey(k)
-        super(Headers, self).__setitem__(nk, v)
-
-    def __getitem__(self, k):
-        nk = self.realkey(k)
-        return super(Headers, self).__getitem__(nk)
-
-    def __delitem__(self, k):
-        nk = self.realkey(k)
-        return super(Headers, self).__delitem__(nk)
-
-    def __contains__(self, k):
-        return super(Headers, self).__contains__(self.realkey(k))
-
-    def get(self, k, dv=None):
-        try:
-            v = self[k]
-        except KeyError:
-            v = dv
-
-        return v
-
-    def items(self):
-        items = []
-        for k, v in super(Headers, self).items():
-            items.append((Headers.normalize_name(k), v))
-        return items
+    def add_header(self, name, val, **params):
+        name = self.normalize_name(name)
+        return super(Headers, self).add_header(name, val, **params)
 
     def keys(self):
-        return [k for k in self]
+        return [self.normalize_name(k) for k, v in self._headers]
+
+    def items(self):
+        for k, v in self._headers:
+            yield self.normalize_name(k), v
 
     def iteritems(self):
-        for k, v in self.items():
-            yield k, v
+        return self.items()
 
     def iterkeys(self):
         for k in self.keys():
             yield k
 
     def __iter__(self):
-        for k in super(Headers, self).__iter__():
-            yield Headers.normalize_name(k)
+        for k, v in self._headers:
+            yield self.normalize_name(k)
 
-    def pop(self, k, *args, **kwargs):
-        rk = self.realkey(k)
-        return super(Headers, self).pop(rk, *args, **kwargs)
+    def pop(self, name, *args, **kwargs):
+        val = self.get(name)
+        if val is None:
+            if args:
+                val = args[0]
+            elif "default" in kwargs:
+                val = kwargs["default"]
+            else:
+                raise KeyError(name)
 
-    def realkey(self, k):
-        """this will return the real key that is actually in the dict, it allows you
-        to see the raw key value, if the realkey isn't in the dict, it will just return
-        the key that was passed in
+        else:
+            del self[name]
 
-        example --
-            d = self()
-            d['FOO'] = 1
-            print(d.realkey('foo')) # FOO
-        """
-        rk = k
-        for nk in self.derive_names(k):
-            if super(Headers, self).__contains__(nk):
-                rk = nk
-                break
+        return val
 
-        return rk
+    def update(self, headers, **kwargs):
+        if not headers: headers = {}
+        if isinstance(headers, Mapping):
+            headers.update(kwargs)
+            headers = headers.items()
 
-    def viewitems(self):
-        raise NotImplementedError()
-    def viewvalues(self):
-        raise NotImplementedError()
-    def viewkeys(self):
-        raise NotImplementedError()
+        else:
+            if kwargs:
+                headers = itertools.chain(
+                    headers,
+                    kwargs.items()
+                )
+
+        for k, v in headers:
+            self[k] = v
+
+    def copy(self):
+        return type(self)(self._headers)
+
+
+# class Headers(dict):
+#     """Handles normalizing of header names, the problem with headers is they can
+#     be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
+#     so this handles normalizing the header names so you can request Content-Type
+#     or CONTENT_TYPE and get the same value
+# 
+#     https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
+# 
+#     You could almost replace this with wsgiref.headers.Headers class, but that doesn't
+#     extend dict or object
+#     """
+# 
+#     @classmethod
+#     def normalize_name(cls, k):
+#         """converts things like FOO_BAR to Foo-Bar which is the normal form"""
+#         klower = k.lower().replace('_', '-')
+#         bits = klower.split('-')
+#         return "-".join((bit.title() for bit in bits))
+# 
+#     def derive_names(self, k):
+#         """here is where all the magic happens, this will generate all the different
+#         variations of the header name looking for one that is set"""
+# 
+#         # foo-bar
+#         yield k
+# 
+#         # FOO_BAR
+#         kupper = k.upper()
+#         kunderscore = kupper.replace('-', '_')
+#         yield kunderscore
+# 
+#         # FOO-BAR
+#         kdash = kupper.replace('_', '-')
+#         yield kdash
+# 
+#         # foo-bar
+#         yield kdash.lower()
+# 
+#         # foo_bar
+#         kunderscore = kunderscore.lower()
+#         yield kunderscore
+# 
+#         # Foo-Bar
+#         bits = kunderscore.split('_')
+#         yield "-".join((bit.title() for bit in bits))
+# 
+#         # Foo-bar
+#         krare = "{}-{}".format(bits[0].title(), "-".join(bits[1:]))
+#         yield krare
+# 
+#         # Foo_bar
+#         yield krare.replace("-", "_")
+# 
+#         # handle any strange keys like fOO-baR
+#         krare = krare.lower()
+#         for ak in super(Headers, self).keys():
+#             akrare = ak.lower().replace("_", "-")
+#             if krare == akrare:
+#                 yield ak
+# 
+#     def __setitem__(self, k, v):
+#         nk = self.realkey(k)
+#         super(Headers, self).__setitem__(nk, v)
+# 
+#     def __getitem__(self, k):
+#         nk = self.realkey(k)
+#         return super(Headers, self).__getitem__(nk)
+# 
+#     def __delitem__(self, k):
+#         nk = self.realkey(k)
+#         return super(Headers, self).__delitem__(nk)
+# 
+#     def __contains__(self, k):
+#         return super(Headers, self).__contains__(self.realkey(k))
+# 
+#     def get(self, k, dv=None):
+#         try:
+#             v = self[k]
+#         except KeyError:
+#             v = dv
+# 
+#         return v
+# 
+#     def items(self):
+#         items = []
+#         for k, v in super(Headers, self).items():
+#             items.append((Headers.normalize_name(k), v))
+#         return items
+# 
+#     def keys(self):
+#         return [k for k in self]
+# 
+#     def iteritems(self):
+#         for k, v in self.items():
+#             yield k, v
+# 
+#     def iterkeys(self):
+#         for k in self.keys():
+#             yield k
+# 
+#     def __iter__(self):
+#         for k in super(Headers, self).__iter__():
+#             yield Headers.normalize_name(k)
+# 
+#     def pop(self, k, *args, **kwargs):
+#         rk = self.realkey(k)
+#         return super(Headers, self).pop(rk, *args, **kwargs)
+# 
+#     def realkey(self, k):
+#         """this will return the real key that is actually in the dict, it allows you
+#         to see the raw key value, if the realkey isn't in the dict, it will just return
+#         the key that was passed in
+# 
+#         example --
+#             d = self()
+#             d['FOO'] = 1
+#             print(d.realkey('foo')) # FOO
+#         """
+#         rk = k
+#         for nk in self.derive_names(k):
+#             if super(Headers, self).__contains__(nk):
+#                 rk = nk
+#                 break
+# 
+#         return rk
+# 
+#     def viewitems(self):
+#         raise NotImplementedError()
+#     def viewvalues(self):
+#         raise NotImplementedError()
+#     def viewkeys(self):
+#         raise NotImplementedError()
 
 
 class RequestBody(object):
