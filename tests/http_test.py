@@ -397,6 +397,27 @@ class ResponseTest(TestCase):
 
         # TODO: this really needs to be better tested with unicode data
 
+    def test_body_file(self):
+        r = Response()
+        self.assertFalse("Content-Type" in r.headers)
+        self.assertFalse("Content-Length" in r.headers)
+
+        path = testdata.create_file("foo.jpg", "12345")
+        with path.open() as fp:
+            r.body = fp
+            mt = r.headers["Content-Type"]
+            fs = r.headers["Content-Length"]
+            self.assertEqual("image/jpeg", mt)
+            self.assertEqual(5, fs)
+
+        path = testdata.create_file("foo.txt", "123")
+        with path.open() as fp:
+            r.body = fp
+            mt = r.headers["Content-Type"]
+            fs = r.headers["Content-Length"]
+            self.assertEqual("text/plain", mt)
+            self.assertEqual(3, fs)
+
     def test_body_json_error(self):
         """I was originally going to have the body method smother the error, but
         after thinking about it a little more, I think it is better to bubble up

@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
+import os
 import urllib
 import json
 import types
@@ -11,6 +12,7 @@ from functools import partial
 from wsgiref.headers import Headers as BaseHeaders
 from collections import Mapping
 import itertools
+import logging
 
 try:
     import urlparse
@@ -18,7 +20,10 @@ except ImportError:
     from urllib import parse as urlparse
 
 from .decorators import _property
-from .utils import AcceptHeader, ByteString
+from .utils import AcceptHeader, ByteString, MimeType
+
+
+logger = logging.getLogger(__name__)
 
 
 class Headers(BaseHeaders, Mapping):
@@ -548,11 +553,14 @@ class Http(object):
         """replace all headers with passed in headers"""
         self.headers = Headers(headers)
 
-    def add_headers(self, headers):
-        self.headers.update(headers)
+    def add_headers(self, headers, **kwargs):
+        self.headers.update(headers, **kwargs)
 
     def set_header(self, header_name, val):
         self.headers[header_name] = val
+
+    def add_header(self, header_name, val, **params):
+        self.headers.add_header(header_name, val, **params)
 
     def get_header(self, header_name, default_val=None):
         """try as hard as possible to get a a response header of header_name,
@@ -972,6 +980,23 @@ class Response(Http):
     @body.setter
     def body(self, v):
         self._body = v
+        if self.has_streaming_body():
+            filepath = getattr(v, "name", "")
+            if filepath:
+                mt = MimeType.find_type(filepath)
+                filesize = os.path.getsize(filepath)
+                self.set_header("Content-Type", mt)
+                self.set_header("Content-Length", filesize)
+                logger.debug(
+                    "Response body set to file: \"{}\" with mimetype: \"{}\" and size: {}".format(
+                        filepath,
+                        mt,
+                        filesize
+                    )
+                )
+
+        else:
+            logger.warn("Response body is a filestream that has not filepath")
 
     def has_body(self):
         ret = False
