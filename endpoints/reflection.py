@@ -12,7 +12,7 @@ import collections
 import __builtin__
 
 from .call import Router, Controller
-from .decorators import _property, version, param, require_params
+from .decorators import _property, version, param
 
 
 class ReflectDecorator(object):
@@ -113,10 +113,6 @@ class ReflectMethod(object):
             if param in rd:
                 is_required =  kwargs.get('required', 'default' not in kwargs)
                 ret[args[0]] = {'required': is_required, 'other_names': args[1:], 'options': kwargs}
-
-            elif require_params in rd:
-                for a in args:
-                    ret[a] = {'required': True, 'other_names': [], 'options': {}}
 
         return ret
 

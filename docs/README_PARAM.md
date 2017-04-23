@@ -142,19 +142,3 @@ class Foo(Controller):
         pass
 ```
 
-
-## require_params decorator
-
-There is also a `require_params` decorator that provides a quick way to ensure certain parameters were provided.
-
-```python
-from endpoints import Controller
-from endpoints.decorators import require_params
-
-class Foo(Controller):
-  @require_params('param1', 'param2', 'param3')
-  def GET(self, **params): pass
-```
-
-The require_params decorator as used above will make sure `param1`, `param2`, and `param3` were all present in the `**params` dict.
-

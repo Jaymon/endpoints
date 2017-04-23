@@ -288,7 +288,7 @@ class ReflectTest(TestCase):
         controller_prefix = "controller_reflect"
         testdata.create_module(controller_prefix, [
             "import endpoints",
-            "from endpoints.decorators import param, require_params",
+            "from endpoints.decorators import param",
             "",
             "def dec_func(f):",
             "    def wrapped(*args, **kwargs):",
@@ -311,7 +311,6 @@ class ReflectTest(TestCase):
             "    @param('che_full', type=dict, default={'key': 'val', 'key2': 2.0})",
             "    @param('baz_empty', type=list, default=[])",
             "    @param('baz_full', type=list, default=['val', False, 1])",
-            "    @require_params('a', 'b', 'c')",
             "    @param('d')",
             "    def POST(*args, **kwargs): pass",
             ""
@@ -323,7 +322,7 @@ class ReflectTest(TestCase):
 
         methods = r.methods
         params = methods['POST'][0].params
-        for p in ['a', 'b', 'c', 'd']:
+        for p in ['d']:
             self.assertTrue(params[p]['required'])
 
         for p in ['foo', 'bar', 'che_empty', 'che_full', 'baz_empty', 'baz_full']:
@@ -337,7 +336,7 @@ class ReflectTest(TestCase):
         controller_prefix = "dec_param_help"
         testdata.create_module(controller_prefix, [
             "import endpoints",
-            "from endpoints.decorators import param, require_params",
+            "from endpoints.decorators import param",
             "class Default(endpoints.Controller):",
             "    @param('baz_full', type=list, default=['val', False, 1], help='baz_full')",
             "    @param('d', help='d')",

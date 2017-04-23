@@ -4,96 +4,17 @@ import types
 import re
 import cgi
 from functools import wraps
-import datetime
 import logging
 
 from decorators import FuncDecorator
 
 from ..exception import CallError, AccessDenied
-from . import auth
-from .base import TargetDecorator
+from . import auth, limit
+from .base import TargetDecorator, BackendDecorator
 from .call import route, version
 
 
 logger = logging.getLogger(__name__)
-
-
-class ratelimit(TargetDecorator):
-    """Rate limit a certain endpoint
-
-    example --
-
-    from endpoints import Controller
-    from endpoints.decorators import ratelimit
-
-    class Default(Controller):
-        @ratelimit(10, 3600) # you can make 10 requests per hour
-        def GET(self):
-            return "hello world"
-    """
-    def target(self, request, key, limit, ttl):
-        """this is what is run to check if requests should be throttled
-
-        you should override this method if you want to customize the implementation
-
-        request -- Request -- the request instance
-        key -- string -- the unique key for the endpoint
-        limit -- int -- max requests that should be received in ttl
-        ttl -- int -- how many seconds they should be throttled for (3600 = 1 hour)
-        """
-        now = datetime.datetime.utcnow()
-        count = 1
-        calls = getattr(self, "_calls", {})
-        if not calls:
-            calls = {}
-
-        if key in calls:
-            count = calls[key]["count"] + 1
-            if count > limit:
-                td = now - calls[key]["date"]
-                if td.total_seconds() < ttl:
-                    raise ValueError(
-                        "Please wait {} seconds to make another request".format(ttl - td.seconds)
-                    )
-
-                else:
-                    count = 1 # we are starting over
-
-        calls[key] = {
-            "count": count,
-            "date": now,
-        }
-
-        self._calls = calls
-        return True
-
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
-        kwargs = {
-            "request": request,
-            "key": self.normalize_key(
-                request,
-                controller_args=controller_args,
-                controller_kwargs=controller_kwargs,
-            ),
-            "limit": self.limit,
-            "ttl": self.ttl,
-        }
-        return [], kwargs
-
-    def normalize_key(self, request, *args, **kwargs):
-        """if you don't want to override target but do want to customize the key,
-        override this method, this is mainly for convenience of child classes"""
-        return "{}.{}".format(request.ip, request.path)
-
-    def handle_error(self, e):
-        """all exceptions should generate 429 responses"""
-        raise CallError(429, e.message)
-
-    def decorate(self, func, limit, ttl, *anoop, **kwnoop):
-        """see target for an explanation of limit and ttl"""
-        self.limit = int(limit)
-        self.ttl = int(ttl)
-        return super(ratelimit, self).decorate(func, target=None, *anoop, **kwnoop)
 
 
 class httpcache(FuncDecorator):
@@ -134,6 +55,10 @@ class nohttpcache(FuncDecorator):
         return decorated
 
 
+# NOTE -- I didn't switch this over to use FuncDecorator because there is a chance
+# this gets spinned out into an external helper library full of little classes like
+# this that I've been thinking of putting together, or honestly it should just be
+# added to the decorators module
 class _property(object):
     """A memoized @property that is only evaluated once, and then stored at _property
     and retrieved from there unless deleted, in which case this would be called
@@ -286,7 +211,7 @@ class _propertyset(_property):
 
 
 
-class param(object):
+class param(FuncDecorator):
     """
     decorator to allow setting certain expected query/body values and options
 
@@ -329,10 +254,6 @@ class param(object):
     raises -- 
         CallError -- with 400 status code on any param validation failures
     """
-    def __init__(self, *names, **flags):
-        self.normalize_type(names)
-        self.normalize_flags(flags)
-
     def normalize_flags(self, flags):
         """normalize the flags to make sure needed values are there
 
@@ -593,12 +514,14 @@ class param(object):
 
         return val
 
-    def __call__(slf, func):
-        @wraps(func)
-        def wrapper(self, *args, **kwargs):
+    def decorate(slf, func, *names, **flags):
+        slf.normalize_type(names)
+        slf.normalize_flags(flags)
+
+        def decorated(self, *args, **kwargs):
             self, args, kwargs = slf.normalize_param(self, args, kwargs)
             return func(self, *args, **kwargs)
-        return wrapper
+        return decorated
 
 
 class get_param(param):
@@ -631,46 +554,6 @@ class post_param(param):
 
         except ValueError:
             raise ValueError("required param {} was not present in POST params".format(self.name))
-
-
-class require_params(object):
-    """
-    if you want to make sure that certain params are present in the request
-
-    If the request is a GET request, then the params checked are in the query string,
-    if the method is POST, PUT, then the params checked are in the body
-
-    example --
-    # make request fail if foo and bar aren't in the request body
-    @require_params("foo", "bar")
-    def POST(self, *args, **kwargs):
-        pass
-
-    **param_options -- dict
-        allow_empty -- boolean -- True if passed in param names can have values
-            that evaluate to False (like 0 or "")
-    """
-    def __init__(self, *req_param_names, **param_options):
-        self.req_param_names = req_param_names
-        self.param_options = param_options
-
-    def __call__(slf, func):
-        param_options = slf.param_options
-        req_param_names = slf.req_param_names
-        not_empty = not param_options.pop('allow_empty', False)
-
-        @wraps(func)
-        def decorated(self, *args, **kwargs):
-            for req_param_name in req_param_names:
-                if req_param_name not in kwargs:
-                    raise CallError(400, "required param {} was not present".format(req_param_name))
-
-                if not_empty and not kwargs[req_param_name]:
-                    raise CallError(400, "required param {} was empty".format(req_param_name))
-
-            return func(self, *args, **kwargs)
-
-        return decorated
 
 
 class code_error(FuncDecorator):

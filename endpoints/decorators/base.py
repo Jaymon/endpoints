@@ -66,7 +66,7 @@ class TargetDecorator(FuncDecorator):
             raise
 
         except Exception as e:
-            logger.debug(e, exc_info=True)
+            logger.warning(e, exc_info=True)
             self.handle_error(e)
 
     def decorate(self, func, target, *anoop, **kwnoop):
@@ -88,4 +88,22 @@ class TargetDecorator(FuncDecorator):
             return func(decorated_self, *args, **kwargs)
 
         return decorated
+
+
+class BackendDecorator(TargetDecorator):
+
+    backend_class = None
+
+    def create_backend(self):
+        if not self.backend_class:
+            raise ValueError("You are using a BackendDecorator with no backend class")
+        return self.backend_class()
+
+    def target(self, *args, **kwargs):
+        backend = self.create_backend()
+        return backend.target(*args, **kwargs)
+
+    def decorate(self, func, *anoop, **kwnoop):
+        return super(BackendDecorator, self).decorate(func, target=None)
+
 

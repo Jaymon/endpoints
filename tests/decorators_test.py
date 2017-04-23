@@ -11,6 +11,11 @@ import endpoints
 from endpoints import CallError
 from endpoints.http import Request
 from endpoints.decorators import param, post_param
+from endpoints.decorators.limit import ratelimit, \
+    ratelimit_ip, \
+    ratelimit_param, \
+    ratelimit_param_ip, \
+    ratelimit_token
 
 
 def create_controller():
@@ -28,13 +33,15 @@ def create_controller():
 
 
 class RatelimitTest(TestCase):
-    def test_throttle(self):
+    def set_bearer_auth_header(self, request, access_token):
+        request.set_header("authorization", 'Bearer {}'.format(access_token))
 
+    def test_throttle(self):
         class TARA(object):
-            @endpoints.decorators.ratelimit(limit=3, ttl=1)
+            @ratelimit(limit=3, ttl=1)
             def foo(self): return 1
 
-            @endpoints.decorators.ratelimit(limit=10, ttl=1)
+            @ratelimit(limit=10, ttl=1)
             def bar(self): return 2
 
 
@@ -49,11 +56,11 @@ class RatelimitTest(TestCase):
             self.assertEqual(1, r)
 
         for x in range(2):
-            with self.assertRaises(endpoints.CallError):
+            with self.assertRaises(CallError):
                 c.foo()
 
         # make sure another path isn't messed with by foo
-        r_bar = endpoints.Request()
+        r_bar = Request()
         r_bar.set_header("X_FORWARDED_FOR", "276.0.0.1")
         r_bar.path = "/bar"
         c.request = r_bar
@@ -62,7 +69,7 @@ class RatelimitTest(TestCase):
             self.assertEqual(2, r)
             time.sleep(0.1)
 
-        with self.assertRaises(endpoints.CallError):
+        with self.assertRaises(CallError):
             c.bar()
 
         c.request = r_foo
@@ -72,8 +79,142 @@ class RatelimitTest(TestCase):
             self.assertEqual(1, r)
 
         for x in range(2):
-            with self.assertRaises(endpoints.CallError):
+            with self.assertRaises(CallError):
                 c.foo()
+
+    def test_ratelimit_ip(self):
+        class MockObject(object):
+            @ratelimit_ip(limit=3, ttl=1)
+            def foo(self): return 1
+
+        o = MockObject()
+        o.request = Request()
+        o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
+        o.request.path = "/fooip"
+
+        o.foo()
+        o.foo()
+        o.foo()
+        with self.assertRaises(CallError) as cm:
+            o.foo()
+        self.assertEqual(429, cm.exception.code)
+
+        # make sure another request gets through just fine
+        orig_r = o.request
+        o.request = Request()
+        o.request.path = "/fooip"
+        o.request.set_header("X_FORWARDED_FOR", "100.1.1.2")
+        o.foo()
+        o.request = orig_r
+
+        time.sleep(1)
+        o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
+        r = o.foo()
+        self.assertEqual(1, r)
+
+    def test_ratelimit_token(self):
+        class MockObject(object):
+            @ratelimit_token(limit=2, ttl=1)
+            def foo(self): return 1
+
+        o = MockObject()
+        o.request = Request()
+        self.set_bearer_auth_header(o.request, "footoken")
+        o.request.path = "/footoken"
+
+        o.request.set_header("X_FORWARDED_FOR", "1.1.1.1")
+        o.foo()
+
+        o.request.set_header("X_FORWARDED_FOR", "1.1.1.2")
+        o.foo()
+
+        with self.assertRaises(CallError) as cm:
+            o.foo()
+        self.assertEqual(429, cm.exception.code)
+
+        # make sure another request gets through just fine
+        orig_r = o.request
+        o.request = Request()
+        o.request.path = "/footoken"
+        self.set_bearer_auth_header(o.request, "footoken2")
+        o.foo()
+        o.request = orig_r
+
+        time.sleep(1)
+        self.set_bearer_auth_header(o.request, "footoken")
+        o.request.set_header("X_FORWARDED_FOR", "1.1.1.3")
+        r = o.foo()
+        self.assertEqual(1, r)
+
+    def test_ratelimit_param(self):
+        class MockObject(object):
+            @ratelimit_param("bar", limit=2, ttl=1)
+            def foo(self, **kwargs): return 1
+
+        o = MockObject()
+        o.request = Request()
+        self.set_bearer_auth_header(o.request, "footoken")
+        o.request.path = "/fooparam"
+
+        o.foo(bar="che")
+
+        o.foo(bar="che")
+
+        with self.assertRaises(CallError) as cm:
+            o.foo(bar="che")
+        self.assertEqual(429, cm.exception.code)
+
+        # make sure bar not existing is not a problem
+        for x in range(5):
+            self.assertEqual(1, o.foo())
+
+        # just make sure something else goes through just fine
+        orig_r = o.request
+        o.request = Request()
+        o.request.path = "/fooparam"
+        o.foo(bar="baz")
+        o.request = orig_r
+
+        time.sleep(1)
+        r = o.foo(bar="che")
+        self.assertEqual(1, r)
+
+    def test_ratelimit_param_ip(self):
+        def create_request(ip):
+            r = Request()
+            r.path = "/fooparam"
+            r.set_header("X_FORWARDED_FOR", ip)
+            self.set_bearer_auth_header(r, "footoken")
+            return r
+
+        class MockObject(object):
+            @ratelimit_param_ip("bar", limit=1, ttl=1)
+            def foo(self, **kwargs): return 1
+
+        o = MockObject()
+        o.request = create_request("200.1.1.1")
+        o.foo(bar="che")
+
+        with self.assertRaises(CallError) as cm:
+            o.foo(bar="che")
+        self.assertEqual(429, cm.exception.code)
+
+        # now make sure another ip address can get through
+        o.request = create_request("200.1.1.2")
+        o.foo(bar="che")
+
+        with self.assertRaises(CallError) as cm:
+            o.foo(bar="che")
+        self.assertEqual(429, cm.exception.code)
+
+        # now make sure another value makes it through
+        o.foo(bar="baz")
+        with self.assertRaises(CallError):
+            o.foo(bar="baz")
+
+        # make sure bar not existing is not a problem
+        for x in range(5):
+            self.assertEqual(1, o.foo())
 
 
 class AuthTest(TestCase):
@@ -475,40 +616,6 @@ class ParamTest(TestCase):
         o.request.path = "/0"
 
         o.foo("0")
-
-    def test_require_params(self):
-        class MockObject(object):
-            request = endpoints.Request()
-
-            @endpoints.decorators.require_params('foo', 'bar')
-            def foo(self, *args, **kwargs): return 1
-
-            @endpoints.decorators.require_params('foo', 'bar', allow_empty=True)
-            def bar(self, *args, **kwargs): return 2
-
-        o = MockObject()
-        o.request.method = 'GET'
-        o.request.query_kwargs = {'foo': 1}
-
-        with self.assertRaises(endpoints.CallError):
-            o.foo()
-
-        with self.assertRaises(endpoints.CallError):
-            o.bar()
-
-        o.request.query_kwargs['bar'] = 2
-        r = o.foo(**o.request.query_kwargs)
-        self.assertEqual(1, r)
-
-        r = o.bar(**o.request.query_kwargs)
-        self.assertEqual(2, r)
-
-        o.request.query_kwargs['bar'] = 0
-        with self.assertRaises(endpoints.CallError):
-            o.foo(**o.request.query_kwargs)
-
-        r = o.bar(**o.request.query_kwargs)
-        self.assertEqual(2, r)
 
     def test_param_dest(self):
         """make sure the dest=... argument works"""
