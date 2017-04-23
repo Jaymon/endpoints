@@ -1,6 +1,6 @@
 # Authentication
 
-Validating access to certain resources is pretty common and so _endpoints_ provides [helper decorators](https://github.com/firstopinion/endpoints) to make this process easier and customizable.
+Validating access to certain resources is pretty common and so _endpoints_ provides [helper decorators](https://github.com/firstopinion/endpoints/blob/master/endpoints/decorators/auth.py) to make this process easier and customizable.
 
 
 ## Http basic authentication

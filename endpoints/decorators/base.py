@@ -94,10 +94,10 @@ class BackendDecorator(TargetDecorator):
 
     backend_class = None
 
-    def create_backend(self):
+    def create_backend(self, *args, **kwargs):
         if not self.backend_class:
             raise ValueError("You are using a BackendDecorator with no backend class")
-        return self.backend_class()
+        return self.backend_class(*args, **kwargs)
 
     def target(self, *args, **kwargs):
         backend = self.create_backend()

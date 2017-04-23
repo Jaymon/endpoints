@@ -10,105 +10,12 @@ from .base import TargetDecorator, BackendDecorator
 logger = logging.getLogger(__name__)
 
 
-# class RateLimitDecorator(TargetDecorator):
-#     """Base decorator providing common functionality to rate limit a given controller
-#     method
-# 
-#     .. seealso:: decorators.ratelimit
-#     """
-#     def target(self, request, key, limit, ttl):
-#         """this is what is run to check if the request should be throttled
-# 
-#         you should override this method to add the actual check
-# 
-#         :param request: Request, the request instance
-#         :param key: string, the unique key for the endpoint, this is generated using
-#             self.normalize_key, so override that method to customize the key
-#         :param limit: int, max requests that should be received in ttl
-#         :param ttl: int, how many seconds the request should be throttled (eg, 3600 = 1 hour)
-#         """
-#         raise NotImplementedError()
-# 
-#     def normalize_key(self, request, *args, **kwargs):
-#         """Decide what key this request should have
-# 
-#         :example:
-#             # return ip.path
-#             return "{}.{}".format(request.ip, request.path)
-# 
-#         :param request: Request, the request instance
-#         :returns: int, the desired ttl for the request
-#         """
-#         raise NotImplementedError()
-# 
-#     def normalize_target_params(self, request, controller_args, controller_kwargs):
-#         kwargs = {
-#             "request": request,
-#             "key": self.normalize_key(
-#                 request,
-#                 controller_args=controller_args,
-#                 controller_kwargs=controller_kwargs,
-#             ),
-#             "limit": self.normalize_limit(
-#                 request,
-#                 controller_args=controller_args,
-#                 controller_kwargs=controller_kwargs,
-#             ),
-#             "ttl": self.normalize_ttl(
-#                 request,
-#                 controller_args=controller_args,
-#                 controller_kwargs=controller_kwargs,
-#             ),
-#         }
-#         return [], kwargs
-# 
-#     def normalize_limit(self, request, *args, **kwargs):
-#         """Called with each request, if you would like to customize limit depending
-#         on the request, this is the method to override
-# 
-#         :param request: Request, the request instance
-#         :returns: int, the desired limit for the request
-#         """
-#         return self.limit
-# 
-#     def normalize_ttl(self, request, *args, **kwargs):
-#         """Called with each request, if you would like to customize ttl depending
-#         on the request, this is the method to override
-# 
-#         :param request: Request, the request instance
-#         :returns: int, the desired ttl for the request
-#         """
-#         return self.ttl
-# 
-#     def configure(self, limit, ttl):
-#         """configure this decorator, this is here to offer an easy way to modify
-#         limit and ttl (they are passed in but can be 0, which means they weren't
-#         set) so you can set appropriate limit and ttl based on environment or
-#         something else
-# 
-#         NOTE -- this is called on creation of the decorator, if you would like to
-#         customize limit and ttl per request, use self.normalize_limit() and
-#         self.normalize_ttl()
-# 
-#         :param limit: int, max requests that should be received in ttl
-#         :param ttl: int, how many seconds the request should be throttled (eg, 3600 = 1 hour)
-#         """
-#         self.limit = int(limit)
-#         self.ttl = int(ttl)
-# 
-#     def handle_error(self, e):
-#         """all exceptions should generate 429 responses"""
-#         raise CallError(429, e.message)
-# 
-#     def decorate(self, func, limit=0, ttl=0, *anoop, **kwnoop):
-#         """see target for an explanation of limit and ttl"""
-#         self.configure(limit, ttl)
-#         return super(RateLimitDecorator, self).decorate(func, target=None, *anoop, **kwnoop)
-
-
 class Backend(object):
     """This is the default backend the limit decorators use, it just uses an in
-    memory class dictionary to hold values
+    memory class dictionary to hold values, while this does work, it is more for
+    demonstration purposes and light loads as the _calls dictionary is never cleaned
+    out and so it could in theory just grow forever until it uses all the memory
+    and the server crashes
 
     you can of course create your own Backend and just set it on the base limit
     decorator to use that backend for all your limiting
@@ -223,6 +130,14 @@ class RateLimitDecorator(BackendDecorator):
         """
         ret = True
         if key:
+            #backend = self.create_backend()
+            #method = getattr(backend, "normalize_limit", None)
+            #if method:
+            #    limit = method(request, limit)
+            #method = getattr(backend, "normalize_ttl", None)
+            #if method:
+            #    ttl = method(request, ttl)
+            #ret = backend.target(request, key, limit, ttl)
             ret = super(RateLimitDecorator, self).target(request, key, limit, ttl)
         else:
             logger.warn("No ratelimit key found for {}".format(request.path))
@@ -298,7 +213,7 @@ class ratelimit_param_ip(ratelimit_param):
         return ret
 
 
-class ratelimit_only_param(ratelimit_param):
+class ratelimit_param_only(ratelimit_param):
     """Just uses given parameter as rate-limiter. Does not use IP or path."""
     def normalize_key(self, request, controller_args, controller_kwargs):
         try:
