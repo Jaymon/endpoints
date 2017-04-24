@@ -106,6 +106,7 @@ class HeadersTest(TestCase):
         self.assertEqual("2", hs["bar-foo"])
         self.assertEqual(2, len(hs))
 
+
 class RequestTest(TestCase):
     def test_url(self):
         """make sure the .url attribute is correctly populated"""
@@ -460,39 +461,6 @@ class ResponseTest(TestCase):
 
 
 class UrlTest(TestCase):
-    def test_standard_port(self):
-        h = Url("localhost:80")
-        self.assertEqual("http://localhost", h.geturl())
-        self.assertEqual(80, h.port)
-
-        h = Url("http://localhost:80")
-        self.assertEqual("http://localhost", h.geturl())
-        self.assertEqual(80, h.port)
-
-        h = Url("http://example.com:80")
-        self.assertEqual("http://example.com", h.geturl())
-        self.assertEqual(80, h.port)
-
-        h = Url("http://user:pass@foo.com:80")
-        self.assertEqual("http://user:pass@foo.com", h.geturl())
-        self.assertEqual(80, h.port)
-
-        h = Url("https://user:pass@bar.com:443")
-        self.assertEqual("https://user:pass@bar.com", h.geturl())
-        self.assertEqual(443, h.port)
-
-        h = Url("http://localhost:8000")
-        self.assertEqual("http://localhost:8000", h.geturl())
-        self.assertEqual(8000, h.port)
-
-        h = Url("http://localhost:4436")
-        self.assertEqual("http://localhost:4436", h.geturl())
-        self.assertEqual(4436, h.port)
-
-        h = Url("http://localhost")
-        self.assertEqual("http://localhost", h.geturl())
-        self.assertEqual(None, h.port)
-
     def test_no_scheme(self):
         h = Url("localhost:8080/foo/bar?che=1")
         self.assertEqual(8080, h.port)
@@ -509,47 +477,43 @@ class UrlTest(TestCase):
         self.assertEqual("localhost", h.hostname)
 
         h = Url("localhost")
-        self.assertEqual(None, h.port)
+        self.assertEqual(80, h.port)
         self.assertEqual("localhost", h.hostname)
 
-    def test_controller_url(self):
+    def test_controller(self):
         u = Url("http://example.com/foo/bar/che", controller_path="foo")
-        u2 = u.controller_url(che=4)
-        self.assertEqual("http://example.com/foo?che=4", u2.geturl())
+        u2 = u.controller(che=4)
+        self.assertEqual("http://example.com/foo?che=4", u2)
 
-    def test_base_url(self):
+    def test_base(self):
         u = Url("http://example.com/path/part")
-        u2 = u.base_url(che=4)
-        self.assertEqual("http://example.com/path/part?che=4", u2.geturl())
-
+        u2 = u.base(che=4)
+        self.assertEqual("http://example.com/path/part?che=4", u2)
 
         u = Url("http://example.com/path/part/?che=3")
-        u2 = u.base_url("foo", "bar", che=4)
-        self.assertEqual("http://example.com/path/part/foo/bar?che=4", u2.geturl())
+        u2 = u.base("foo", "bar", che=4)
+        self.assertEqual("http://example.com/path/part/foo/bar?che=4", u2)
 
         u = Url("http://example.com/")
-        u2 = u.base_url("foo", "bar", che=4)
-        self.assertEqual("http://example.com/foo/bar?che=4", u2.geturl())
+        u2 = u.base("foo", "bar", che=4)
+        self.assertEqual("http://example.com/foo/bar?che=4", u2)
 
-    def test_host_url(self):
+    def test_host(self):
         u = Url("http://example.com/path/part/?che=3")
-        u2 = u.host_url("foo", "bar", che=4)
-        self.assertEqual("http://example.com/foo/bar?che=4", u2.geturl())
-        self.assertEqual(u2.host_url().geturl(), u.host_url().geturl())
+        u2 = u.host("foo", "bar", che=4)
+        self.assertEqual("http://example.com/foo/bar?che=4", u2)
+        self.assertEqual(u2.host(), u.host())
 
-    def test_update(self):
+    def test_modify(self):
         u = Url("http://example.com/path/part/?che=3")
-        u.update(query_kwargs={"foo": 1})
-        self.assertEqual({"foo": 1, "che": "3"}, u.query_kwargs)
-        self.assertEqual("http://example.com/path/part", u.base)
+        u2 = u.modify(query_kwargs={"foo": 1})
+        self.assertEqual({"foo": 1, "che": "3"}, u2.query_kwargs)
+        self.assertEqual("http://example.com/path/part", u2.base())
 
     def test_copy(self):
         u = Url("http://example.com/path/part/?che=3")
         u2 = u.copy()
-        self.assertEqual(u.geturl(), u2.geturl())
-
-        u2.query_kwargs = {}
-        self.assertNotEqual(u.geturl(), u2.geturl())
+        self.assertEqual(u, u2)
 
     def test_query_kwargs(self):
         u = Url("http://example.com/path/part/?che=3", query="baz=4&bang=5", query_kwargs={"foo": 1, "bar": 2})
@@ -563,39 +527,86 @@ class UrlTest(TestCase):
 
     def test_create(self):
         u = Url("http://example.com/path/part/?query1=val1")
-        self.assertEqual("http://example.com/path/part", u.base_url().geturl())
+        self.assertEqual("http://example.com/path/part", u.base())
         self.assertEqual({"query1": "val1"}, u.query_kwargs)
 
-        u2 = u.host_url("/foo/bar", query1="val2")
-        self.assertEqual("http://example.com/foo/bar?query1=val2", u2.geturl())
+        u2 = u.host("/foo/bar", query1="val2")
+        self.assertEqual("http://example.com/foo/bar?query1=val2", u2)
 
-    def test_port(self):
+    def test_port_override(self):
         scheme = "http"
         host = "localhost:9000"
         path = "/path/part"
         query = "query1=val1"
         port = "9000"
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
-        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+        self.assertEqual("http://localhost:9000/path/part?query1=val1", u)
 
         port = "1000"
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
-        self.assertEqual("http://localhost:9000/path/part?query1=val1", u.geturl())
+        self.assertEqual("http://localhost:1000/path/part?query1=val1", u)
 
         host = "localhost"
         port = "2000"
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
-        self.assertEqual("http://localhost:2000/path/part?query1=val1", u.geturl())
+        self.assertEqual("http://localhost:2000/path/part?query1=val1", u)
 
         host = "localhost"
         port = "80"
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
-        self.assertEqual("http://localhost/path/part?query1=val1", u.geturl())
+        self.assertEqual("http://localhost/path/part?query1=val1", u)
 
         scheme = "https"
         host = "localhost:443"
         port = None
         u = Url(scheme=scheme, hostname=host, path=path, query=query, port=port)
-        self.assertEqual("https://localhost/path/part?query1=val1", u.geturl())
+        self.assertEqual("https://localhost/path/part?query1=val1", u)
+
+    def test_port_standard(self):
+        h = Url("localhost:80")
+        self.assertEqual("http://localhost", h)
+        self.assertEqual(80, h.port)
+
+        h = Url("http://localhost:80")
+        self.assertEqual("http://localhost", h)
+        self.assertEqual(80, h.port)
+
+        h = Url("http://example.com:80")
+        self.assertEqual("http://example.com", h)
+        self.assertEqual(80, h.port)
+
+        h = Url("http://user:pass@foo.com:80")
+        self.assertEqual("http://user:pass@foo.com", h)
+        self.assertEqual(80, h.port)
+
+        h = Url("https://user:pass@bar.com:443")
+        self.assertEqual("https://user:pass@bar.com", h)
+        self.assertEqual(443, h.port)
+
+        h = Url("http://localhost:8000")
+        self.assertEqual("http://localhost:8000", h)
+        self.assertEqual(8000, h.port)
+
+        h = Url("http://localhost:4436")
+        self.assertEqual("http://localhost:4436", h)
+        self.assertEqual(4436, h.port)
+
+        h = Url("http://localhost")
+        self.assertEqual("http://localhost", h)
+        self.assertEqual(80, h.port)
+
+    def test_merge(self):
+        us = "http://foo.com/path?arg1=1&arg2=2#fragment"
+        parts = Url.merge(us, query="foo3=3")
+        self.assertTrue("foo3=3" in parts["urlstring"])
+
+        us1 = "http://foo.com/path?arg1=1&arg2=2#fragment"
+        parts1 = Url.merge(us, username="john", password="doe")
+        us2 = "http://john:doe@foo.com/path?arg1=1&arg2=2#fragment"
+        parts2 = Url.merge(us2)
+        self.assertEqual(parts1, parts2)
+
+
+
 
 
