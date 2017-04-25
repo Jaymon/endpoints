@@ -10,9 +10,10 @@ import base64
 from BaseHTTPServer import BaseHTTPRequestHandler
 from functools import partial
 from wsgiref.headers import Headers as BaseHeaders
-from collections import Mapping
+from collections import Mapping, MutableSequence, Sequence
 import itertools
 import logging
+import inspect
 
 try:
     import urlparse
@@ -174,9 +175,27 @@ class ResponseBody(json.JSONEncoder):
         return json.JSONEncoder.default(self, obj)
 
 
-
 class Url(str):
+    """a url object on steroids, this is here to make it easy to manipulate urls
+    we try to map the supported fields to their urlparse equivalents, with some additions
 
+    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+    with a controller: Bar
+
+    .scheme = http
+    .netloc = user:pass@foo.com:1000
+    .hostloc = foo.com:1000
+    .hostname = foo.com
+    .host = http://foo.com
+    .port = 1000
+    .base = http://user:pass@foo.com:1000/bar/che
+    .fragment = anchor
+    .anchor = fragment
+    .uri = /bar/che?baz=boom#anchor
+    .host(...) = httop://foo.com/...
+    .base(...) = httop://foo.com/bar/che/...
+    .controller(...) = httop://foo.com/bar/...
+    """
     encoding = "utf-8"
 
     scheme = "http"
@@ -233,6 +252,13 @@ class Url(str):
         for k, v in parts.items():
             setattr(instance, k, v)
         return instance
+
+    @classmethod
+    def keys(cls):
+        keys = set(k for k, v in inspect.getmembers(cls) if not k.startswith("__") and not callable(v))
+        for dk in ["encoding", "root", "anchor", "uri"]:
+            keys.discard(dk)
+        return keys
 
     @classmethod
     def merge(cls, urlstring="", **kwargs):
@@ -333,8 +359,6 @@ class Url(str):
         username = kwargs.get("username", None)
         password = kwargs.get("password", None)
         merge_netloc = username or password
-        #merge_hostname = not parts["netloc"].endswith(":{}".format(parts["port"]))
-        #merge_netloc = merge_netloc or merge_hostname
 
         if merge_netloc:
             if not username: username = parts["username"]
@@ -346,9 +370,6 @@ class Url(str):
                     parts["hostloc"]
                 )
 
-#         if merge_hostname and parts["port"] not in common_ports:
-#             parts["hostname"] = "{}:{}".format(parts["domain"], parts["port"])
-
         # we don't want common ports to be a part of a .geturl() call, but we do
         # want .port to return them
         if not merge_netloc:
@@ -357,7 +378,7 @@ class Url(str):
                 if parts["netloc"].endswith(port_str):
                     parts["netloc"] = parts["netloc"][:-len(port_str)]
 
-        parts["path"] = cls.normalize_paths(parts["path"])[0]
+        parts["path"] = "/".join(cls.normalize_paths(parts["path"]))
 
         parts["urlstring"] = urlparse.urlunsplit((
             parts["scheme"],
@@ -400,7 +421,8 @@ class Url(str):
         args = []
         for ps in paths:
             if isinstance(ps, basestring):
-                args.append(ps.strip("/"))
+                args.extend(filter(None, ps.split("/")))
+                #args.append(ps.strip("/"))
             else:
                 for p in ps:
                     args.extend(cls.normalize_paths(p))
@@ -436,9 +458,42 @@ class Url(str):
     def create(self, *args, **kwargs):
         return type(self)(*args, **kwargs)
 
-    def modify(self, **kwargs):
+    def add(self, **kwargs):
         """Just a shortcut to change the current url, equivalent to Url(self, **kwargs)"""
+        if "path" in kwargs:
+            if not kwargs["path"][0].startswith("/"):
+                paths = self.normalize_paths(self.path, kwargs["path"])
+            else:
+                paths = self.normalize_paths(kwargs["path"])
+            kwargs["path"] = "/".join(paths)
         return self.create(self, **kwargs)
+
+    def subtract(self, *paths, **kwargs):
+        sub_kwargs = self.jsonable()
+
+        path2 = self.normalize_paths(paths)
+        path2.extend(self.normalize_paths(kwargs.pop("path", "")))
+        if path2:
+            sub_path = self.normalize_paths(self.path)
+            for p in path2:
+                try:
+                    sub_path.remove(p)
+                except ValueError:
+                    pass
+
+            sub_kwargs["path"] = sub_path
+
+        for k, v in kwargs.items():
+            if k == "query_kwargs":
+                for qk, qv in kwargs[k].items():
+                    if str(sub_kwargs[k][qk]) == str(qv):
+                        sub_kwargs[k].pop(qk)
+
+            else:
+                if str(sub_kwargs[k]) == str(v):
+                    sub_kwargs.pop(k)
+
+        return self.create(**sub_kwargs)
 
     def controller(self, *paths, **query_kwargs):
         """create a new url object using the controller path as a base
@@ -461,7 +516,8 @@ class Url(str):
         kwargs = self._normalize_params(*paths, **query_kwargs)
         if self.controller_path:
             if "path" in kwargs:
-                kwargs["path"] = "/".join([self.controller_path.rstrip("/"), kwargs["path"]])
+                paths = self.normalize_paths(self.controller_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
             else:
                 kwargs["path"] = self.controller_path
         return self.create(self.root, **kwargs)
@@ -486,7 +542,8 @@ class Url(str):
         kwargs = self._normalize_params(*paths, **query_kwargs)
         if self.path:
             if "path" in kwargs:
-                kwargs["path"] = "/".join([self.path.rstrip("/"), kwargs["path"]])
+                paths = self.normalize_paths(self.path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
             else:
                 kwargs["path"] = self.path
         return self.create(self.root, **kwargs)
@@ -530,389 +587,74 @@ class Url(str):
             controller_path=self.controller_path,
         )
 
+    def __add__(self, other):
+        ret = ""
+        if isinstance(other, Mapping):
+            ret = self.add(query_kwargs=other)
 
+        elif isinstance(other, MutableSequence):
+            ret = self.add(path=other)
 
+        elif isinstance(other, basestring):
+            ret = self.add(path=other)
 
+        elif isinstance(other, Sequence):
+            ret = self.add(path=other)
 
+        else:
+            raise ValueError("Not sure how to add {}".format(type(other)))
 
+        return ret
+    __iadd__ = __add__
 
+    def __truediv__(self, other):
+        ret = ""
+        if isinstance(other, MutableSequence):
+            ret = self.add(path=other)
 
+        elif isinstance(other, basestring):
+            ret = self.add(path=other)
 
+        elif isinstance(other, Sequence):
+            ret = self.add(path=other)
 
+        else:
+            raise ValueError("Not sure how to add {}".format(type(other)))
 
+        return ret
+    __itruediv__ = __truediv__
 
+    def __sub__(self, other):
+        """Return a new url with other removed"""
+        ret = ""
+        if isinstance(other, Mapping):
+            ret = self.subtract(query_kwargs=other)
 
+        elif isinstance(other, MutableSequence):
+            ret = self.subtract(path=other)
 
+        elif isinstance(other, basestring):
+            ret = self.subtract(path=other)
 
+        elif isinstance(other, Sequence):
+            ret = self.subtract(path=other)
 
+        else:
+            raise ValueError("Not sure how to add {}".format(type(other)))
 
+        return ret
+    __isub__ = __sub__
 
-
-class UrlOld(object):
-    """ a url object on steroids, this is here to make it easy to manipulate urls
-
-    we try to map the supported fields to their urlparse equivalents, with some additions
-
-    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
-    with a controller: Bar
-
-    .scheme = http
-    .netloc (readonly) = user:pass@foo.com:1000
-    .hostloc = foo.com:1000
-    .hostname = foo.com
-    .host (readonly) = http://foo.com
-    .port = 1000
-    .base (readonly) = http://user:pass@foo.com:1000/bar/che
-    .fragment = anchor
-    .anchor (readonly) = anchor
-    .uri (readonly) = /bar/che?baz=boom#anchor
-
-    .host_url(...) = httop://foo.com/...
-    .base_url(...) = httop://foo.com/bar/che/...
-    .controller_url(...) = httop://foo.com/bar/...
-    """
-
-    scheme = "http"
-
-    netloc = ""
-
-    path = ""
-
-    fragment = ""
-
-    username = None
-
-    password = None
-
-    @property
-    def host(self):
-        """just another way to get just the host, I like this better than hostname"""
-        return urlparse.urlunsplit((
-            self.scheme,
-            self.netloc,
-            "",
-            "",
-            ""
-        ))
-
-    @property
-    def controller(self):
-        """the full url to call the controller with no query or extraneous path"""
-        return urlparse.urljoin(self.host, self.controller_path)
-
-    @property
-    def base(self):
-        """the full url without the query or fragment"""
-        return urlparse.urljoin(self.host, self.path)
-#         return urlparse.urlunsplit((
-#             self.scheme,
-#             self.netloc,
-#             self.path,
-#             "",
-#             ""
-#         ))
-
-    @_property(setter=True)
-    def port(self, port):
-        if port is not None:
-            port = int(port)
-#             if port in [80, 443]:
-#                 port = None
-
-        self._port = port
-
-    @_property(setter=True)
-    def hostname(self, v):
-        self._hostname = v
-        if v:
-            hostname, port = self.split_host_and_port(v)
-            self._hostname = hostname
-            if port:
-                self.port = port
-
-    @property
-    def hostloc(self):
-        """return just the host:port, basically netloc without username and pass info"""
-        hostloc = self.hostname
-        port = self.port
-        if port and port not in [80, 443]:
-            hostloc = '{}:{}'.format(hostloc, self.port)
-        return hostloc
-
-    @property
-    def anchor(self):
-        """alternative name for fragment"""
-        return self.fragment
-
-    @property
-    def uri(self):
-        """return the uri, which is everything but base (no scheme, host, etc)"""
-        uristring = self.path
-        if self.query:
-            uristring += "?{}".format(self.query)
-        if self.fragment:
-            uristring += "#{}".format(self.fragment)
-
-        return uristring
-
-    @property
-    def query(self):
-        return self._unparse_query(self.query_kwargs)
-
-    @query.setter
-    def query(self, query):
-        self.query_kwargs = self._parse_query(query)
-
-    @query.deleter
-    def query(self):
-        self.query_kwargs = {}
-
-    def __init__(self, urlstring=None, **kwargs):
-        self.hostname = ""
-        self.port = None
-        self.query_kwargs = {}
-        self.controller_path = ""
-        self.update(urlstring, **kwargs)
-
-    def append(self, *paths):
-        ps = self._get_paths(*paths)
-        self.path = "/".join([self.path] + ps)
-
-    def update(self, urlstring=None, **kwargs):
-        # we handle port before any other because the port of host:port in hostname takes precedence
-        # the port on the host would take precedence because proxies mean that the
-        # host can be something:10000 and the port could be 9000 because 10000 is
-        # being proxied to 9000 on the machine, but we want to automatically account
-        # for things like that and then if custom behavior is needed then this method
-        # can be overridden
-        port = kwargs.pop("port", None)
-        if port:
-            self.port = port
-
-        if urlstring:
-            properties = [
-                "scheme",
-                "netloc",
-                "path",
-                "fragment",
-                "username",
-                "password",
-                "hostname",
-                "port",
-            ]
-
-            o = urlparse.urlsplit(str(urlstring))
-            if o.scheme and o.netloc: # full url 
-                for k in properties:
-                    v = getattr(o, k)
-                    setattr(self, k, v)
-
-            elif o.scheme and o.path: # no scheme: host/some/path
-                # we need to better normalize to account for port
-                hostname, path = urlstring.split("/", 1)
-                self.hostname = hostname
-                if "?" in path:
-                    path, query = path.split("?", 1)
-                    self.path = path
-                    self.query = query
-
-                else:
-                    self.path = path
-
+    def jsonable(self):
+        ret = {}
+        for k in self.keys():
+            v = getattr(self, k)
+            if k == "query_kwargs":
+                ret[k] = dict(v)
             else:
-                self.hostname = o.path
+                ret[k] = v
 
-            if o.query:
-                self.query_kwargs.update(self._parse_query(o.query))
-
-        query = kwargs.pop("query", "")
-        if query:
-            self.query_kwargs.update(self._parse_query(query))
-
-        query_kwargs = kwargs.pop("query_kwargs", {})
-        if query_kwargs:
-            self.query_kwargs.update(query_kwargs)
-
-        for k, v in kwargs.items():
-            setattr(self, k, v)
-
-        if not hasattr(self, "netloc") or not self.netloc:
-            self.netloc = self.hostloc
-
-        # we don't want common ports to be a part of a .geturl() call, but we do
-        # want .port to return them
-        for common_port in [80, 443]:
-            port_str = ":{}".format(common_port)
-            if self.netloc.endswith(port_str):
-                self.netloc = self.netloc[:-len(port_str)]
-
-        self.path = self._get_paths(self.path)[0]
-
-    def copy(self):
-        return self.__deepcopy__()
-
-    def __copy__(self):
-        return self.__deepcopy__()
-
-    def __deepcopy__(self, memodict={}):
-        return type(self)(
-            scheme=self.scheme,
-            username=self.username,
-            password=self.password,
-            hostname=self.hostname,
-            port=self.port,
-            path=self.path,
-            query_kwargs=self.query_kwargs,
-            fragment=self.fragment,
-            controller_path=self.controller_path,
-        )
-
-    def __eq__(self, other):
-        return self.geturl() == str(other)
-
-    def __ne__(self, other):
-        return not self.__eq__(other)
-
-    def controller_url(self, *paths, **query_kwargs):
-        """create a new url object using the controller path as a base
-
-        if you have a controller `foo.BarController` then this would create a new
-        Url instance with `host/foo/bar` as the base path, so any *paths will be
-        appended to `/foo/bar`
-
-        example -- 
-            # controller foo.BarController
-
-            print url # http://host.com/foo/bar/some_random_path
-
-            print url.controller_url() # http://host.com/foo/bar
-            print url.controller_url("che", boom="bam") # http://host/foo/bar/che?boom=bam
-
-        *paths -- list -- the paths to append to the controller path
-        **query_kwargs -- dict -- any query string params to add
-        """
-        kwargs = self._get_url_kwargs(*paths, **query_kwargs)
-        if self.controller_path:
-            if "path" in kwargs:
-                kwargs["path"] = "/".join([self.controller_path.rstrip("/"), kwargs["path"]])
-            else:
-                kwargs["path"] = self.controller_path
-        return self._create(self.host, **kwargs)
-
-    def base_url(self, *paths, **query_kwargs):
-        """create a new url object using the current base path as a base
-
-        if you had requested /foo/bar, then this would append *paths and **query_kwargs
-        to /foo/bar
-
-        example -- 
-            # current path: /foo/bar
-
-            print url # http://host.com/foo/bar
-
-            print url.base_url() # http://host.com/foo/bar
-            print url.base_url("che", boom="bam") # http://host/foo/bar/che?boom=bam
-
-        *paths -- list -- the paths to append to the current path without query params
-        **query_kwargs -- dict -- any query string params to add
-        """
-        kwargs = self._get_url_kwargs(*paths, **query_kwargs)
-        if self.path:
-            if "path" in kwargs:
-                kwargs["path"] = "/".join([self.path.rstrip("/"), kwargs["path"]])
-            else:
-                kwargs["path"] = self.path
-        return self._create(self.host, **kwargs)
-
-    def host_url(self, *paths, **query_kwargs):
-        """create a new url object using the host as a base
-
-        if you had requested http://host/foo/bar, then this would append *paths and **query_kwargs
-        to http://host
-
-        example -- 
-            # current url: http://host/foo/bar
-
-            print url # http://host.com/foo/bar
-
-            print url.host_url() # http://host.com/
-            print url.host_url("che", boom="bam") # http://host/che?boom=bam
-
-        *paths -- list -- the paths to append to the current path without query params
-        **query_kwargs -- dict -- any query string params to add
-        """
-        kwargs = self._get_url_kwargs(*paths, **query_kwargs)
-        return self._create(self.host, **kwargs)
-
-    def geturl(self):
-        """return a string representation of the url"""
-        return urlparse.urlunsplit((
-            self.scheme,
-            self.netloc,
-            self.path,
-            self.query,
-            self.fragment,
-        ))
-
-    def __str__(self):
-        return self.geturl()
-
-    def _get_paths(self, *paths):
-        args = []
-        for ps in paths:
-            if isinstance(ps, basestring):
-                args.append(ps.strip("/"))
-            else:
-                for p in ps:
-                    args.extend(self._get_paths(p))
-        return args
-
-    def _get_url_kwargs(self, *paths, **query_kwargs):
-        """a lot of the *_url methods are very similar, this handles their arguments"""
-        kwargs = {}
-
-        if paths:
-            fragment = paths[-1]
-            if fragment:
-                if fragment.startswith("#"):
-                    kwargs["fragment"] = fragment
-                    paths.pop(-1)
-
-            kwargs["path"] = "/".join(self._get_paths(*paths))
-
-        kwargs["query_kwargs"] = query_kwargs
-        return kwargs
-
-    def _parse_query(self, query):
-        """return name=val&name2=val2 strings into {name: val} dict"""
-        if not query: return {}
-
-        d = {}
-        for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).items():
-            #k = k.rstrip("[]") # strip out php type array designated variables
-            if len(kv) > 1:
-                d[k] = kv
-            else:
-                d[k] = kv[0]
-
-        return d
-
-    def _unparse_query(self, query_kwargs):
-        return urllib.urlencode(query_kwargs, doseq=True)
-
-    def _create(self, *args, **kwargs):
-        return type(self)(*args, **kwargs)
-
-    @classmethod
-    def split_host_and_port(cls, host):
-        """given a host:port return a tuple (host, port)"""
-        bits = host.split(":", 2)
-        p = None
-        h = bits[0]
-        if len(bits) == 2:
-            p = int(bits[1])
-
-        return h, p
+        return ret
 
 
 class Http(object):
@@ -1131,6 +873,11 @@ class Request(Http):
         path = self.path
         query = self.query
         port = self.port
+
+        # normalize the port
+        host_domain, host_port = Url.split_hostname_from_port(host)
+        if host_port:
+            port = host_port
 
         controller_path = ""
         if self.controller_info:

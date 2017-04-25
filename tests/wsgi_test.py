@@ -115,7 +115,7 @@ class UWSGITest(TestCase):
             "from endpoints import Controller",
             "class Requrl(Controller):",
             "    def GET(self):",
-            "        return self.request.url.controller",
+            "        return self.request.url.controller()",
             "",
         ])
 

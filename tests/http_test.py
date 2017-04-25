@@ -120,16 +120,16 @@ class RequestTest(TestCase):
         r.environ['wsgi.url_scheme'] = "http"
         r.environ['SERVER_PORT'] = "80"
         u = r.url
-        self.assertEqual("http://localhost/baz/che?foo=bar", r.url.geturl())
+        self.assertEqual("http://localhost/baz/che?foo=bar", r.url)
         r.port = 555
         u = r.url
-        self.assertEqual("http://localhost:555/baz/che?foo=bar", r.url.geturl())
+        self.assertEqual("http://localhost:555/baz/che?foo=bar", r.url)
 
         # handle proxied connections
         r.host = "localhost:10000"
         r.port = "9000"
         u = r.url
-        self.assertTrue(":10000" in u.geturl())
+        self.assertTrue(":10000" in u)
 
     def test_charset(self):
         r = Request()
@@ -504,16 +504,14 @@ class UrlTest(TestCase):
         self.assertEqual("http://example.com/foo/bar?che=4", u2)
         self.assertEqual(u2.host(), u.host())
 
-    def test_modify(self):
-        u = Url("http://example.com/path/part/?che=3")
-        u2 = u.modify(query_kwargs={"foo": 1})
-        self.assertEqual({"foo": 1, "che": "3"}, u2.query_kwargs)
-        self.assertEqual("http://example.com/path/part", u2.base())
-
     def test_copy(self):
         u = Url("http://example.com/path/part/?che=3")
         u2 = u.copy()
         self.assertEqual(u, u2)
+
+    def test_query(self):
+        h = Url(query="foo=bar")
+        self.assertEqual({"foo": "bar"}, h.query_kwargs)
 
     def test_query_kwargs(self):
         u = Url("http://example.com/path/part/?che=3", query="baz=4&bang=5", query_kwargs={"foo": 1, "bar": 2})
@@ -606,7 +604,81 @@ class UrlTest(TestCase):
         parts2 = Url.merge(us2)
         self.assertEqual(parts1, parts2)
 
+    def test___add__(self):
 
+        h = Url("http://localhost")
 
+        h2 = h + {"arg1": 1}
+        self.assertEqual("{}?arg1=1".format(h), h2)
 
+        h2 = h + ("foo", "bar")
+        self.assertEqual("{}/foo/bar".format(h), h2)
+
+        h2 = h + "/foo/bar"
+        self.assertEqual("{}/foo/bar".format(h), h2)
+
+        h2 = h + b"/foo/bar"
+        self.assertEqual("{}/foo/bar".format(h), h2)
+
+        h2 = h + ["foo", "bar"]
+        self.assertEqual("{}/foo/bar".format(h), h2)
+
+        h = Url("http://localhost/1/2")
+
+        h2 = h + "/foo/bar"
+        self.assertEqual("{}/foo/bar".format(h.root), h2)
+
+        h2 = h + b"/foo/bar"
+        self.assertEqual("{}/foo/bar".format(h.root), h2)
+
+        h2 = h + ["foo", "bar"]
+        self.assertEqual("{}/foo/bar".format(h), h2)
+
+        h2 = h + ["/foo", "bar"]
+        self.assertEqual("{}/foo/bar".format(h.root), h2)
+
+    def test___sub__(self):
+        h = Url("http://foo.com/1/2/3?arg1=1&arg2=2#fragment")
+
+        h2 = h - "2/3"
+        self.assertFalse("2/3" in h2)
+
+        h2 = h - ["2", "3"]
+        self.assertFalse("2/3" in h2)
+
+        h2 = h - ("2", "3")
+        self.assertFalse("2/3" in h2)
+
+        h2 = h - {"arg1": 1}
+        self.assertFalse("arg1" in h2)
+
+    def test___isub__(self):
+        h = Url("http://foo.com/1/2/3?arg1=1&arg2=2#fragment")
+
+        h -= "2/3"
+        self.assertFalse("2/3" in h)
+
+        h -= ["2", "3"]
+        self.assertFalse("2/3" in h)
+
+        h -= ("2", "3")
+        self.assertFalse("2/3" in h)
+
+        h -= {"arg1": 1}
+        self.assertFalse("arg1" in h)
+
+    def test_add(self):
+        u = Url("http://example.com/path/part/?che=3")
+        u2 = u.add(query_kwargs={"foo": 1})
+        self.assertEqual({"foo": 1, "che": "3"}, u2.query_kwargs)
+        self.assertEqual("http://example.com/path/part", u2.base())
+
+    def test_subtract(self):
+        h = Url("http://foo.com/1/2/3?arg1=1&arg2=2#fragment")
+
+        h2 = h.subtract("2", "3")
+        self.assertFalse("2/3" in h2)
+
+        h2 = h.subtract(query_kwargs={"arg1": 1})
+        self.assertFalse("arg1" in h2)
 

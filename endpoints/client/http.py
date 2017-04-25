@@ -143,7 +143,7 @@ class HTTPClient(object):
         return query_str
 
     def get_fetch_host(self):
-        return self.host.host
+        return self.host.root
 
     def get_fetch_url(self, uri, query=None):
         if not isinstance(uri, basestring):
