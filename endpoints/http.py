@@ -179,6 +179,8 @@ class Url(str):
     """a url object on steroids, this is here to make it easy to manipulate urls
     we try to map the supported fields to their urlparse equivalents, with some additions
 
+    https://tools.ietf.org/html/rfc3986.html
+
     given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
     with a controller: Bar
 
@@ -403,6 +405,7 @@ class Url(str):
         if not query: return {}
 
         d = {}
+        # https://docs.python.org/2/library/urlparse.html
         for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).items():
             #k = k.rstrip("[]") # strip out php type array designated variables
             if len(kv) > 1:
