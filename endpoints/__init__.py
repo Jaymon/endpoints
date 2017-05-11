@@ -3,19 +3,22 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import logging
 #from logging import NullHandler
 
+
+# configure root endpoints logging handler to avoid "No handler found" warnings.
+# this has to go before importing child modules to make sure they don't configure
+# their loggers before Null logger is added
+logger = logging.getLogger(__name__)
+if logger.handlers:
+    logger.addHandler(logging.NullHandler())
+del(logger)
+
+
 from .reflection import Reflect, ReflectController, ReflectMethod
 from .exception import CallError, Redirect, CallStop, AccessDenied
 from .http import Request, Response, Url
 from .utils import AcceptHeader
 from .call import Controller, Router, Call
 from . import decorators
-
-
-# configure root endpoints logging handler to avoid "No handler found" warnings.
-logger = logging.getLogger(__name__)
-if logger.handlers:
-    logger.addHandler(logging.NullHandler())
-del(logger)
 
 
 __version__ = '2.0.0'

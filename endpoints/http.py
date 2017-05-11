@@ -1119,8 +1119,8 @@ class Response(Http):
                     )
                 )
 
-        else:
-            logger.warn("Response body is a filestream that has not filepath")
+            else:
+                logger.warn("Response body is a filestream that has no .filepath property")
 
     def has_body(self):
         ret = False
