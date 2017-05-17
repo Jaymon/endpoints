@@ -10,7 +10,7 @@ import requests
 #from requests.auth import HTTPBasicAuth
 from requests.auth import _basic_auth_str
 
-from ..http import Headers, Url
+from .http import Headers, Url
 
 
 class HTTPClient(object):

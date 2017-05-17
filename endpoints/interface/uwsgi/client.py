@@ -19,10 +19,10 @@ except ImportError:
     logger.error("You need to install websocket-client to use {}".format(__name__))
     raise
 
-from ...client.http import HTTPClient
-from ...client.wsgi import WSGIServer
+from ...client import HTTPClient
 from ...http import Headers
 from ...utils import Path
+from ..wsgi.client import WSGIServer
 from . import Payload
 
 

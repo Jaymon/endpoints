@@ -9,8 +9,8 @@ import sys
 from collections import deque
 
 import endpoints
-from ..utils import Path
-from ..http import Url
+from ...utils import Path
+from ...http import Url
 
 
 def find_module_path():

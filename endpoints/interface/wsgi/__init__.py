@@ -3,10 +3,10 @@ import os
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 import SocketServer
 
-from . import BaseServer
-from ..http import Url
-from ..decorators import _property
-from ..utils import ByteString
+from .. import BaseServer
+from ...http import Url
+from ...decorators import _property
+from ...utils import ByteString
 
 
 # http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
