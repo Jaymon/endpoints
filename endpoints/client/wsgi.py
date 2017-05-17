@@ -229,33 +229,3 @@ class WSGIServer(object):
 
         self.kill()
 
-
-class UWSGIServer(WSGIServer):
-
-    bin_script = "endpoints_wsgifile.py"
-    process_count = 1
-
-    def __init__(self, *args, **kwargs):
-        super(UWSGIServer, self).__init__(*args, **kwargs)
-
-        if not self.wsgifile:
-            self.wsgifile = self.path
-
-    def get_start_cmd(self):
-        return [
-            "uwsgi",
-            "--http={}".format(self.host.netloc),
-            "--show-config",
-            "--master",
-            "--processes={}".format(self.process_count),
-            "--cpu-affinity=1",
-            "--thunder-lock",
-            "--http-raw-body",
-            "--chdir={}".format(self.cwd),
-            "--wsgi-file={}".format(Path(self.wsgifile)),
-        ]
-
-#     def get_subprocess_args_and_kwargs(self):
-#         self.env["ENDPOINTS_PREFIX"] = self.controller_prefix
-#         return super(UWSGIServer, self).get_subprocess_args_and_kwargs()
-

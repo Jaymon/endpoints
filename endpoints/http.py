@@ -1027,7 +1027,8 @@ class Request(Http):
         return self.method.upper() == method.upper()
 
     def has_body(self):
-        return self.method.upper() in set(['POST', 'PUT'])
+        #return self.method.upper() in set(['POST', 'PUT'])
+        return self.method.upper() not in set(['GET'])
 
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""

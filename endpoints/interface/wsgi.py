@@ -3,73 +3,10 @@ import os
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 import SocketServer
 
-try:
-    import uwsgi
-except ImportError:
-    uwsgi = None
-
-try:
-    from cstringio import StringIO
-except ImportError:
-    from StringIO import StringIO
-
 from . import BaseServer
 from ..http import Url
 from ..decorators import _property
 from ..utils import ByteString
-
-
-class uWSGIChunkedBody(object):
-    """Micro-WSGI has support for chunked transfer encoding, this class is a small
-    wrapper around uWSGI's chunked transfer mechanism so the rest of endpoints doesn't
-    have to know anything about what uWSGI is doing under the hood.
-
-    http://uwsgi-docs.readthedocs.org/en/latest/Chunked.html
-
-    Right now, this is a resetting body, which means when it is done being read it
-    will reset so it can be read again. Also, using StringIO means that the raw body
-    gets stored for the life of the request, which is not memory efficient
-    """
-
-    def __init__(self):
-        self._body = StringIO()
-
-    def _chunked_read(self):
-        size = 0
-        try:
-            chunk = uwsgi.chunked_read()
-            old_pos = self._body.pos
-            self._body.write(chunk)
-            self._body.pos = old_pos
-            size = len(chunk)
-
-            if not size:
-                self._body.pos = 0
-
-        except IOError as e:
-            raise IOError("Error reading chunk, is --http-raw-body enabled? Error: {}".format(e))
-
-        return size
-
-    def __iter__(self):
-        yield self.readline()
-
-    def read(self, size=-1):
-        while size < 0 or size > (self._body.len - self._body.pos):
-            chunk_size = self._chunked_read()
-            if not chunk_size:
-                break
-
-        return self._body.read(size)
-
-    def readline(self, size=0):
-        line = self._body.readline(size)
-        if not line:
-            chunked_size = self._chunked_read()
-            if chunked_size:
-                line = self._body.readline(size)
-
-        return line
 
 
 # http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
@@ -92,7 +29,12 @@ class Application(BaseServer):
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server handles"""
         c = self.create_call(environ)
-        res = c.handle()
+        c.handle()
+        return self.handle_http_response(c, start_response)
+
+    def handle_http_response(self, call, start_response):
+        res = call.response
+
         start_response(
             ByteString('{} {}'.format(res.code, res.status), res.encoding),
             [(ByteString(k, res.encoding), ByteString(v, res.encoding)) for k, v in res.headers.items()]
@@ -133,11 +75,7 @@ class Application(BaseServer):
 
             else:
                 if r.get_header('transfer-encoding', "").lower().startswith('chunked'):
-                    if uwsgi:
-                        r.body_input = uWSGIChunkedBody()
-
-                    else:
-                        raise IOError("Server does not support chunked requests")
+                    self.handle_chunked_request(r)
 
                 else:
                     r.body_input = raw_request['wsgi.input']
@@ -146,6 +84,9 @@ class Application(BaseServer):
             r.body_kwargs = {}
 
         return r
+
+    def handle_chunked_request(self, req):
+        raise IOError("Server does not support chunked requests")
 
     def create_backend(self, **kwargs):
         raise NotImplementedError()

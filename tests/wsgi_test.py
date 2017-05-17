@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-from . import TestCase, skipIf, SkipTest
+from . import TestCase as BaseTestCase, skipIf, SkipTest
 import os
 import codecs
 import hashlib
@@ -9,7 +9,7 @@ import json
 import testdata
 
 from endpoints.client.http import HTTPClient
-from endpoints.client.wsgi import WSGIServer, UWSGIServer
+from endpoints.client.wsgi import WSGIServer
 
 
 # def setUpModule():
@@ -20,10 +20,10 @@ from endpoints.client.wsgi import WSGIServer, UWSGIServer
 ###############################################################################
 # Custom clients
 ###############################################################################
-class UWSGIClient(object):
+class WSGIClient(object):
 
     client_class = HTTPClient
-    server_class = UWSGIServer
+    server_class = WSGIServer
     server_script_name = "endpoints_testserver_script.py"
 
     def __init__(self, controller_prefix, module_body, config_module_body='', host=''):
@@ -44,7 +44,11 @@ class UWSGIClient(object):
                 "import os",
                 "import sys",
                 "import logging",
-                "logging.basicConfig()",
+                "logging.basicConfig(",
+                "    format=\"[%(levelname).1s] %(message)s\",",
+                "    level=logging.DEBUG,",
+                "    stream=sys.stdout",
+                ")",
                 #"sys.path.append('{}')".format(os.path.dirname(os.path.realpath(inspect.getsourcefile(endpoints)))),
                 "sys.path.append('{}')".format(os.path.realpath(os.curdir)),
                 "",
@@ -87,16 +91,12 @@ class UWSGIClient(object):
         return m
 
 
-class WSGIClient(UWSGIClient):
-    server_class = WSGIServer
-
-
 ###############################################################################
 # Actual tests
 ###############################################################################
-class UWSGITest(TestCase):
+class TestCase(BaseTestCase):
 
-    client_class = UWSGIClient
+    client_class = None
 
     def setUp(self):
         self.client_class.kill()
@@ -107,6 +107,11 @@ class UWSGITest(TestCase):
     def create_client(self, *args, **kwargs):
         kwargs.setdefault("host", self.get_host())
         return self.client_class(*args, **kwargs)
+
+
+
+class WSGITest(TestCase):
+    client_class = WSGIClient
 
     def test_request_url(self):
         """make sure request url gets controller_path correctly"""
@@ -121,31 +126,6 @@ class UWSGITest(TestCase):
 
         r = c.get('/requrl')
         self.assertTrue("/requrl" in r._body)
-
-    def test_chunked(self):
-        filepath = testdata.create_file("filename.txt", testdata.get_words(500))
-        controller_prefix = 'wsgi.post_chunked'
-
-        c = self.create_client(controller_prefix, [
-            "import hashlib",
-            "from endpoints import Controller",
-            "class Bodykwargs(Controller):",
-            "    def POST(self, **kwargs):",
-            "        return hashlib.md5(kwargs['file'].file.read()).hexdigest()",
-            "",
-            "class Bodyraw(Controller):",
-            "    def POST(self, **kwargs):",
-            "        return len(self.request.body)",
-            "",
-        ])
-
-        size = c.post_chunked('/bodyraw', {"foo": "bar", "baz": "che"}, filepath=filepath)
-        self.assertGreater(int(size), 0)
-
-        with codecs.open(filepath, "rb", encoding="UTF-8") as fp:
-            h1 = hashlib.md5(fp.read().encode("UTF-8")).hexdigest()
-            h2 = c.post_chunked('/bodykwargs', {"foo": "bar", "baz": "che"}, filepath=filepath)
-            self.assertEqual(h1, h2.strip('"'))
 
     def test_list_param_decorator(self):
         controller_prefix = "lpdcontroller"
@@ -251,7 +231,7 @@ class UWSGITest(TestCase):
                 "        pass",
                 "",
             ],
-            [
+            config_module_body=[
                 "from endpoints import Request as EReq",
                 "",
                 "class Request(EReq):",
@@ -334,19 +314,13 @@ class UWSGITest(TestCase):
         self.assertEqual(content, r._body)
 
 
-class WSGITest(UWSGITest):
-    client_class = WSGIClient
-
-    def test_chunked(self):
-        raise SkipTest("chunked is not supported in Python WSGIClient")
-
-
 ###############################################################################
 # Client tests
 ###############################################################################
 class ClientTestCase(TestCase):
     server = None
     server_class = WSGIServer
+    client_class = HTTPClient
 
     def setUp(self):
         if self.server:
@@ -365,8 +339,8 @@ class ClientTestCase(TestCase):
         self.server.start()
         return server
 
-    def create_client(self):
-        client = HTTPClient(self.get_host())
+    def create_client(self, **kwargs):
+        client = self.client_class(self.get_host(), **kwargs)
         return client
 
 
@@ -440,7 +414,4 @@ class WSGIServerTest(ClientTestCase):
         self.assertEqual(200, r.code)
         self.assertEqual("foo bar", r._body)
 
-
-class UWSGIServerTest(WSGIServerTest):
-    server_class = UWSGIServer
 

@@ -133,8 +133,14 @@ class HTTPClient(object):
         return res
 
     def get_fetch_query(self, query_str, query):
+
+        all_query = getattr(self, "query", {})
+        if not all_query: all_query = {}
         if query:
-            more_query_str = urllib.urlencode(query, doseq=True)
+            all_query.update(query)
+
+        if all_query:
+            more_query_str = urllib.urlencode(all_query, doseq=True)
             if query_str:
                 query_str += '&{}'.format(more_query_str)
             else:
