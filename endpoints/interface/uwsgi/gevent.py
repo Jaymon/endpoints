@@ -96,7 +96,7 @@ class WebsocketApplication(Application):
 
     def create_environ(self, raw_request, payload):
         environ = dict(raw_request)
-        environ["REQUEST_METHOD"] = "SOCKET"
+        environ["REQUEST_METHOD"] = payload.method
         environ["PATH_INFO"] = payload.path
         environ.pop("wsgi.input", None)
         environ["WS_PAYLOAD"] = payload
@@ -109,6 +109,21 @@ class WebsocketApplication(Application):
             req.body_kwargs = payload.body
             req.payload = payload
         return req
+
+    def create_request_payload(self, raw):
+        return self.payload_class(raw)
+
+    def create_response_payload(self, req, res):
+        kwargs = {
+            "path": req.path,
+            "body": res._body,
+            "code": res.code,
+        }
+        uuid = req.payload.uuid
+        if uuid:
+            kwargs["uuid"] = uuid
+
+        return self.payload_class(**kwargs)
 
     def create_connection(self):
         return self.connection_class(self)
@@ -126,16 +141,12 @@ class WebsocketApplication(Application):
                     # we've received a message from this client's websocket
                     raw = conn.recv_payload()
                     if raw:
-                        req_payload = self.payload_class(raw)
+                        req_payload = self.create_request_payload(raw)
                         environ = self.create_environ(req.raw_request, req_payload)
                         c = self.create_call(environ)
                         res = c.handle()
 
-                        res_payload = self.payload_class(
-                            c.request.path,
-                            res._body,
-                            code=res.code,
-                        )
+                        res_payload = self.create_response_payload(c.request, res)
                         conn.send_payload(res_payload.payload)
 
         except IOError as e:

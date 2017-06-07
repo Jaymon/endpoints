@@ -19,60 +19,36 @@ from ..wsgi import Application as BaseApplication
 
 
 class Payload(object):
-    def __init__(self, *args, **kwargs):
-        payload = None
-        path = None
-        body = None
+    def __init__(self, raw=None, **kwargs):
+        self.uuid = None
 
-        if len(args) == 0:
-            payload = kwargs.pop("payload", None)
-            path = kwargs.pop("path", None)
-            body = kwargs.pop("body", None)
-
-        elif len(args) == 1:
-            if "path" in kwargs:
-                path = kwargs.pop("path")
-                body = args[0]
-
-            elif "body" in kwargs:
-                path = args[0]
-                body = kwargs.pop("body")
-
-            else:
-                payload = args[0]
-
-        elif len(args) == 2:
-            path = args[0]
-            body = args[1]
-
+        if raw:
+            self.loads(raw)
         else:
-            raise ValueError("Payload(path, body) or Payload(body)")
+            self.dumps(**kwargs)
 
-        if payload:
-            path, body, kwargs = self.normalize_response(payload, **kwargs)
+    def dumps(self, **kwargs):
 
-        else:
-            payload = self.normalize_request(path, body, **kwargs)
+        for k in ["path", "body"]:
+            if k not in kwargs:
+                raise ValueError("[{}] is required".format(k))
 
-        self.path = path
-        self.body = body
-        self.payload = payload
-        self.kwargs = kwargs
+        if "meta" not in kwargs:
+            kwargs["meta"] = {}
 
-    def normalize_request(self, path, body, **kwargs):
-        payload = {
-            "path": path,
-            "body": body
-        }
-        payload.update(kwargs)
-        return json.dumps(payload)
+        if "method" not in kwargs and "code" not in kwargs:
+            raise ValueError("one of [method, code] is required")
 
-    def normalize_response(self, payload, **kwargs):
-        d = json.loads(payload)
-        path = d.pop("path")
-        body = d.pop("body")
-        return path, body, d
+        kwargs["payload"] = json.dumps(kwargs)
 
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def loads(self, raw):
+        kwargs = json.loads(raw)
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
 
 
 class UWSGIChunkedBody(object):

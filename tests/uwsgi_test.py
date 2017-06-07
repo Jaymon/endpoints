@@ -61,6 +61,20 @@ class WebsocketTest(TestCase):
 
     client_class = WebsocketTestClient
 
+    def test_get_fetch_host(self):
+        client_cls = self.client_class.client_class
+        c = client_cls("http://localhost")
+        self.assertTrue(c.get_fetch_host().startswith("ws"))
+
+        c = client_cls("https://localhost")
+        self.assertTrue(c.get_fetch_host().startswith("wss"))
+
+        c = client_cls("HTTPS://localhost")
+        self.assertTrue(c.get_fetch_host().startswith("wss"))
+
+        c = client_cls("HTTP://localhost")
+        self.assertTrue(c.get_fetch_host().startswith("ws"))
+
     def create_client(self, *args, **kwargs):
         kwargs.setdefault("config_module_body", [])
         kwargs["config_module_body"].extend([
@@ -95,25 +109,43 @@ class WebsocketTest(TestCase):
             "class Default(Controller):",
             "    def CONNECT(self, *args, **kwargs):",
             "        #pout.v(args, kwargs, self.request)",
-            "        pout.b('CONNECT')",
+            "        #pout.b('CONNECT')",
             "        pass",
             "    def DISCONNECT(self, *args, **kwargs):",
-            "        pout.b('DISCONNECT')",
+            "        #pout.b('DISCONNECT')",
             "        pass",
             "",
             "    def SOCKET(self, *args, **kwargs):",
             "        #pout.v(args, kwargs)",
-            "        pout.b('SOCKET')",
+            "        #pout.b('SOCKET')",
             "        return {",
+            "            'name': 'SOCKET',",
+            "            'args': args,",
+            "            'kwargs': kwargs,",
+            "        }",
+            "    def POST(self, *args, **kwargs):",
+            "        return {",
+            "            'name': 'POST',",
+            "            'args': args,",
+            "            'kwargs': kwargs,",
+            "        }",
+            "    def GET(self, *args, **kwargs):",
+            "        return {",
+            "            'name': 'GET',",
             "            'args': args,",
             "            'kwargs': kwargs,",
             "        }",
         ])
 
-        c.send("/foo/bar", {"val1": 1, "val2": 2})
+        r = c.post("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("POST", r._body["name"])
 
-        path, body = c.recv()
-        self.assertEqual({"val1": 1, "val2": 2}, body["kwargs"])
+        r = c.send("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("SOCKET", r._body["name"])
+        self.assertEqual({"val1": 1, "val2": 2}, r._body["kwargs"])
+
+        r = c.get("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("GET", r._body["name"])
 
 
 class UWSGIServerTest(WSGIServerTest):

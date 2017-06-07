@@ -14,6 +14,7 @@ import logging
 logger = logging.getLogger(__name__)
 
 try:
+    # https://github.com/websocket-client/websocket-client
     import websocket
 except ImportError:
     logger.error("You need to install websocket-client to use {}".format(__name__))
@@ -47,12 +48,14 @@ class WebsocketClient(HTTPClient):
         return self.ws.connected if ws else False
 
     def __init__(self, host, *args, **kwargs):
-
         kwargs.setdefault("headers", Headers())
         kwargs["headers"]['User-Agent'] = "Endpoints Websocket Client"
         super(WebsocketClient, self).__init__(host, *args, **kwargs)
 
         self.set_trace(kwargs.pop("trace", False))
+        self.client_id = id(self)
+        self.send_count = 0
+        self.attempts = kwargs.pop("attempts", self.attempts)
 
     @contextmanager
     def wstimeout(self, timeout=0, **kwargs):
@@ -111,7 +114,7 @@ class WebsocketClient(HTTPClient):
         #pout.v(websocket_url, websocket_headers, self.query_kwargs, self.headers)
 
         try:
-            logger.debug("connecting to {}".format(ws_url))
+            logger.debug("{} connecting to {}".format(self.client_id, ws_url))
             self.ws = websocket.create_connection(
                 ws_url,
                 header=ws_headers,
@@ -156,7 +159,7 @@ class WebsocketClient(HTTPClient):
         if not start_dt:
             start_dt = datetime.datetime.utcnow()
 
-        logger.debug('idle receive for {} seconds'.format(sleep_seconds))
+        logger.debug('{} idle receive for {} seconds'.format(self.client_id, sleep_seconds))
         try:
             m = self.recv_callback(
                 callback=callback,
@@ -170,20 +173,30 @@ class WebsocketClient(HTTPClient):
             # came in while we were waiting
             pass
 
-    def send_payload(self, path, body):
-        p = Payload(path, body)
-        return p.payload
+    def get_fetch_request(self, method, path, body):
+        uuid = "{}-{}".format(self.client_id, self.send_count)
+        p = Payload(method=method.upper(), path=path, body=body, uuid=uuid)
+        return p
 
-    def send(self, path, body, timeout=0, **kwargs):
+    def send(self, path, body, **kwargs):
+        return self.fetch("SOCKET", path, body=body, **kwargs)
+
+    def fetch(self, method, path, query=None, body=None, timeout=0, **kwargs):
         """send a Message
 
-        :param payload: mixed, whatever you want to send to the server, will be ran
-            through self.send_payload() for normalization
-        :param timeout: integer, how long you should try and send, bear in mind this
-            is timeout * attempts, so if your timeout is 5, and you have 3 attempts it
-            could go upto 15 seconds (3 * 5)
+        :param method: string, something like "POST" or "GET"
+        :param path: string, the path part of a uri (eg, /foo/bar)
+        :param body: dict, what you want to send to "method path"
+        :param timeout: integer, how long to wait before failing trying to send
         """
-        payload = self.send_payload(path, body)
+        ret = None
+        if not query: query = {}
+        if not body: body = {}
+        query.update(body) # body takes precedence
+        body = query
+
+        self.send_count += 1
+        payload = self.get_fetch_request(method, path, body)
         attempts = 1
         max_attempts = self.attempts
         success = False
@@ -196,38 +209,65 @@ class WebsocketClient(HTTPClient):
                     with self.wstimeout(**kwargs) as timeout:
                         kwargs['timeout'] = timeout
 
-                        logger.debug('send attempt {}/{} with timeout {}'.format(
+                        logger.debug('{} send attempt {}/{} with timeout {}'.format(
+                            self.client_id,
                             attempts,
                             max_attempts,
                             timeout
                         ))
 
-                        ret = self.ws.send(payload)
-                        logger.debug('sent {} bytes'.format(ret))
-                        if ret:
-                            success = self.send_success(path, body)
+                        sent_bits = self.ws.send(payload.payload)
+                        logger.debug('{} sent {} bytes'.format(self.client_id, sent_bits))
+                        if sent_bits:
+                            ret = self.fetch_response(payload, **kwargs)
+                            if ret:
+                                success = True
 
                 except websocket.WebSocketConnectionClosedException as e:
                     self.ws.shutdown()
                     raise IOError("connection is not open but reported it was open: {}".format(e))
 
             except (IOError, TypeError) as e:
-                logger.debug('error on send attempt {}: {}'.format(attempts, e))
+                logger.debug('{} error on send attempt {}: {}'.format(self.client_id, attempts, e))
                 success = False
-                attempts += 1
-                if attempts > max_attempts:
-                    raise
 
-                else:
-                    timeout *= 2
-                    if (attempts / max_attempts) > 0.50:
-                        logger.debug("closing and re-opening connection for next attempt")
-                        self.close()
+            finally:
+                if not success:
+                    attempts += 1
+                    if attempts > max_attempts:
+                        raise
+
+                    else:
+                        timeout *= 2
+                        if (attempts / max_attempts) > 0.50:
+                            logger.debug(
+                                "{} closing and re-opening connection for next attempt".format(self.client_id)
+                            )
+                            self.close()
 
         return ret
 
-    def send_success(self, path, body):
-        return True
+    def fetch_response(self, req_payload, **kwargs):
+        """payload has been sent, do anything else you need to do (eg, wait for response?)
+
+        :param req_payload: Payload, the payload sent to the server
+        :returns: Payload, the response payload
+        """
+        if req_payload.uuid:
+            def callback(res_payload):
+                #pout.v(payload, res_payload)
+                ret = req_payload.uuid == res_payload.uuid
+                if ret:
+                    logger.debug('{} received {} response for {}'.format(
+                        self.client_id,
+                        res_payload.code,
+                        res_payload.uuid,
+                    ))
+                return ret
+
+            res_payload = self.recv_callback(callback, **kwargs)
+
+        return res_payload
 
     def ping(self, timeout=0, **kwargs):
         """THIS DOES NOT WORK, UWSGI DOES NOT RESPOND TO PINGS"""
@@ -252,7 +292,7 @@ class WebsocketClient(HTTPClient):
             start = time.time()
             if not self.connected: self.connect(timeout=timeout, **kwargs)
             with self.wstimeout(timeout, **kwargs) as timeout:
-                logger.debug('waiting to receive for {} seconds'.format(timeout))
+                logger.debug('{} waiting to receive for {} seconds'.format(self.client_id, timeout))
                 try:
                     opcode, data = self.ws.recv_data()
                     if opcode in opcodes:
@@ -278,15 +318,17 @@ class WebsocketClient(HTTPClient):
 
         return opcode, data
 
-    def recv_payload(self, payload):
-        p = Payload(payload)
-        return p.path, p.body
+    def get_fetch_response(self, raw):
+        """This just makes the payload instance more HTTPClient like"""
+        p = Payload(raw)
+        p._body = p.body
+        return p
 
     def recv(self, timeout=0, **kwargs):
         """this will receive data and convert it into a message, really this is more
         of an internal method, it is used in recv_callback and recv_msg"""
         opcode, data = self.recv_raw(timeout, [websocket.ABNF.OPCODE_TEXT], **kwargs)
-        return self.recv_payload(data)
+        return self.get_fetch_response(data)
 
     def recv_callback(self, callback, **kwargs):
         """receive messages and validate them with the callback, if the callback 
