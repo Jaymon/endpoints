@@ -60,7 +60,6 @@ class Application(BaseServer):
         r.method = raw_request['REQUEST_METHOD']
         r.path = raw_request['PATH_INFO']
         r.query = raw_request['QUERY_STRING']
-        r.raw_request = raw_request
 
         # handle headers not prefixed with http
         for k, t in {'CONTENT_TYPE': None, 'CONTENT_LENGTH': int}.items():

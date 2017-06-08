@@ -147,6 +147,41 @@ class WebsocketTest(TestCase):
         r = c.get("/foo/bar", {"val1": 1, "val2": 2})
         self.assertEqual("GET", r._body["name"])
 
+    def test_request_modification(self):
+        c = self.create_client('ws.request_mod', [
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self):",
+            "        self.request.foo = 1",
+            "",
+            "    def DISCONNECT(self, *args, **kwargs):",
+            "        pass",
+            "",
+            "    def POST(self, **kwargs):",
+            "        self.request.parent.foo = kwargs['foo']",
+            "        return self.request.parent.foo",
+            "",
+            "    def GET(self):",
+            "        return self.request.foo",
+        ])
+
+        r = c.post("/", {"foo": 2})
+        self.assertEqual(2, r._body)
+
+        r = c.get("/")
+        self.assertEqual(2, r._body)
+
+        r = c.post("/", {"foo": 4})
+        self.assertEqual(4, r._body)
+
+        r = c.get("/")
+        self.assertEqual(4, r._body)
+
+        #self.assertEqual()
+        #self.assertEqual("POST", r._body["name"])
+
+
 
 class UWSGIServerTest(WSGIServerTest):
     server_class = UWSGIServer

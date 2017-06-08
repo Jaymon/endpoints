@@ -108,6 +108,21 @@ class HeadersTest(TestCase):
 
 
 class RequestTest(TestCase):
+    def test_copy(self):
+        r = Request()
+        r.set_headers({
+            "Host": "localhost",
+        })
+        r.query = "foo=bar"
+        r.path = "/baz/che"
+        r.environ['wsgi.url_scheme'] = "http"
+        r.environ['SERVER_PORT'] = "80"
+        r.foo = 1
+
+        r2 = r.copy()
+        self.assertEqual(r.foo, r2.foo)
+        self.assertEqual(r.environ["SERVER_PORT"], r2.environ["SERVER_PORT"])
+
     def test_url(self):
         """make sure the .url attribute is correctly populated"""
         # this is wsgi configuration

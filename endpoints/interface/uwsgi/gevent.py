@@ -94,20 +94,34 @@ class WebsocketApplication(Application):
         upgrade_header = req.get_header('upgrade')
         return not upgrade_header or (upgrade_header.lower() != 'websocket')
 
-    def create_environ(self, raw_request, payload):
-        environ = dict(raw_request)
-        environ["REQUEST_METHOD"] = payload.method
-        environ["PATH_INFO"] = payload.path
-        environ.pop("wsgi.input", None)
-        environ["WS_PAYLOAD"] = payload
-        return environ
+    def create_environ(self, req, payload):
+        """This will take the original request and the new websocket payload and
+        merge them into a new request instance"""
+        ws_req = req.copy()
+
+        del ws_req.controller_info
+
+        ws_req.environ.pop("wsgi.input", None)
+        ws_req.body_kwargs = payload.body
+
+        ws_req.environ["REQUEST_METHOD"] = payload.method
+        ws_req.method = payload.method
+
+        ws_req.environ["PATH_INFO"] = payload.path
+        ws_req.path = payload.path
+
+        ws_req.environ["WS_PAYLOAD"] = payload
+        ws_req.environ["WS_ORIGINAL"] = req
+
+        ws_req.payload = payload
+        ws_req.parent = req
+        return {"WS_REQUEST": ws_req}
 
     def create_request(self, environ):
-        payload = environ.pop("WS_PAYLOAD", None)
-        req = super(Application, self).create_request(environ)
-        if payload:
-            req.body_kwargs = payload.body
-            req.payload = payload
+        if "WS_REQUEST" in environ:
+            req = environ["WS_REQUEST"]
+        else:
+            req = super(WebsocketApplication, self).create_request(environ)
         return req
 
     def create_request_payload(self, raw):
@@ -142,7 +156,7 @@ class WebsocketApplication(Application):
                     raw = conn.recv_payload()
                     if raw:
                         req_payload = self.create_request_payload(raw)
-                        environ = self.create_environ(req.raw_request, req_payload)
+                        environ = self.create_environ(req, req_payload)
                         c = self.create_call(environ)
                         res = c.handle()
 

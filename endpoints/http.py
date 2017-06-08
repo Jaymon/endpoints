@@ -14,6 +14,7 @@ from collections import Mapping, MutableSequence, Sequence
 import itertools
 import logging
 import inspect
+import copy
 
 try:
     import urlparse
@@ -706,6 +707,38 @@ class Http(object):
                 b = urllib.urlencode(b, doseq=True)
 
         return b
+
+    def copy(self):
+        """nice handy wrapper around the deepcopy"""
+        return copy.deepcopy(self)
+
+    def __deepcopy__(self, memodict={}):
+        instance = type(self)()
+        for key, val in self.__dict__.items():
+            #pout.v(key, val)
+            if not key.startswith("_"):
+                if key == "environ":
+                    d = type(val)()
+                    for k, v in val.items():
+                        if k.lower() == "wsgi.input":
+                            d[k] = v
+                        else:
+                            d[k] = copy.deepcopy(v, memodict)
+
+                    setattr(instance, key, d)
+
+                elif key == "body_input":
+                    setattr(instance, key, val)
+
+                else:
+                    #setattr(instance, key, copy.deepcopy(val, memodict))
+                    try:
+                        setattr(instance, key, copy.deepcopy(val, memodict))
+                    #except (AttributeError, TypeError):
+                    except AttributeError:
+                        setattr(instance, key, copy.copy(val))
+
+        return instance
 
 
 class Request(Http):
