@@ -717,26 +717,30 @@ class Http(object):
         for key, val in self.__dict__.items():
             #pout.v(key, val)
             if not key.startswith("_"):
-                if key == "environ":
-                    d = type(val)()
-                    for k, v in val.items():
-                        if k.lower() == "wsgi.input":
-                            d[k] = v
-                        else:
-                            d[k] = copy.deepcopy(v, memodict)
-
-                    setattr(instance, key, d)
-
-                elif key == "body_input":
+                if val is None:
                     setattr(instance, key, val)
 
                 else:
-                    #setattr(instance, key, copy.deepcopy(val, memodict))
-                    try:
-                        setattr(instance, key, copy.deepcopy(val, memodict))
-                    #except (AttributeError, TypeError):
-                    except AttributeError:
-                        setattr(instance, key, copy.copy(val))
+                    if key == "environ":
+                        d = type(val)()
+                        for k, v in val.items():
+                            if k.lower() == "wsgi.input":
+                                d[k] = v
+                            else:
+                                d[k] = copy.deepcopy(v, memodict)
+
+                        setattr(instance, key, d)
+
+                    elif key == "body_input":
+                        setattr(instance, key, val)
+
+                    else:
+                        #setattr(instance, key, copy.deepcopy(val, memodict))
+                        try:
+                            setattr(instance, key, copy.deepcopy(val, memodict))
+                        #except (AttributeError, TypeError):
+                        except AttributeError:
+                            setattr(instance, key, copy.copy(val))
 
         return instance
 
