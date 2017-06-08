@@ -205,7 +205,7 @@ class WebsocketClient(HTTPClient):
             kwargs['timeout'] = timeout
             try:
                 try:
-                    if not self.connected: self.connect()
+                    if not self.connected: self.connect(path)
                     with self.wstimeout(**kwargs) as timeout:
                         kwargs['timeout'] = timeout
 
