@@ -602,6 +602,25 @@ class PropertyTest(TestCase):
 
 
 class ParamTest(TestCase):
+    def test_append_list_choices(self):
+        c = create_controller()
+
+        @param('foo', action="append_list", type=int, choices=[1, 2])
+        def foo(self, *args, **kwargs):
+            return kwargs["foo"]
+
+        r = foo(c, **{'foo': "1,2"})
+        self.assertEqual([1, 2], r)
+
+        with self.assertRaises(CallError):
+            r = foo(c, **{'foo': "1,2,3"})
+
+        r = foo(c, **{'foo': 1})
+        self.assertEqual([1], r)
+
+        with self.assertRaises(CallError):
+            r = foo(c, **{'foo': 3})
+
     def test_metavar(self):
         raise SkipTest("not sure what to do with this test yet")
         class MockMetavar(object):

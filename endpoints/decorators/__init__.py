@@ -473,8 +473,14 @@ class param(FuncDecorator):
                     val = ptype(val)
 
         if pchoices:
-            if val not in pchoices:
-                raise ValueError("param value {} not in choices {}".format(val, pchoices))
+            if isinstance(val, list) and ptype != list:
+                for v in val:
+                    if v not in pchoices:
+                        raise ValueError("param value {} not in choices {}".format(v, pchoices))
+
+            else:
+                if val not in pchoices:
+                    raise ValueError("param value {} not in choices {}".format(val, pchoices))
 
         # at some point this if statement is just going to be too ridiculous
         # FieldStorage check is because of this bug https://bugs.python.org/issue19097

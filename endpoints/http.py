@@ -132,6 +132,9 @@ class Headers(BaseHeaders, Mapping):
             self[k] = v
 
     def copy(self):
+        return self.__deepcopy__()
+
+    def __deepcopy__(self):
         return type(self)(self._headers)
 
 
