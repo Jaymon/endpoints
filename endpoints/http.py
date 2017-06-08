@@ -738,8 +738,8 @@ class Http(object):
                         #setattr(instance, key, copy.deepcopy(val, memodict))
                         try:
                             setattr(instance, key, copy.deepcopy(val, memodict))
-                        #except (AttributeError, TypeError):
-                        except AttributeError:
+                        except (AttributeError, TypeError):
+                        #except AttributeError:
                             setattr(instance, key, copy.copy(val))
 
         return instance

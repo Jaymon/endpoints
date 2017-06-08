@@ -178,8 +178,22 @@ class WebsocketTest(TestCase):
         r = c.get("/")
         self.assertEqual(4, r._body)
 
-        #self.assertEqual()
-        #self.assertEqual("POST", r._body["name"])
+    def test_path_autoconnect(self):
+        c = self.create_client('ws.pathac', [
+            "from endpoints import Controller",
+            "",
+            "class Foo(Controller):",
+            "    def CONNECT(self): pass",
+            "    def DISCONNECT(self): pass",
+            "",
+            "    def POST(self, **kwargs):",
+            "        return 1",
+            "",
+        ])
+
+        c.basic_auth("foo", "bar")
+        r = c.post("/foo", {"bar": 2})
+        self.assertEqual(1, r._body)
 
 
 
