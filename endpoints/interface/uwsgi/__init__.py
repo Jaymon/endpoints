@@ -16,6 +16,7 @@ except ImportError:
     uwsgi = None
 
 from ..wsgi import Application as BaseApplication
+from ...http import ResponseBody
 
 
 class Payload(object):
@@ -39,7 +40,7 @@ class Payload(object):
         if "method" not in kwargs and "code" not in kwargs:
             raise ValueError("one of [method, code] is required")
 
-        kwargs["payload"] = json.dumps(kwargs)
+        kwargs["payload"] = json.dumps(kwargs, cls=ResponseBody)
 
         for k, v in kwargs.items():
             setattr(self, k, v)

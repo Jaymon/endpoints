@@ -176,7 +176,14 @@ class ResponseBody(json.JSONEncoder):
     def default(self, obj):
         if isinstance(obj, types.GeneratorType):
             return [x for x in obj]
-        return json.JSONEncoder.default(self, obj)
+
+        elif isinstance(obj, Exception):
+            return {
+                "errmsg": str(obj)
+            }
+
+        else:
+            return json.JSONEncoder.default(self, obj)
 
 
 class Url(str):
@@ -1095,13 +1102,21 @@ class Request(Http):
 
 
 class Response(Http):
+    """The Response object, every request instance that comes in will get a
+    corresponding Response instance that answers the Request.
+
+    an instance of this class is used to create the text response that will be sent 
+    back to the client
+
+    Request has a ._body and .body, the ._body property is the raw value that is
+    returned from the Controller method that handled the request, the .body property
+    is a string that is ready to be sent back to the client, so it is _body converted
+    to a string. The reason _body isn't name body_kwargs is because _body can be
+    almost anything (not just a dict)
+    """
 
     encoding = ""
 
-    """
-    an instance of this class is used to create the text response that will be sent 
-    back to the client
-    """
     @property
     def code(self):
         """the http status code to return to the client, by default, 200 if a body is present otherwise 204"""
@@ -1136,10 +1151,10 @@ class Response(Http):
     @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
-        b = None
-        if hasattr(self, '_body'):
-            b = self._body
-
+        b = getattr(self, "_body", None)
+#         b = None
+#         if hasattr(self, '_body'):
+#             b = self._body
         return self.normalize_body(b)
 
     @body.setter
@@ -1164,12 +1179,13 @@ class Response(Http):
                 logger.warn("Response body is a filestream that has no .filepath property")
 
     def has_body(self):
-        ret = False
-        if hasattr(self, '_body'):
-            r = getattr(self, '_body', None)
-            if r is not None: ret = True
-
-        return ret
+        return getattr(self, "_body", None) is not None
+#         ret = False
+#         if hasattr(self, '_body'):
+#             r = getattr(self, '_body', None)
+#             if r is not None: ret = True
+# 
+#         return ret
 
     def has_streaming_body(self):
         """return True if the response body is a file pointer"""
@@ -1180,35 +1196,24 @@ class Response(Http):
         """return the body as a string, formatted to the appropriate content type"""
         if b is None: return ByteString(b'', self.encoding)
 
-        is_error = isinstance(b, Exception)
-        ct = self.get_header('Content-Type')
-        if ct:
-            ct = ct.lower()
-            if ct.rfind("json") >= 0: # fuzzy, not sure I like that
-                if is_error:
-                    b = json.dumps({
-                        "errmsg": str(b),
-                        "errno": self.code
-                    })
-
-                else:
-                    # I don't like this, if we have a content type but it isn't one
-                    # of the supported ones we were returning the exception, which threw
-                    # Jarid off, but now it just returns a string, which is not best either
-                    # my thought is we could have a body_type_subtype method that would 
-                    # make it possible to easily handle custom types
-                    # eg, "application/json" would become: self.body_application_json(b, is_error)
-                    b = json.dumps(b, cls=ResponseBody)
-
-            else:
-                # no idea what to do here because we don't know how to handle the type
-                b = ByteString(b, self.encoding)
+        if self.is_json():
+            # I don't like this, if we have a content type but it isn't one
+            # of the supported ones we were returning the exception, which threw
+            # Jarid off, but now it just returns a string, which is not best either
+            # my thought is we could have a body_type_subtype method that would 
+            # make it possible to easily handle custom types
+            # eg, "application/json" would become: self.body_application_json(b, is_error)
+            b = json.dumps(b, cls=ResponseBody)
 
         else:
             # just return a string representation of body if no content type
             b = ByteString(b, self.encoding)
 
         return b
+
+    def is_json(self):
+        ct = self.get_header('Content-Type')
+        return ct.lower().rfind("json") >= 0 if ct else False
 
     def __iter__(self):
         if self.has_streaming_body():

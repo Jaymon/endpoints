@@ -195,6 +195,21 @@ class WebsocketTest(TestCase):
         r = c.post("/foo", {"bar": 2})
         self.assertEqual(1, r._body)
 
+    def test_error(self):
+        c = self.create_client('ws.request_mod', [
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs): pass",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    def GET(self):",
+            "        raise ValueError('bah')",
+        ])
+
+        r = c.get("/", {"foo": 2})
+        self.assertEqual(500, r.code)
+        self.assertEqual("bah", r._body["errmsg"])
 
 
 class UWSGIServerTest(WSGIServerTest):
