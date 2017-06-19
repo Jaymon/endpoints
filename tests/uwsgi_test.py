@@ -86,8 +86,8 @@ class WebsocketTest(TestCase):
         ])
         return super(WebsocketTest, self).create_client(*args, **kwargs)
 
-    def test_connect(self):
-        c = self.create_client('ws.connect', [
+    def test_connect_success(self):
+        c = self.create_client('ws.connectsuccess', [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def CONNECT(self, *args, **kwargs):",
@@ -99,8 +99,28 @@ class WebsocketTest(TestCase):
         c.connect(trace=True)
         self.assertTrue(c.connected)
 
+        # when looking at logs, this test looks like there is a problem because
+        # right after connection an IOError is thrown, that's because the close
+        # will cause uWSGI to raise an IOError, giving the websocket a chance
+        # to clean up the connection
+
         c.close()
         self.assertFalse(c.connected)
+
+    def test_connect_failure(self):
+        c = self.create_client('ws.connectfail', [
+            "from endpoints import Controller, CallError",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs):",
+            "        raise CallError(401, 'this is the message')",
+            "    def DISCONNECT(self, *args, **kwargs):",
+            "        pass",
+        ])
+
+        c.connect()
+        self.assertTrue(c.connected)
+        r = c.recv()
+        self.assertEqual(401, r.code)
 
     def test_request(self):
         c = self.create_client('ws.request', [
@@ -195,8 +215,8 @@ class WebsocketTest(TestCase):
         r = c.post("/foo", {"bar": 2})
         self.assertEqual(1, r._body)
 
-    def test_error(self):
-        c = self.create_client('ws.request_mod', [
+    def test_error_500(self):
+        c = self.create_client('ws.err500', [
             "from endpoints import Controller",
             "",
             "class Default(Controller):",
@@ -210,6 +230,51 @@ class WebsocketTest(TestCase):
         r = c.get("/", {"foo": 2})
         self.assertEqual(500, r.code)
         self.assertEqual("bah", r._body["errmsg"])
+
+    def test_call_error(self):
+        c = self.create_client('ws.callerr', [
+            "from endpoints import Controller, CallError",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs): pass",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    def GET(self):",
+            "        raise CallError(401)",
+        ])
+
+        r = c.get("/", {"foo": 2})
+        self.assertEqual(401, r.code)
+
+#     def test_request_override(self):
+#         c = self.create_client(
+#             'ws.request_override',
+#             [
+#                 "from endpoints import Controller",
+#                 "",
+#                 "class Foo(Controller):",
+#                 "    def CONNECT(self, *args, **kwargs): pass",
+#                 "    def DISCONNECT(self, *args, **kwargs): pass",
+#                 "",
+#                 "    def GET(self, *args):",
+#                 "        return self.request.foo",
+#                 "",
+#             ],
+#             config_module_body=[
+#                 "from endpoints.http import Request as BaseRequest",
+#                 "from endpoints.interface.uwsgi.gevent import WebsocketApplication",
+#                 "",
+#                 "class Request(BaseRequest):",
+#                 "    foo = 100",
+#                 "    def __setattr__(self, key, val):",
+#                 "        self.__dict__[key] = val",
+#                 "",
+#                 "WebsocketApplication.request_class = Request",
+#             ],
+#         )
+# 
+#         r = c.get("/foo/bar")
+#         self.assertEqual(10000, r._body)
 
 
 class UWSGIServerTest(WSGIServerTest):

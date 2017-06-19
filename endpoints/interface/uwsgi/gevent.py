@@ -76,12 +76,19 @@ class Connection(object):
         while True:
             # logger.debug("user {} waiting".format(user.pk))
             ready = gevent.select.select(self.descriptors, [], [], 10)
-            if not ready[0]: continue
+            if not ready[0]:
+                # send websocket ping on timeout
+                uwsgi.websocket_recv_nb()
+                continue
+
             for fd in ready[0]:
                 yield fd
 
     def close(self):
         pass
+
+    def __hash__(self):
+        return int(self.ws_fd)
 
 
 class WebsocketApplication(Application):
@@ -133,9 +140,12 @@ class WebsocketApplication(Application):
             "body": res._body,
             "code": res.code,
         }
-        uuid = req.payload.uuid
-        if uuid:
-            kwargs["uuid"] = uuid
+
+        payload = getattr(req, "payload", None)
+        if payload:
+            uuid = payload.uuid
+            if uuid:
+                kwargs["uuid"] = uuid
 
         return self.payload_class(**kwargs)
 
@@ -147,60 +157,93 @@ class WebsocketApplication(Application):
         res = call.response
         conn = self.create_connection()
 
-        logger.info("Websocket Connected")
+        logger.info("Websocket {} Connected".format(hash(conn)))
 
         try:
-            for fd in conn:
-                if conn.is_websocket(fd):
-                    # we've received a message from this client's websocket
-                    raw = conn.recv_payload()
-                    if raw:
-                        req_payload = self.create_request_payload(raw)
-                        environ = self.create_environ(req, req_payload)
-                        c = self.create_call(environ)
-                        res = c.handle()
+            req.method = "CONNECT"
+            res = call.handle()
+            if res.code in [200, 204]:
+                for fd in conn:
+                    if conn.is_websocket(fd):
+                        # we've received a message from this client's websocket
+                        raw = conn.recv_payload()
+                        if raw:
+                            req_payload = self.create_request_payload(raw)
+                            environ = self.create_environ(req, req_payload)
+                            c = self.create_call(environ)
+                            res = c.handle()
 
-                        res_payload = self.create_response_payload(c.request, res)
-                        conn.send_payload(res_payload.payload)
+                            res_payload = self.create_response_payload(c.request, res)
+                            conn.send_payload(res_payload.payload)
+
+            else:
+                # send down the connect results so javascript webclients can know
+                # why we are about to disconnect
+                res_payload = self.create_response_payload(req, res)
+                conn.send_payload(res_payload.payload)
 
         except IOError as e:
             # user disconnected
-            logger.exception(e)
-            pass
+            # a user disconnecting is usually manifested by "IOError: unable to
+            # receive websocket message", this is entirely normal and nothing to
+            # be concerned about, it basically means the client closed the connection
+            logger.info("Websocket {} Disconnected".format(hash(conn)))
+            #logger.exception(e)
 
         except Exception as e:
             logger.exception(e)
 
         finally:
+            req.method = "DISCONNECT"
+            call.quiet = True
+            res = call.handle()
             conn.close()
 
         return ''
+
 
     def __call__(self, environ, start_response):
         c = self.create_call(environ)
         req = c.request
 
-        body = ''
         if self.is_http(req):
             res = c.handle()
             res = self.handle_http_response(c, start_response)
 
         else:
-            req.method = "CONNECT"
-            res = c.handle()
-            if res.code in [200, 204]:
-                try:
-                    self.handle_websocket_response(c)
-
-                    req.method = "DISCONNECT"
-                    res = c.handle()
-
-                except Exception as e:
-                    c.handle_error(e)
-                    res = self.handle_http_response(c, start_response)
-
-            else:
-                res = self.handle_http_response(c, start_response)
+            res = self.handle_websocket_response(c)
 
         return res
+
+
+
+
+
+#     def __call__(self, environ, start_response):
+#         c = self.create_call(environ)
+#         req = c.request
+# 
+#         body = ''
+#         if self.is_http(req):
+#             res = c.handle()
+#             res = self.handle_http_response(c, start_response)
+# 
+#         else:
+#             req.method = "CONNECT"
+#             res = c.handle()
+#             if res.code in [200, 204]:
+#                 try:
+#                     self.handle_websocket_response(c)
+# 
+#                     req.method = "DISCONNECT"
+#                     res = c.handle()
+# 
+#                 except Exception as e:
+#                     c.handle_error(e)
+#                     res = self.handle_http_response(c, start_response)
+# 
+#             else:
+#                 res = self.handle_http_response(c, start_response)
+# 
+#         return res
 

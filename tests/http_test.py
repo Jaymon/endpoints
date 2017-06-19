@@ -108,6 +108,18 @@ class HeadersTest(TestCase):
 
 
 class RequestTest(TestCase):
+    def test_override(self):
+
+        class RO(Request):
+            def __setattr__(self, k, v):
+                super(RO, self).__setattr__(k, v)
+                #pout.v(k, v)
+                #self.__dict__[k] = v
+
+        req = RO()
+        req.path = "/foo/bar"
+        pout.v(req.path, req)
+
     def test_copy(self):
         r = Request()
         r.set_headers({

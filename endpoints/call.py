@@ -27,6 +27,12 @@ class Call(object):
     This class is created in the interface and is responsible for taking the request
     and handling it and setting everything into the body of response so the interface
     can respond to the request"""
+
+    # TODO -- 6-19-2017, I'm not wild about this property or what it does so I shouldn't
+    # rely on it existing in the future
+    quiet = False
+    """Set to True if you would like to avoid logging the request lifecycle"""
+
     def __init__(self, req, res, rou):
         self.request = req
         self.response = res
@@ -88,7 +94,8 @@ class Call(object):
             con = self.create_controller()
             con.call = self
             self.controller = con
-            con.log_start(start)
+            if not self.quiet:
+                con.log_start(start)
 
             # the controller handle method will manipulate self.response, it first
             # tries to find a handle_HTTP_METHOD method, if it can't find that it
@@ -100,10 +107,11 @@ class Call(object):
             if not controller_method:
                 controller_method = getattr(con, "handle")
 
-            logger.debug("Using handle method: {}.{}".format(
-                con.__class__.__name__,
-                controller_method.__name__
-            ))
+            if not self.quiet:
+                logger.debug("Using handle method: {}.{}".format(
+                    con.__class__.__name__,
+                    controller_method.__name__
+                ))
             controller_method(*controller_args, **controller_kwargs)
 
         except Exception as e:
@@ -115,7 +123,8 @@ class Call(object):
                 res.body = None # just to be sure since body could've been ""
 
             if con:
-                con.log_stop(start)
+                if not self.quiet:
+                    con.log_stop(start)
 
         return res
 
