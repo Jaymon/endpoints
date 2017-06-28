@@ -246,6 +246,28 @@ class WebsocketTest(TestCase):
         r = c.get("/", {"foo": 2})
         self.assertEqual(401, r.code)
 
+    def test_connect_error(self):
+        c = self.create_client('ws.callerr', [
+            "from endpoints import Controller, CallError",
+            "from endpoints.decorators.auth import client_auth as BaseAuth",
+            "class client_auth(BaseAuth):",
+            "    def target(self, *args, **kwargs): return False",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs):",
+            "        auth = client_auth()",
+            "        auth.handle_target(self.request, args, kwargs)",
+            "",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    @client_auth",
+            "    def GET(self): pass",
+        ])
+
+        r = c.get("/")
+        self.assertEqual(401, r.code)
+
+
 #     def test_request_override(self):
 #         c = self.create_client(
 #             'ws.request_override',

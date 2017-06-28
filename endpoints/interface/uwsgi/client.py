@@ -254,9 +254,11 @@ class WebsocketClient(HTTPClient):
         :returns: Payload, the response payload
         """
         if req_payload.uuid:
+            uuids = set([req_payload.uuid, "CONNECT"])
             def callback(res_payload):
-                #pout.v(payload, res_payload)
-                ret = req_payload.uuid == res_payload.uuid
+                #pout.v(req_payload, res_payload)
+                #ret = req_payload.uuid == res_payload.uuid or res_payload.uuid == "CONNECT"
+                ret = res_payload.uuid in uuids
                 if ret:
                     logger.debug('{} received {} response for {}'.format(
                         self.client_id,
@@ -296,6 +298,7 @@ class WebsocketClient(HTTPClient):
                 try:
                     opcode, data = self.ws.recv_data()
                     if opcode in opcodes:
+                        timeout = 0.0
                         break
 
                     else:
@@ -307,11 +310,18 @@ class WebsocketClient(HTTPClient):
 
                 except websocket.WebSocketConnectionClosedException:
                     # bug in Websocket.recv_data(), this should be done by Websocket
-                    self.ws.shutdown()
+                    try:
+                        self.ws.shutdown()
+                    except AttributeError:
+                        pass
                     #raise EOFError("websocket closed by server and reconnection did nothing")
 
-            stop = time.time()
-            timeout -= (stop - start)
+            if timeout:
+                stop = time.time()
+                timeout -= (stop - start)
+
+            else:
+                break
 
         if timeout < 0.0:
             raise IOError("recv timed out in {} seconds".format(orig_timeout))

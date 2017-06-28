@@ -20,6 +20,12 @@ from ...http import ResponseBody
 
 
 class Payload(object):
+    @property
+    def payload(self):
+        #kwargs = {r[0]:r[1] for r in self.__dict__.items() if not r[0].startswith("_")}
+        kwargs = self.__dict__
+        return json.dumps(kwargs, cls=ResponseBody)
+
     def __init__(self, raw=None, **kwargs):
         self.uuid = None
 
@@ -40,13 +46,14 @@ class Payload(object):
         if "method" not in kwargs and "code" not in kwargs:
             raise ValueError("one of [method, code] is required")
 
-        kwargs["payload"] = json.dumps(kwargs, cls=ResponseBody)
+        #kwargs["payload"] = json.dumps(kwargs, cls=ResponseBody)
 
         for k, v in kwargs.items():
             setattr(self, k, v)
 
     def loads(self, raw):
         kwargs = json.loads(raw)
+        kwargs.pop("payload", None)
 
         for k, v in kwargs.items():
             setattr(self, k, v)

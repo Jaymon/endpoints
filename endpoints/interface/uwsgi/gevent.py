@@ -180,6 +180,7 @@ class WebsocketApplication(Application):
                 # send down the connect results so javascript webclients can know
                 # why we are about to disconnect
                 res_payload = self.create_response_payload(req, res)
+                res_payload.uuid = "CONNECT"
                 conn.send_payload(res_payload.payload)
 
         except IOError as e:
