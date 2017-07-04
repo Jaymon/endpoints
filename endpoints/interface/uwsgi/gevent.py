@@ -160,6 +160,7 @@ class WebsocketApplication(Application):
         logger.info("Websocket {} Connected".format(hash(conn)))
 
         try:
+            req.connection = conn
             req.method = "CONNECT"
             res = call.handle()
             if res.code in [200, 204]:

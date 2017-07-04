@@ -1045,8 +1045,7 @@ class Request(Http):
     def kwargs(self):
         """combine GET and POST params to be passed to the controller"""
         kwargs = dict(self.query_kwargs)
-        if self.has_body():
-            kwargs.update(self.body_kwargs)
+        kwargs.update(self.body_kwargs)
 
         return kwargs
 
@@ -1075,7 +1074,8 @@ class Request(Http):
 
     def has_body(self):
         #return self.method.upper() in set(['POST', 'PUT'])
-        return self.method.upper() not in set(['GET'])
+        return True if self.body_kwargs else False
+        #return self.method.upper() not in set(['GET'])
 
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""
