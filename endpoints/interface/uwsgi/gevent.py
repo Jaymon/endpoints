@@ -52,11 +52,12 @@ class Connection(object):
     def is_websocket(self, fd):
         return fd == self.ws_fd
 
-    def recv_payload(self):
+    def recv_payload(self, fd):
         """receive a message from the user that will be routed to other users, 
         in other words, the user sent a message from their client that the server
         is receiving on the internets"""
-        msg = None
+        if not self.is_websocket(fd): return None
+
         payload = uwsgi.websocket_recv_nb()
 
         # make sure the received message is valid
@@ -72,7 +73,10 @@ class Connection(object):
         uwsgi.websocket_send(payload)
 
     def __iter__(self):
-        """just keep iterating through ready to read file descriptors for all eternity"""
+        """just keep iterating through ready to read file descriptors for all eternity
+
+        :returns: payload, the raw payload received from a socket
+        """
         while True:
             # logger.debug("user {} waiting".format(user.pk))
             ready = gevent.select.select(self.descriptors, [], [], 10)
@@ -82,7 +86,9 @@ class Connection(object):
                 continue
 
             for fd in ready[0]:
-                yield fd
+                payload = self.recv_payload(fd)
+                if payload:
+                    yield payload
 
     def close(self):
         pass
@@ -164,18 +170,14 @@ class WebsocketApplication(Application):
             req.method = "CONNECT"
             res = call.handle()
             if res.code in [200, 204]:
-                for fd in conn:
-                    if conn.is_websocket(fd):
-                        # we've received a message from this client's websocket
-                        raw = conn.recv_payload()
-                        if raw:
-                            req_payload = self.create_request_payload(raw)
-                            environ = self.create_environ(req, req_payload)
-                            c = self.create_call(environ)
-                            res = c.handle()
+                for raw in conn:
+                    req_payload = self.create_request_payload(raw)
+                    environ = self.create_environ(req, req_payload)
+                    c = self.create_call(environ)
+                    res = c.handle()
 
-                            res_payload = self.create_response_payload(c.request, res)
-                            conn.send_payload(res_payload.payload)
+                    res_payload = self.create_response_payload(c.request, res)
+                    conn.send_payload(res_payload.payload)
 
             else:
                 # send down the connect results so javascript webclients can know
