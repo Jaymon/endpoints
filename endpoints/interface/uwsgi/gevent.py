@@ -96,6 +96,14 @@ class Connection(object):
     def __hash__(self):
         return int(self.ws_fd)
 
+    def handle_connected(self, req, res):
+        """called right after a successful websocket connection"""
+        pass
+
+    def handle_disconnected(self, req, res):
+        """called right after a successful websocket disconnection"""
+        pass
+
 
 class WebsocketApplication(Application):
 
@@ -169,7 +177,8 @@ class WebsocketApplication(Application):
             req.connection = conn
             req.method = "CONNECT"
             res = call.handle()
-            if res.code in [200, 204]:
+            if res.code < 400:
+                conn.handle_connected(req, res)
                 for raw in conn:
                     req_payload = self.create_request_payload(raw)
                     environ = self.create_environ(req, req_payload)
@@ -202,6 +211,7 @@ class WebsocketApplication(Application):
             call.quiet = True
             res = call.handle()
             conn.close()
+            conn.handle_disconnected(req, res)
 
         return ''
 
