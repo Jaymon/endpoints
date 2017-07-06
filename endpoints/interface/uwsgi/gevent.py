@@ -107,6 +107,10 @@ class Connection(object):
         """called right after a successful websocket disconnection"""
         pass
 
+    def handle_called(self, req, res):
+        """called each time after a controller has handled the request"""
+        pass
+
 
 class WebsocketApplication(Application):
 
@@ -188,6 +192,7 @@ class WebsocketApplication(Application):
                     c = self.create_call(environ)
                     res = c.handle()
 
+                    conn.handle_called(c.request, res)
                     res_payload = self.create_response_payload(c.request, res)
                     conn.send_payload(res_payload.payload)
 
