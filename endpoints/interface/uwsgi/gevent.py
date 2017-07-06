@@ -49,22 +49,25 @@ class Connection(object):
         self.ws_fd = uwsgi.connection_fd()
         self.descriptors = [self.ws_fd]
 
-    def is_websocket(self, fd):
-        return fd == self.ws_fd
-
     def recv_payload(self, fd):
         """receive a message from the user that will be routed to other users, 
         in other words, the user sent a message from their client that the server
         is receiving on the internets"""
-        if not self.is_websocket(fd): return None
 
         payload = uwsgi.websocket_recv_nb()
+        if payload and payload != 'undefined':
+            yield payload
+
+
+#         if not self.is_websocket(fd): return None
+# 
+#         payload = uwsgi.websocket_recv_nb()
 
         # make sure the received message is valid
-        if not payload: return None
-        if payload == 'undefined': return None
+#         if not payload: return None
+#         if payload == 'undefined': return None
+#         return payload
 
-        return payload
 
     def send_payload(self, payload):
         """take all the messages received from a redis pubsub channel_name and send it
@@ -86,9 +89,9 @@ class Connection(object):
                 continue
 
             for fd in ready[0]:
-                payload = self.recv_payload(fd)
-                if payload:
-                    yield payload
+                for payload in self.recv_payload(fd):
+                    if payload:
+                        yield payload
 
     def close(self):
         pass
