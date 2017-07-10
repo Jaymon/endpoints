@@ -2,6 +2,7 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import codecs
 import hashlib
+import random
 
 import testdata
 
@@ -283,6 +284,29 @@ class WebsocketTest(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual(2, r._body)
 
+    def test_count(self):
+        c = self.create_client('ws.cnt', [
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs): pass",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    def GET(self, **kwargs): pass",
+            "    def POST(self, **kwargs): pass",
+        ])
+
+        for x in range(1, 6):
+            r = getattr(c, random.choice(["get", "post"]))("/")
+            self.assertEqual(204, r.code)
+            self.assertEqual(x, r.count)
+
+        c.close()
+
+        for x in range(1, 6):
+            r = getattr(c, random.choice(["get", "post"]))("/")
+            self.assertEqual(204, r.code)
+            self.assertEqual(x, r.count)
 
 #     def test_request_override(self):
 #         c = self.create_client(

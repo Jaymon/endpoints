@@ -155,11 +155,12 @@ class WebsocketApplication(Application):
     def create_request_payload(self, raw):
         return self.payload_class(raw)
 
-    def create_response_payload(self, req, res):
+    def create_response_payload(self, req, res, count):
         kwargs = {
             "path": req.path,
             "body": res._body,
             "code": res.code,
+            "count": count,
         }
 
         payload = getattr(req, "payload", None)
@@ -186,20 +187,20 @@ class WebsocketApplication(Application):
             res = call.handle()
             if res.code < 400:
                 conn.handle_connected(req, res)
-                for raw in conn:
+                for count, raw in enumerate(conn, 1):
                     req_payload = self.create_request_payload(raw)
                     environ = self.create_environ(req, req_payload)
                     c = self.create_call(environ)
                     res = c.handle()
 
                     conn.handle_called(c.request, res)
-                    res_payload = self.create_response_payload(c.request, res)
+                    res_payload = self.create_response_payload(c.request, res, count)
                     conn.send_payload(res_payload.payload)
 
             else:
                 # send down the connect results so javascript webclients can know
                 # why we are about to disconnect
-                res_payload = self.create_response_payload(req, res)
+                res_payload = self.create_response_payload(req, res, 1)
                 res_payload.uuid = "CONNECT"
                 conn.send_payload(res_payload.payload)
 
