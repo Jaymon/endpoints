@@ -126,7 +126,7 @@ Every _Endpoints_ Controller has [Cors support](http://www.w3.org/TR/cors/) by d
 You can turn Cors support off by setting `cors = False` on the Controller:
 
 ```python
-from endpoints import Controller, CorsMixin
+from endpoints import Controller
 
 class Default(Controller):
 
