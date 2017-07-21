@@ -618,7 +618,7 @@ class Controller(object):
 
             ip = req.ip
             if ip:
-                hs.append("\tIP ADDRESS: {}".format(ip))
+                logger.info("\tIP ADDRESS: {}".format(ip))
 
             if 'authorization' in req.headers:
                 logger.info('AUTH {}'.format(req.headers['authorization']))
