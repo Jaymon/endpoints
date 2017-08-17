@@ -186,8 +186,17 @@ class WebsocketApplication(Application):
             req.method = "CONNECT"
             res = call.handle()
             if res.code < 400:
+
                 conn.handle_connected(req, res)
-                for count, raw in enumerate(conn, 1):
+
+                # send down connect success so js clients can know both success or
+                # failure, turns out only sending down failure causes client code
+                # to be more complex
+                res_payload = self.create_response_payload(req, res, 1)
+                res_payload.uuid = "CONNECT"
+                conn.send_payload(res_payload.payload)
+
+                for count, raw in enumerate(conn, 2):
                     req_payload = self.create_request_payload(raw)
                     environ = self.create_environ(req, req_payload)
                     c = self.create_call(environ)

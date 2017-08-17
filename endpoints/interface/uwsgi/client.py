@@ -100,11 +100,13 @@ class WebsocketClient(HTTPClient):
         """
         make the actual connection to the websocket
 
-        headers -- dict -- key: val pairs of any headers to add to connection, if
+        :param headers: dict, key/val pairs of any headers to add to connection, if
             you would like to override headers just pass in an empty value
-        query -- dict -- any query string params you want to send up with the connection
+        :param query: dict, any query string params you want to send up with the connection
             url
+        :returns: Payload, this will return the CONNECT response from the websocket
         """
+        ret = None
         ws_url = self.get_fetch_url(path, query)
         ws_headers = self.get_fetch_headers("GET", headers)
         ws_headers = ['{}: {}'.format(h[0], h[1]) for h in ws_headers.items() if h[1]]
@@ -122,56 +124,25 @@ class WebsocketClient(HTTPClient):
                 sslopt={'cert_reqs':ssl.CERT_NONE},
             )
 
+            ret = self.recv_callback(callback=lambda r: r.uuid == "CONNECT")
+            if ret.code >= 400:
+                raise IOError("Failed to connect with code {}".format(ret.code))
+
 #             self.headers = headers
 #             self.query_kwargs = query_kwargs
 
         except websocket.WebSocketTimeoutException:
-            raise IOError("failed to connect within {} seconds".format(timeout))
+            raise IOError("Failed to connect within {} seconds".format(timeout))
 
         except websocket.WebSocketException as e:
-            raise IOError("failed to connect with error: {}".format(e))
+            raise IOError("Failed to connect with error: {}".format(e))
 
         except socket.error as e:
             # this is an IOError, I just wanted to be aware of that, most common
             # problem is: [Errno 111] Connection refused
             raise
 
-#     def idle(self, low, high=None):
-#         """this is just here for backwards compatibility"""
-#         sleep_seconds = self.idle_seconds(low, high)
-#         logger.debug('{} idle for {} seconds'.format(self.user.pk, sleep_seconds))
-#         time.sleep(sleep_seconds)
-# 
-#     def idle_seconds(self, low, high=None):
-#         """this will choose some amount of time between low and high seconds"""
-#         if high is None:
-#             sleep_seconds = float(low)
-# 
-#         else:
-#             sleep_seconds = round(random.uniform(float(low), float(high)), 2)
-# 
-#         return sleep_seconds
-
-    def idle_recv(self, callback, sleep_seconds, start_dt=None, **kwargs):
-        """this will try and recv a message for sleep_seconds, raising a LookupError
-        if a message is received during that idle time"""
-        kwargs['timeout'] = sleep_seconds
-        if not start_dt:
-            start_dt = datetime.datetime.utcnow()
-
-        logger.debug('{} idle receive for {} seconds'.format(self.client_id, sleep_seconds))
-        try:
-            m = self.recv_callback(
-                callback=callback,
-                **kwargs
-            )
-
-            raise LookupError("message received while idling")
-
-        except IOError:
-            # we want to receive a timeout IOError because that tells us no message
-            # came in while we were waiting
-            pass
+        return ret
 
     def get_fetch_request(self, method, path, body):
         uuid = "{}-{}".format(self.client_id, self.send_count)
@@ -209,8 +180,9 @@ class WebsocketClient(HTTPClient):
                     with self.wstimeout(**kwargs) as timeout:
                         kwargs['timeout'] = timeout
 
-                        logger.debug('{} send attempt {}/{} with timeout {}'.format(
+                        logger.debug('{} send {} attempt {}/{} with timeout {}'.format(
                             self.client_id,
+                            payload.uuid,
                             attempts,
                             max_attempts,
                             timeout

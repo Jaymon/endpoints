@@ -97,7 +97,8 @@ class WebsocketTest(TestCase):
             "        pass",
         ])
 
-        c.connect(trace=True)
+        r = c.connect(trace=True)
+        self.assertEqual(204, r.code)
         self.assertTrue(c.connected)
 
         # when looking at logs, this test looks like there is a problem because
@@ -118,10 +119,8 @@ class WebsocketTest(TestCase):
             "        pass",
         ])
 
-        c.connect()
-        self.assertTrue(c.connected)
-        r = c.recv()
-        self.assertEqual(401, r.code)
+        with self.assertRaises(IOError):
+            c.connect()
 
     def test_request(self):
         c = self.create_client('ws.request', [
@@ -265,8 +264,8 @@ class WebsocketTest(TestCase):
             "    def GET(self): pass",
         ])
 
-        r = c.get("/")
-        self.assertEqual(401, r.code)
+        with self.assertRaises(IOError):
+            r = c.get("/")
 
     def test_get_query(self):
         c = self.create_client('ws.getquery', [
@@ -296,14 +295,14 @@ class WebsocketTest(TestCase):
             "    def POST(self, **kwargs): pass",
         ])
 
-        for x in range(1, 6):
+        for x in range(2, 7):
             r = getattr(c, random.choice(["get", "post"]))("/")
             self.assertEqual(204, r.code)
             self.assertEqual(x, r.count)
 
         c.close()
 
-        for x in range(1, 6):
+        for x in range(2, 7):
             r = getattr(c, random.choice(["get", "post"]))("/")
             self.assertEqual(204, r.code)
             self.assertEqual(x, r.count)
