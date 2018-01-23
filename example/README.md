@@ -15,3 +15,4 @@ This is just a simple example to demonstrate how Endpoints handles requests.
         $ curl -v -d '{"foo": "bar"}' "http://localhost:8000/cors"
 
 * Kill the server with ctrl-c
+
