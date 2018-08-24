@@ -8,6 +8,7 @@ import json
 
 import testdata
 
+from endpoints.utils import ByteString
 from endpoints.client import HTTPClient
 from endpoints.interface.wsgi.client import WSGIServer
 

@@ -9,7 +9,7 @@ import fnmatch
 import ast
 import collections
 #import keyword
-import __builtin__
+from .compat.imports import builtins
 
 from .call import Router, Controller
 from .decorators import _property, version, param
@@ -56,7 +56,7 @@ class ReflectMethod(object):
         ret = ""
         for decor in self.decorators:
             if version in decor:
-                ret = filter(None, decor.args)[0]
+                ret = list(filter(None, decor.args))[0]
                 break
         return ret
 
@@ -153,7 +153,7 @@ class ReflectController(object):
 
             elif isinstance(na, ast.Name):
                 # http://stackoverflow.com/questions/12700893/
-                ret = getattr(__builtin__, na.id, None)
+                ret = getattr(builtins, na.id, None)
                 if not ret:
                     ret = na.id
                     if ret == 'True':
@@ -261,7 +261,7 @@ class ReflectController(object):
     @_property
     def bits(self):
         bits = self.module_name.replace(self.controller_prefix, '', 1).lower()
-        bits = filter(None, bits.split("."))
+        bits = list(filter(None, bits.split(".")))
 
         class_name = self.class_name.lower()
         if class_name != "default":

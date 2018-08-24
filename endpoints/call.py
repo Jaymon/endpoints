@@ -16,6 +16,7 @@ from .utils import AcceptHeader
 from .http import Response, Request
 from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError, VersionError
 from .decorators import _property
+from .compat.environ import *
 
 
 logger = logging.getLogger(__name__)

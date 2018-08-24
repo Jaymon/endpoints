@@ -1,16 +1,17 @@
-from __future__ import absolute_import
+# -*- coding: utf-8 -*-
+from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
-import SocketServer
 
+from ...compat.imports import socketserver
 from .. import BaseServer
 from ...http import Url
 from ...decorators import _property
-from ...utils import ByteString
+from ...utils import ByteString, String
 
 
 # http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
-class WSGIHTTPServer(SocketServer.ThreadingMixIn, WSGIServer):
+class WSGIHTTPServer(socketserver.ThreadingMixIn, WSGIServer):
     """This is here to make the standard wsgi server multithreaded"""
     pass
 
@@ -36,8 +37,8 @@ class Application(BaseServer):
         res = call.response
 
         start_response(
-            ByteString('{} {}'.format(res.code, res.status), res.encoding),
-            [(ByteString(k, res.encoding), ByteString(v, res.encoding)) for k, v in res.headers.items()]
+            '{} {}'.format(res.code, res.status),
+            list(res.headers.items())
         )
 
         # returning the Response, it needs to have an __iter__ for internal wsgi 
@@ -69,7 +70,7 @@ class Application(BaseServer):
 
         if 'wsgi.input' in raw_request:
 
-            if "CONTENT_LENGTH" in raw_request and r.get_header("CONTENT_LENGTH", 0) <= 0:
+            if "CONTENT_LENGTH" in raw_request and int(r.get_header("CONTENT_LENGTH", 0)) <= 0:
                 r.body_kwargs = {}
 
             else:

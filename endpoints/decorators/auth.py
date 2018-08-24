@@ -3,6 +3,7 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import logging
 
 from ..exception import CallError, AccessDenied
+from ..utils import String
 from .base import TargetDecorator
 
 
@@ -46,7 +47,7 @@ class auth(TargetDecorator):
             raise CallError(403, "You need a validator function to use authentication")
         else:
             raise AccessDenied(
-                e.message,
+                String(e),
                 scheme=self.scheme,
                 realm=self.realm,
             )

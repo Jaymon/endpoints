@@ -6,6 +6,8 @@ import os
 import testdata
 
 import endpoints
+from endpoints.environ import *
+from endpoints.utils import ByteString
 from endpoints.http import Request, Response
 from endpoints.call import Controller, Router
 from endpoints.exception import CallError
@@ -239,13 +241,13 @@ class RouterTest(TestCase):
             ],
             controller_prefix: [
                 "from endpoints import Controller",
-                "from nomod import Nomodbar",
+                "from .nomod import Nomodbar",
                 "class Default(Controller):",
                 "    def GET(): pass",
                 ""
             ]
         }
-        testdata.create_modules(contents)
+        m = testdata.create_modules(contents)
 
         path = '/nomodbar' # same name as one of the non controller classes
         r = Router(controller_prefix)
@@ -552,7 +554,7 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/testcallstop")
-        self.assertEqual('', res.body)
+        self.assertEqual(ByteString(''), res.body)
         self.assertEqual(None, res._body)
         self.assertEqual(205, res.code)
 

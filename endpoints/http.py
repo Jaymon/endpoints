@@ -1,13 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
-import urllib
 import json
 import types
 import cgi
 import re
-import base64
-from BaseHTTPServer import BaseHTTPRequestHandler
 from functools import partial
 from wsgiref.headers import Headers as BaseHeaders
 from collections import Mapping, MutableSequence, Sequence
@@ -16,13 +13,10 @@ import logging
 import inspect
 import copy
 
-try:
-    import urlparse
-except ImportError:
-    from urllib import parse as urlparse
-
+from .compat.environ import *
+from .compat.imports import BaseHTTPRequestHandler, parse as urlparse, urlencode
 from .decorators import _property
-from .utils import AcceptHeader, ByteString, MimeType
+from .utils import AcceptHeader, ByteString, MimeType, String, Base64
 
 
 logger = logging.getLogger(__name__)
@@ -40,19 +34,27 @@ class Headers(BaseHeaders, Mapping):
     makes it even more dict-like and will return titled header names when iterated
     or anything (eg, Content-Type instead of all lowercase content-type)
 
-    Here is the headers spec:
+    http headers spec:
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
 
-    Here are the wsgiref class docs:
+    wsgiref class docs:
         https://docs.python.org/2/library/wsgiref.html#module-wsgiref.headers
         https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
     """
     @classmethod
     def normalize_name(cls, k):
         """converts things like FOO_BAR to Foo-Bar which is the normal form"""
+        k = String(k)
         klower = k.lower().replace('_', '-')
         bits = klower.split('-')
         return "-".join((bit.title() for bit in bits))
+
+    @classmethod
+    def normalize_val(cls, v):
+        # wsgiref.headers.Headers expects a str() (py3) or unicode (py2), it
+        # does not accept even a child of str, so we need to convert the String
+        # instance to the actual str
+        return String(v).raw()
 
     def __init__(self, headers=None, **kwargs):
         super(Headers, self).__init__([])
@@ -60,6 +62,7 @@ class Headers(BaseHeaders, Mapping):
 
     def __setitem__(self, name, val):
         name = self.normalize_name(name)
+        val = self.normalize_val(val)
         return super(Headers, self).__setitem__(name, val)
 
     def __delitem__(self, name):
@@ -76,10 +79,12 @@ class Headers(BaseHeaders, Mapping):
 
     def setdefault(self, name, val):
         name = self.normalize_name(name)
+        val = self.normalize_val(val)
         return super(Headers, self).setdefault(name, val)
 
     def add_header(self, name, val, **params):
         name = self.normalize_name(name)
+        val = self.normalize_val(val)
         return super(Headers, self).add_header(name, val, **params)
 
     def keys(self):
@@ -209,8 +214,6 @@ class Url(str):
     .base(...) = httop://foo.com/bar/che/...
     .controller(...) = httop://foo.com/bar/...
     """
-    encoding = "utf-8"
-
     scheme = "http"
 
     username = None
@@ -269,7 +272,7 @@ class Url(str):
     @classmethod
     def keys(cls):
         keys = set(k for k, v in inspect.getmembers(cls) if not k.startswith("__") and not callable(v))
-        for dk in ["encoding", "root", "anchor", "uri"]:
+        for dk in ["root", "anchor", "uri"]:
             keys.discard(dk)
         return keys
 
@@ -403,7 +406,7 @@ class Url(str):
 
         for k in parts:
             if isinstance(parts[k], bytes):
-                parts[k] = parts[k].decode(cls.encoding)
+                parts[k] = String(parts[k])
 
         if parts["port"]:
             parts["port"] = int(parts["port"])
@@ -428,7 +431,7 @@ class Url(str):
 
     @classmethod
     def unparse_query(cls, query_kwargs):
-        return urllib.urlencode(query_kwargs, doseq=True)
+        return urlencode(query_kwargs, doseq=True)
 
     @classmethod
     def normalize_paths(cls, *paths):
@@ -475,10 +478,13 @@ class Url(str):
     def add(self, **kwargs):
         """Just a shortcut to change the current url, equivalent to Url(self, **kwargs)"""
         if "path" in kwargs:
-            if not kwargs["path"][0].startswith("/"):
-                paths = self.normalize_paths(self.path, kwargs["path"])
+            path = kwargs["path"]
+            if isinstance(path, bytes):
+                path = String(path)
+            if not path[0].startswith("/"):
+                paths = self.normalize_paths(self.path, path)
             else:
-                paths = self.normalize_paths(kwargs["path"])
+                paths = self.normalize_paths(path)
             kwargs["path"] = "/".join(paths)
         return self.create(self, **kwargs)
 
@@ -714,7 +720,7 @@ class Http(object):
                     b = None
 
             elif ct.rfind("x-www-form-urlencoded") >= 0:
-                b = urllib.urlencode(b, doseq=True)
+                b = urlencode(b, doseq=True)
 
         return b
 
@@ -956,7 +962,7 @@ class Request(Http):
         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
         self._path_args = []
         path = self.path
-        path_args = filter(None, path.split('/'))
+        path_args = list(filter(None, path.split('/')))
         return path_args
 
     @_property
@@ -965,7 +971,7 @@ class Request(Http):
         self._query = query = ""
 
         query_kwargs = self.query_kwargs
-        if query_kwargs: query = urllib.urlencode(query_kwargs, doseq=True)
+        if query_kwargs: query = urlencode(query_kwargs, doseq=True)
         return query
 
     @_property
@@ -1095,7 +1101,7 @@ class Request(Http):
         if auth_header:
             m = re.search(r"^Basic\s+(\S+)$", auth_header, re.I)
             if m:
-                auth_str = base64.b64decode(m.group(1))
+                auth_str = Base64.decode(m.group(1))
                 username, password = auth_str.split(':', 1)
 
         return username, password
@@ -1193,10 +1199,15 @@ class Response(Http):
         return hasattr(self._body, "read") if self.has_body() else False
 
     def normalize_body(self, b):
-        """return the body as a string, formatted to the appropriate content type"""
-        if b is None: return ByteString(b'', self.encoding)
+        """return the body as a string, formatted to the appropriate content type
+
+        :param b: mixed, the current raw body
+        :returns: unicode string
+        """
+        if b is None: return ''
 
         if self.is_json():
+            # TODO ???
             # I don't like this, if we have a content type but it isn't one
             # of the supported ones we were returning the exception, which threw
             # Jarid off, but now it just returns a string, which is not best either
@@ -1207,7 +1218,7 @@ class Response(Http):
 
         else:
             # just return a string representation of body if no content type
-            b = ByteString(b, self.encoding)
+            b = String(b, self.encoding)
 
         return b
 
@@ -1216,6 +1227,12 @@ class Response(Http):
         return ct.lower().rfind("json") >= 0 if ct else False
 
     def __iter__(self):
+        """usually when iterating this object it means we are returning the response
+        of a wsgi request, so this will iterate the body and make sure it is a bytes
+        string because wsgiref requires an actual bytes instance, a child class won't work
+
+        :returns: a generator that yields bytes strings
+        """
         if self.has_streaming_body():
             fp = self._body
             if fp.closed:
@@ -1223,13 +1240,13 @@ class Response(Http):
 
             # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
             for chunk in iter(partial(fp.read, 8192), ''):
-                yield ByteString(chunk)
+                yield ByteString(chunk, self.encoding).raw()
 
             # close the pointer since we've consumed it
             fp.close()
 
         else:
-            yield self.body
+            yield ByteString(self.body, self.encoding).raw()
 
     def set_cors_headers(self, request_headers, custom_response_headers=None):
 
@@ -1254,5 +1271,6 @@ class Response(Http):
         """return True if this response is considered a "successful" response"""
         code = self.code
         return code < 400
+    is_successful = is_success
 
 

@@ -8,7 +8,9 @@ import logging
 
 from decorators import FuncDecorator
 
+from ..compat.environ import *
 from ..exception import CallError, AccessDenied
+from ..utils import String, ByteString
 from . import auth, limit
 from .base import TargetDecorator, BackendDecorator
 from .call import route, version
@@ -344,7 +346,7 @@ class param(FuncDecorator):
             val = self.normalize_val(request, val)
 
         except ValueError as e:
-            raise CallError(400, "Positional arg {} failed with {}".format(index, e.message))
+            raise CallError(400, "Positional arg {} failed with {}".format(index, String(e)))
 
         args.insert(index, val)
 
@@ -396,7 +398,7 @@ class param(FuncDecorator):
                     kwargs[dest_name] = self.normalize_val(request, val)
 
         except ValueError as e:
-            raise CallError(400, "{} failed with {}".format(name, e.message))
+            raise CallError(400, "{} failed with {}".format(name, String(e)))
 
         return kwargs
 
@@ -422,7 +424,7 @@ class param(FuncDecorator):
                 raise ValueError("too many values for param")
 
             if isinstance(val, basestring):
-                val = val.split(',')
+                val = list(val.split(','))
 
             else:
                 val = list(val)
@@ -447,7 +449,7 @@ class param(FuncDecorator):
 
         if ptype:
             if isinstance(val, list) and ptype != list:
-                val = map(ptype, val)
+                val = list(map(ptype, val))
 
             else:
                 if isinstance(ptype, type):
@@ -461,10 +463,15 @@ class param(FuncDecorator):
 
                     elif issubclass(ptype, str):
                         charset = request.encoding
-                        if charset and isinstance(val, unicode):
-                            val = val.encode(charset)
+                        if is_py2:
+                            val = ptype(ByteString(val, charset))
                         else:
-                            val = ptype(val)
+                            val = ptype(String(val, charset))
+
+#                         if charset and isinstance(val, unicode):
+#                             val = val.encode(charset)
+#                         else:
+#                             val = ptype(val)
 
                     else:
                         val = ptype(val)
@@ -484,9 +491,10 @@ class param(FuncDecorator):
 
         # at some point this if statement is just going to be too ridiculous
         # FieldStorage check is because of this bug https://bugs.python.org/issue19097
-        if not allow_empty and val is not False and not val and not isinstance(val, cgi.FieldStorage):
-            if 'default' not in flags:
-                raise ValueError("param was empty")
+        if not isinstance(val, cgi.FieldStorage):
+            if not allow_empty and val is not False and not val:
+                if 'default' not in flags:
+                    raise ValueError("param was empty")
 
         if min_size is not None:
             failed = False

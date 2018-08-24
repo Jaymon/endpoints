@@ -3,23 +3,170 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import os
 import mimetypes
 import sys
+import base64
+
+from .compat.environ import *
+from . import environ
 
 
-class ByteString(bytes):
-    def __new__(cls, val, encoding=""):
+
+# class ByteString(bytes):
+#     def __new__(cls, val, encoding=""):
+#         if not encoding:
+#             encoding = sys.getdefaultencoding()
+# 
+#         if isinstance(val, unicode):
+#             val = val.encode(encoding)
+# 
+#         #instance = super(ByteString, cls).__new__(cls, val)
+#         instance = bytes(val)
+#         #instance.encoding = encoding
+#         return instance
+
+
+class ByteString(Bytes):
+    """Wrapper around a byte string b"" to make sure we have a byte string that
+    will work across python versions and handle the most annoying encoding issues
+    automatically
+
+    :Example:
+        # python 3
+        s = ByteString("foo)
+        str(s) # calls __str__ and returns self.unicode()
+        unicode(s) # errors out
+        bytes(s) # calls __bytes__ and returns ByteString
+
+        # python 2
+        s = ByteString("foo)
+        str(s) # calls __str__ and returns ByteString
+        unicode(s) # calls __unicode__ and returns String
+        bytes(s) # calls __str__ and returns ByteString
+    """
+    def __new__(cls, val=b"", encoding=""):
+        if isinstance(val, type(None)): return None
+
         if not encoding:
-            encoding = sys.getdefaultencoding()
+            encoding = environ.ENCODING
 
-        if isinstance(val, unicode):
-            val = val.encode(encoding)
+        if not isinstance(val, (bytes, bytearray)):
+            if is_py2:
+                val = unicode(val)
+            else:
+                val = str(val)
+            #val = val.__str__()
+            val = bytearray(val, encoding)
 
-        #instance = super(ByteString, cls).__new__(cls, val)
-        instance = bytes(val)
-        #instance.encoding = encoding
+
+#             if isinstance(val, Str):
+#                 val = val.encode(encoding)
+# 
+#             elif isinstance(val, (int, float, bool)):
+#                 val = str(val)
+# 
+#             else:
+#                 val = val.__str__()
+#             pout.v(val, type(val))
+#             val = bytearray(val, encoding)
+
+
+        instance = super(ByteString, cls).__new__(cls, val)
+        instance.encoding = encoding
         return instance
 
+    def __str__(self):
+        return self if is_py2 else self.unicode()
 
-class Path(str):
+    def unicode(self):
+        s = self.decode(self.encoding)
+        return String(s)
+    __unicode__ = unicode
+
+    def bytes(self):
+        return self
+    __bytes__ = bytes
+
+    def raw(self):
+        """because sometimes you need a vanilla bytes()"""
+        return b"" + self
+
+
+class String(Str):
+    """Wrapper around a unicode string "" to make sure we have a unicode string that
+    will work across python versions and handle the most annoying encoding issues
+    automatically
+
+    :Example:
+        # python 3
+        s = String("foo)
+        str(s) # calls __str__ and returns String
+        unicode(s) # errors out
+        bytes(s) # calls __bytes__ and returns ByteString
+
+        # python 2
+        s = String("foo)
+        str(s) # calls __str__ and returns ByteString
+        unicode(s) # calls __unicode__ and returns String
+        bytes(s) # calls __str__ and returns ByteString
+    """
+    def __new__(cls, val="", encoding=""):
+        if isinstance(val, type(None)): return None
+
+        if not encoding:
+            encoding = environ.ENCODING
+
+        if not isinstance(val, Str):
+            val = ByteString(val, encoding).unicode()
+
+        instance = super(String, cls).__new__(cls, val)
+        instance.encoding = encoding
+        return instance
+
+    def __str__(self):
+        return self.bytes() if is_py2 else self
+
+    def unicode(self):
+        return self
+    __unicode__ = unicode
+
+    def bytes(self):
+        s = self.encode(self.encoding)
+        return ByteString(s)
+    __bytes__ = bytes
+
+    def raw(self):
+        """because sometimes you need a vanilla str() (or unicode() in py2)"""
+        return "" + self
+
+
+class Base64(String):
+    """This exists to normalize base64 encoding between py2 and py3, it assures that
+    you always get back a unicode string when you encode or decode and that you can
+    pass in a unicode or byte string and it just works
+    """
+    @classmethod
+    def encode(cls, s):
+        """converts a plain text string to base64 encoding
+
+        :param s: unicode str|bytes, the base64 encoded string
+        :returns: unicode str
+        """
+        b = ByteString(s)
+        be = base64.b64encode(b).strip()
+        return String(be)
+
+    @classmethod
+    def decode(cls, s):
+        """decodes a base64 string to plain text
+
+        :param s: unicode str|bytes, the base64 encoded string
+        :returns: unicode str
+        """
+        b = ByteString(s)
+        bd = base64.b64decode(b)
+        return String(bd)
+
+
+class Path(String):
     def __new__(cls, s):
         s = os.path.abspath(os.path.expanduser(str(s)))
         return super(Path, cls).__new__(cls, s)
@@ -101,7 +248,7 @@ class AcceptHeader(object):
             ret = cmp(a[1], b[1])
         else:
             found = False
-            for i in xrange(2):
+            for i in range(2):
                 ai = a[0][i]
                 bi = b[0][i]
                 if ai == '*':
@@ -125,7 +272,15 @@ class AcceptHeader(object):
         return ret
 
     def __iter__(self):
-        sorted_media_types = sorted(self.media_types, self._sort, reverse=True)
+        if is_py2:
+            sorted_media_types = sorted(self.media_types, self._sort, reverse=True)
+        else:
+            from functools import cmp_to_key
+            sorted_media_types = sorted(
+                self.media_types,
+                key=cmp_to_key(self._sort),
+                reverse=True
+            )
         for x in sorted_media_types:
             yield x
 

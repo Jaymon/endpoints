@@ -3,12 +3,12 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 from . import TestCase, skipIf, SkipTest, Server
 import time
 import re
-import base64
 
 import testdata
 
 import endpoints
 from endpoints import CallError
+from endpoints.utils import ByteString, Base64, String
 from endpoints.http import Request
 from endpoints.decorators import param, post_param
 from endpoints.decorators.limit import ratelimit, \
@@ -219,7 +219,7 @@ class RatelimitTest(TestCase):
 
 class AuthTest(TestCase):
     def get_basic_auth_header(self, username, password):
-        credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
+        credentials = Base64.encode('{}:{}'.format(username, password))
         return 'Basic {}'.format(credentials)
 
     def get_bearer_auth_header(self, access_token):
@@ -333,7 +333,7 @@ class AuthTest(TestCase):
         with self.assertRaises(endpoints.AccessDenied):
             c.foo_bad()
 
-    def test_basic_auth(self):
+    def test_basic_auth_simple(self):
         def target(request, username, password):
             if username != "bar":
                 raise ValueError()
@@ -356,11 +356,13 @@ class AuthTest(TestCase):
 
         c = TARA()
         c.request = r
+
         with self.assertRaises(endpoints.AccessDenied):
             c.foo()
 
         username = "bar"
         r.set_header('authorization', self.get_basic_auth_header(username, password))
+        pout.v(r)
         c.foo()
 
         with self.assertRaises(endpoints.AccessDenied):
@@ -609,7 +611,8 @@ class ParamTest(TestCase):
         def foo(self, *args, **kwargs):
             return kwargs["foo"]
 
-        r = foo(c, **{'foo': "1,2"})
+        #r = foo(c, **{'foo': "1,2"})
+        r = foo(c, foo="1,2")
         self.assertEqual([1, 2], r)
 
         with self.assertRaises(CallError):
@@ -725,11 +728,7 @@ class ParamTest(TestCase):
 
         words = testdata.get_unicode_words()
         ret = foo(c, **{"foo": words})
-        self.assertEqual(ret, words.encode("UTF-8"))
-
-    #def test_param_append_list(self):
-        # TODO -- make this work
-
+        self.assertEqual(String(ret), String(words))
 
     def test_param(self):
         c = create_controller()
@@ -835,14 +834,14 @@ class ParamTest(TestCase):
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(range(1, 6), r)
+        self.assertEqual(list(range(1, 6)), r)
 
         c.request.query_kwargs = {'foo': '1,2,3,4'}
         @endpoints.decorators.get_param('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(range(1, 5), r)
+        self.assertEqual(list(range(1, 5)), r)
 
         c.request.query_kwargs = {}
 

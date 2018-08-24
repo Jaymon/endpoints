@@ -1,19 +1,24 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 from . import TestCase
-try:
-    import urlparse
-except ImportError:
-    import urllib.parse as urlparse #py3
-from BaseHTTPServer import BaseHTTPRequestHandler
 import json
 
 import testdata
 
+from endpoints.compat.environ import *
+from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
 from endpoints.http import Headers, Url, Response, Request
+from endpoints.utils import String, ByteString
 
 
 class HeadersTest(TestCase):
+    def test_bytes(self):
+        d = Headers()
+        name = testdata.get_unicode()
+        val = ByteString(testdata.get_unicode())
+        d[name] = val
+        self.assertEqual(d[name], String(val))
+
     def test_different_original_keys(self):
         """when setting headers using 2 different original keys it wouldn't be uniqued"""
         d = Headers()
@@ -25,15 +30,15 @@ class HeadersTest(TestCase):
     def test_lifecycle(self):
         d = Headers()
         d["foo-bar"] = 1
-        self.assertEqual(1, d["Foo-Bar"])
-        self.assertEqual(1, d["fOO-bAr"])
-        self.assertEqual(1, d["fOO_bAr"])
+        self.assertEqual("1", d["Foo-Bar"])
+        self.assertEqual("1", d["fOO-bAr"])
+        self.assertEqual("1", d["fOO_bAr"])
 
     def test_pop(self):
         d = Headers()
         d['FOO'] = 1
         r = d.pop('foo')
-        self.assertEqual(1, 1)
+        self.assertEqual("1", r)
 
         with self.assertRaises(KeyError):
             d.pop('foo')
@@ -78,15 +83,15 @@ class HeadersTest(TestCase):
         hs['CONTENT-LENGTH'] = "1234"
         hs['FOO-bAR'] = "che"
         for k in hs.keys():
-            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertTrue(k in hs)
 
         for k, v in hs.items():
-            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertEqual(hs[k], v)
 
         for k in hs:
-            self.assertRegexpMatches(k, "^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertTrue(k in hs)
 
     def test___init__(self):
@@ -229,7 +234,7 @@ class RequestTest(TestCase):
 #             ),
         }
 
-        for ct, bodies in cts.iteritems():
+        for ct, bodies in cts.items():
             ct_body, ct_body_kwargs = bodies
 
             r = Request()
@@ -389,9 +394,9 @@ class ResponseTest(TestCase):
 
         r = Response()
         r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual('', r.body)
+        self.assertEqual(ByteString(''), r.body)
         r.body = b
-        self.assertEqual(str(b), r.body)
+        self.assertEqual(ByteString(b), r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
@@ -400,10 +405,10 @@ class ResponseTest(TestCase):
 
         r = Response()
         r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual('', r.body)
-        self.assertEqual('', r.body) # Make sure it doesn't change
+        self.assertEqual(ByteString(''), r.body)
+        self.assertEqual(ByteString(''), r.body) # Make sure it doesn't change
         r.body = b
-        self.assertEqual(str(b), r.body)
+        self.assertEqual(ByteString(b), r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
@@ -417,12 +422,12 @@ class ResponseTest(TestCase):
         #self.assertEqual(r.body, '{"errno": 500, "errmsg": "this is the message"}')
         self.assertEqual(r.body, '{"errmsg": "this is the message"}')
         r.headers['Content-Type'] = ''
-        self.assertEqual(r.body, "this is the message")
+        self.assertEqual(ByteString("this is the message"), r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
         r.body = None
-        self.assertEqual('', r.body) # was getting "null" when content-type was set to json
+        self.assertEqual(ByteString(''), r.body) # was getting "null" when content-type was set to json
 
         # TODO: this really needs to be better tested with unicode data
 
@@ -437,7 +442,7 @@ class ResponseTest(TestCase):
             mt = r.headers["Content-Type"]
             fs = r.headers["Content-Length"]
             self.assertEqual("image/jpeg", mt)
-            self.assertEqual(5, fs)
+            self.assertEqual(5, int(fs))
 
         path = testdata.create_file("foo.txt", "123")
         with path.open() as fp:
@@ -445,7 +450,7 @@ class ResponseTest(TestCase):
             mt = r.headers["Content-Type"]
             fs = r.headers["Content-Length"]
             self.assertEqual("text/plain", mt)
-            self.assertEqual(3, fs)
+            self.assertEqual(3, int(fs))
 
     def test_body_json_error(self):
         """I was originally going to have the body method smother the error, but

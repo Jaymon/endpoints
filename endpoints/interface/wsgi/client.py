@@ -8,15 +8,17 @@ import time
 import sys
 from collections import deque
 
-import endpoints
-from ...utils import Path
+from ...compat.environ import *
+from ...utils import Path, String
 from ...http import Url
 
 
 def find_module_path():
     """find where the master module is located"""
+    master_modname = __name__.split(".", 1)[0]
+    master_module = sys.modules[master_modname]
     #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
-    path = os.path.dirname(inspect.getsourcefile(endpoints))
+    path = os.path.dirname(inspect.getsourcefile(master_module))
     return path
 
 
@@ -45,7 +47,7 @@ class WSGIThread(threading.Thread):
         return self._stop.isSet()
 
     def flush(self, line):
-        sys.stdout.write(line)
+        sys.stdout.write(String(line))
         sys.stdout.flush()
 
     def run(self):

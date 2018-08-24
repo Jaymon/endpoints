@@ -10,6 +10,8 @@ import requests
 #from requests.auth import HTTPBasicAuth
 from requests.auth import _basic_auth_str
 
+from .compat.environ import *
+from .utils import String
 from .http import Headers, Url
 
 
@@ -58,6 +60,10 @@ class HTTPClient(object):
         ret = self.fetch('post', uri, {}, body, **kwargs)
         if ct:
             self.headers["content-type"] = ct
+
+        # close all the files
+        for fp in files.values():
+            fp.close()
         return ret
 
     def post_chunked(self, uri, body, **kwargs):
@@ -220,7 +226,7 @@ class HTTPClient(object):
             else:
                 res._body = body
 
-            res.body = body
+            res.body = String(body, res.encoding)
 
         return res
 

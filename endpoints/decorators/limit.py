@@ -4,6 +4,7 @@ import logging
 import datetime
 
 from ..exception import CallError, AccessDenied
+from ..utils import String
 from .base import TargetDecorator, BackendDecorator
 
 
@@ -146,7 +147,7 @@ class RateLimitDecorator(BackendDecorator):
 
     def handle_error(self, e):
         """all exceptions should generate 429 responses"""
-        raise CallError(429, e.message)
+        raise CallError(429, String(e))
 
     def decorate(self, func, limit=0, ttl=0, *anoop, **kwnoop):
         """see target for an explanation of limit and ttl"""
