@@ -19,105 +19,51 @@ from endpoints.interface.wsgi.client import WSGIServer
 
 
 ###############################################################################
-# Custom clients
-###############################################################################
-class WSGIClient(object):
-
-    client_class = HTTPClient
-    server_class = WSGIServer
-    server_script_name = "endpoints_testserver_script.py"
-
-    def __init__(self, controller_prefix, module_body, config_module_body='', host=''):
-        self.cwd = testdata.create_dir()
-        self.client = self.client_class(host)
-
-        # create the controller module
-        self.module_path = testdata.create_module(
-            controller_prefix,
-            module_body,
-            self.cwd
-        )
-
-        # now create the server script
-        self.script_path = testdata.create_file(
-            self.server_script_name,
-            os.linesep.join([
-                "import os",
-                "import sys",
-                "import logging",
-                "logging.basicConfig(",
-                "    format=\"[%(levelname).1s] %(message)s\",",
-                "    level=logging.DEBUG,",
-                "    stream=sys.stdout",
-                ")",
-                #"sys.path.append('{}')".format(os.path.dirname(os.path.realpath(inspect.getsourcefile(endpoints)))),
-                "sys.path.append('{}')".format(os.path.realpath(os.curdir)),
-                "",
-                #"from endpoints.interface.wsgi import *",
-                "from endpoints.interface.wsgi import Application, Server",
-                ""
-                "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
-                "",
-                "##############################################################",
-                os.linesep.join(config_module_body),
-                "##############################################################",
-                #os.linesep.join(self.get_script_body()),
-                "#from wsgiref.validate import validator",
-                "#application = validator(Application())",
-                "application = Application()",
-                ""
-            ]),
-            self.cwd
-        )
-
-        # server
-        self.server = self.server_class(
-            controller_prefix=controller_prefix,
-            host=host,
-            wsgifile=self.script_path
-        )
-        self.server.cwd = self.cwd
-        self.server.start()
-
-    @classmethod
-    def kill(cls):
-        cls.server_class(controller_prefix="", wsgifile=cls.server_script_name).kill()
-
-    def __getattr__(self, key):
-        try:
-            m = getattr(self.client, key)
-        except AttributeError:
-            m = getattr(self.server, key)
-
-        return m
-
-
-###############################################################################
 # Actual tests
 ###############################################################################
 class TestCase(BaseTestCase):
-
-    client_class = None
+    server = None
+    server_class = WSGIServer
+    client_class = HTTPClient
 
     def setUp(self):
-        self.client_class.kill()
+        if self.server:
+            self.server.stop()
 
     def tearDown(self):
-        self.client_class.kill()
+        if self.server:
+            self.server.stop()
 
-    def create_client(self, *args, **kwargs):
+    def create_server(self, controller_prefix, contents, config_contents='', **kwargs):
+        tdm = testdata.create_module(controller_prefix, contents)
+
+        kwargs["controller_prefix"] = controller_prefix
+        kwargs["host"] = self.get_host()
+
+        if config_contents:
+            config_path = testdata.create_file("config.py", config_contents)
+            kwargs["wsgifile"] = config_path
+
+        server = self.server_class(**kwargs)
+        server.cwd = tdm.basedir
+        server.stop()
+        self.server = server
+        self.server.start()
+        return server
+
+    def create_client(self, **kwargs):
         kwargs.setdefault("host", self.get_host())
-        return self.client_class(*args, **kwargs)
-
+        client = self.client_class(**kwargs)
+        return client
 
 
 class WSGITest(TestCase):
-    client_class = WSGIClient
+    #client_class = WSGIClient
 
     def test_request_url(self):
         """make sure request url gets controller_path correctly"""
         controller_prefix = "requesturl.controller"
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Requrl(Controller):",
             "    def GET(self):",
@@ -125,12 +71,13 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.get('/requrl')
         self.assertTrue("/requrl" in r._body)
 
     def test_list_param_decorator(self):
         controller_prefix = "lpdcontroller"
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller, decorators",
             "class Listparamdec(Controller):",
             "    @decorators.param('user_ids', 'user_ids[]', type=int, action='append_list')",
@@ -139,13 +86,14 @@ class WSGITest(TestCase):
             ""
         ])
 
+        c = self.create_client()
         r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
         self.assertEqual("1234", r.body)
 
-    def test_post_file(self):
+    def test_post_file_simple(self):
         filepath = testdata.create_file("filename.txt", "this is a text file to upload")
         controller_prefix = 'wsgi.post_file'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
@@ -153,6 +101,7 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
         self.assertEqual(200, r.code)
         self.assertTrue("filename.txt" in r.body)
@@ -161,7 +110,7 @@ class WSGITest(TestCase):
         """make sure specifying a param for the file upload works as expected"""
         filepath = testdata.create_file("post_file_with_param.txt", "post_file_with_param")
         controller_prefix = 'wsgi.post_file_with_param'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    @decorators.param('file')",
@@ -170,13 +119,14 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
         self.assertEqual(200, r.code)
         self.assertTrue("post_file_with_param.txt" in r.body)
 
     def test_post_basic(self):
         controller_prefix = 'wsgi.post'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "from endpoints.decorators import version",
             "class Default(Controller):",
@@ -188,6 +138,7 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.post(
             '/',
             {"foo": "bar"},
@@ -222,7 +173,7 @@ class WSGITest(TestCase):
         before they ever made it really into our logging system"""
 
         controller_prefix = 'wsgi.post_ioerror'
-        c = self.create_client(
+        server = self.create_server(
             controller_prefix,
             [
                 "from endpoints import Controller",
@@ -232,7 +183,8 @@ class WSGITest(TestCase):
                 "        pass",
                 "",
             ],
-            config_module_body=[
+            config_contents=[
+                "from endpoints.interface.wsgi import Application",
                 "from endpoints import Request as EReq",
                 "",
                 "class Request(EReq):",
@@ -245,6 +197,7 @@ class WSGITest(TestCase):
             ],
         )
 
+        c = self.create_client()
         r = c.post(
             '/',
             {"foo": "bar"},
@@ -256,19 +209,20 @@ class WSGITest(TestCase):
 
     def test_405_request(self):
         controller_prefix = 'request_405'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self): pass",
             "",
         ])
 
+        c = self.create_client()
         r = c.get('/foo/bar/baz?che=1&boo=2')
         self.assertEqual(405, r.code)
 
     def test_response_headers(self):
         controller_prefix = 'resp_headers.resp'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
@@ -276,6 +230,7 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.get('/')
         self.assertEqual(204, r.code)
         self.assertTrue("foo-bar" in r.headers)
@@ -284,7 +239,7 @@ class WSGITest(TestCase):
         content = "this is a text file to stream"
         filepath = testdata.create_file("filename.txt", content)
         controller_prefix = 'wsgi.post_file'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self, *args, **kwargs):",
@@ -294,6 +249,7 @@ class WSGITest(TestCase):
             "",
         ])
 
+        c = self.create_client()
         r = c.get('/')
         self.assertEqual(200, r.code)
         self.assertEqual(content, r.body)
@@ -301,7 +257,7 @@ class WSGITest(TestCase):
 
     def test_generators(self):
         controller_prefix = 'wsgi_generator'
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
@@ -309,6 +265,7 @@ class WSGITest(TestCase):
             "            yield x",
         ])
 
+        c = self.create_client()
         r = c.get('/')
         content = list(range(100))
         self.assertEqual(200, r.code)
@@ -318,34 +275,7 @@ class WSGITest(TestCase):
 ###############################################################################
 # Client tests
 ###############################################################################
-class ClientTestCase(TestCase):
-    server = None
-    server_class = WSGIServer
-    client_class = HTTPClient
-
-    def setUp(self):
-        if self.server:
-            self.server.stop()
-
-    def tearDown(self):
-        if self.server:
-            self.server.stop()
-
-    def create_server(self, controller_prefix, contents, **kwargs):
-        tdm = testdata.create_module(controller_prefix, contents)
-        server = self.server_class(controller_prefix, host=self.get_host(), **kwargs)
-        server.cwd = tdm.basedir
-        server.stop()
-        self.server = server
-        self.server.start()
-        return server
-
-    def create_client(self, **kwargs):
-        client = self.client_class(self.get_host(), **kwargs)
-        return client
-
-
-class HTTPClientTest(ClientTestCase):
+class HTTPClientTest(TestCase):
     def test_get_fetch_url(self):
         c = self.create_client()
 
@@ -379,10 +309,10 @@ class HTTPClientTest(ClientTestCase):
     def test_basic_auth(self):
         c = self.create_client()
         c.basic_auth("foo", "bar")
-        self.assertRegexpMatches(c.headers["authorization"], "Basic\s+[a-zA-Z0-9=]+")
+        self.assertRegex(c.headers["authorization"], "Basic\s+[a-zA-Z0-9=]+")
 
 
-class WSGIServerTest(ClientTestCase):
+class WSGIServerTest(TestCase):
     def test_start(self):
         controller_prefix = 'wsgiserverstart.controller'
         server = self.create_server(controller_prefix, [

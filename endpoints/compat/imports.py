@@ -12,7 +12,12 @@ if is_py2:
     import __builtin__ as builtins
     from BaseHTTPServer import BaseHTTPRequestHandler
     import urlparse as parse
-    from StringIO import StringIO
+
+    try:
+        from cstringio import StringIO
+    except ImportError:
+        from StringIO import StringIO
+
     from urllib import urlencode
     import SocketServer as socketserver
 

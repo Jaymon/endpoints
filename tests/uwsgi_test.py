@@ -3,36 +3,103 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import codecs
 import hashlib
 import random
+import os
 
 import testdata
 
+from endpoints.compat.environ import *
+from endpoints.utils import ByteString
 from endpoints.interface.uwsgi.client import UWSGIServer, WebsocketClient
+from endpoints.interface.uwsgi import UWSGIChunkedBody
+from endpoints.interface import uwsgi
 
-from .wsgi_test import TestCase, WSGIServerTest, WSGIServer, WSGITest, WSGIClient, ClientTestCase
+from .wsgi_test import TestCase, WSGITest, WSGIServerTest
 
 
-class UWSGIClient(WSGIClient):
-    server_class = UWSGIServer
+class UWSGIChunkedBodyTest(TestCase):
+    def test_chunk(self):
+        class fakeUWSGI(object):
+            count = 0
+            @classmethod
+            def chunked_read(cls):
+                if cls.count == 0:
+                    cls.count += 1
+                    return "foo\nbar"
+                else:
+                    return ""
+        m = testdata.patch(uwsgi, uwsgi=fakeUWSGI)
+        b = m.UWSGIChunkedBody()
+        self.assertEqual(ByteString("foo\nbar"), b.read())
+        self.assertEqual(ByteString("foo"), b.read(3))
+        self.assertEqual(ByteString("\nbar"), b.read(30))
 
+        fakeUWSGI.count = 0
+        b = m.UWSGIChunkedBody()
+        self.assertEqual(ByteString("foo\n"), b.readline())
+        self.assertEqual(ByteString("bar"), b.readline())
 
 class UWSGITest(WSGITest):
 
-    client_class = UWSGIClient
+    server_class = UWSGIServer
 
-    def create_client(self, *args, **kwargs):
-        kwargs.setdefault("config_module_body", [])
-        config_module_body = [
+    def create_server(self, controller_prefix, contents, config_contents='', **kwargs):
+        wsgifile = testdata.create_file("wsgifile.py", [
+            "import os",
+            "import sys",
+            "import logging",
+            "logging.basicConfig(",
+            "    format=\"[%(levelname).1s] %(message)s\",",
+            "    level=logging.DEBUG,",
+            "    stream=sys.stdout",
+            ")",
+            "sys.path.append('{}')".format(os.path.realpath(os.curdir)),
+            "",
             "from endpoints.interface.uwsgi import Application",
-        ]
-        config_module_body.extend(kwargs.get("config_module_body", []))
-        kwargs["config_module_body"] = config_module_body
-        return super(UWSGITest, self).create_client(*args, **kwargs)
+            ""
+            "os.environ['ENDPOINTS_PREFIX'] = '{}'".format(controller_prefix),
+            "",
+            "##############################################################",
+            "\n".join(config_contents),
+            "##############################################################",
+            #os.linesep.join(self.get_script_body()),
+            "#from wsgiref.validate import validator",
+            "#application = validator(Application())",
+            "application = Application()",
+            ""
+        ])
 
-    def test_chunked(self):
+        return super(UWSGITest, self).create_server(
+            controller_prefix,
+            contents,
+            wsgifile=wsgifile,
+        )
+
+
+    def test_chunked_simple(self):
+        filepath = testdata.create_file("filename.txt", testdata.get_words(2))
+        controller_prefix = 'wsgi.post_chunked_simple'
+
+        server = self.create_server(controller_prefix, [
+            "import hashlib",
+            "from endpoints import Controller",
+            "class Bodykwargs(Controller):",
+            "    def POST(self, **kwargs):",
+            "        return hashlib.md5(kwargs['file'].file.read()).hexdigest()",
+            "",
+        ])
+        c = self.create_client()
+
+        with codecs.open(filepath, "rb", encoding="UTF-8") as fp:
+            h1 = hashlib.md5(fp.read().encode("UTF-8")).hexdigest()
+            h2 = c.post_chunked('/bodykwargs', filepath=filepath)
+            self.assertEqual(h1, h2.strip('"'))
+
+
+    def test_chunked_complex(self):
         filepath = testdata.create_file("filename.txt", testdata.get_words(500))
-        controller_prefix = 'wsgi.post_chunked'
+        controller_prefix = 'wsgi.post_chunked_complex'
 
-        c = self.create_client(controller_prefix, [
+        server = self.create_server(controller_prefix, [
             "import hashlib",
             "from endpoints import Controller",
             "class Bodykwargs(Controller):",
@@ -44,18 +111,27 @@ class UWSGITest(WSGITest):
             "        return len(self.request.body)",
             "",
         ])
+        c = self.create_client()
 
-        size = c.post_chunked('/bodyraw', {"foo": "bar", "baz": "che"}, filepath=filepath)
-        self.assertGreater(int(size), 0)
 
         with codecs.open(filepath, "rb", encoding="UTF-8") as fp:
             h1 = hashlib.md5(fp.read().encode("UTF-8")).hexdigest()
-            h2 = c.post_chunked('/bodykwargs', {"foo": "bar", "baz": "che"}, filepath=filepath)
+            h2 = c.post_chunked('/bodykwargs', body={"foo": "bar", "baz": "che"}, filepath=filepath)
+            pout.v(type(h1), type(h2), h1, h2)
             self.assertEqual(h1, h2.strip('"'))
 
+        return
 
-class WebsocketTestClient(UWSGIClient):
-    client_class = WebsocketClient
+
+        size = c.post_chunked('/bodyraw', body={"foo": "bar", "baz": "che"}, filepath=filepath)
+        self.assertGreater(int(size), 0)
+
+        return
+
+
+class WebsocketTestClient(object): pass
+# class WebsocketTestClient(UWSGIClient):
+#     client_class = WebsocketClient
 
 
 class WebsocketTest(TestCase):

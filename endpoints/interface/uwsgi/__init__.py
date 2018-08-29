@@ -3,11 +3,6 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import logging
 import json
 
-try:
-    from cstringio import StringIO
-except ImportError:
-    from StringIO import StringIO
-
 logger = logging.getLogger(__name__)
 
 try:
@@ -15,8 +10,11 @@ try:
 except ImportError:
     uwsgi = None
 
-from ..wsgi import Application as BaseApplication
+from ...compat.environ import *
+from ...compat.imports import StringIO
 from ...http import ResponseBody
+from ..wsgi import Application as BaseApplication
+from ...utils import String, ByteString
 
 
 class Payload(object):
@@ -73,18 +71,28 @@ class UWSGIChunkedBody(object):
 
     def __init__(self):
         self._body = StringIO()
+        self._size = 0
+        self._filled = False
 
     def _chunked_read(self):
+        if self._filled: return 0
+
         size = 0
         try:
-            chunk = uwsgi.chunked_read()
-            old_pos = self._body.pos
+            chunk = String(uwsgi.chunked_read())
+            #old_pos = self._body.pos
+            old_pos = self._body.tell()
             self._body.write(chunk)
-            self._body.pos = old_pos
+            #self._body.pos = old_pos
+            self._body.seek(old_pos)
             size = len(chunk)
 
             if not size:
-                self._body.pos = 0
+                #self._body.pos = 0
+                #self._body.seek(0)
+                self._filled = True
+            else:
+                self._size += size
 
         except IOError as e:
             raise IOError("Error reading chunk, is --http-raw-body enabled? Error: {}".format(e))
@@ -95,21 +103,37 @@ class UWSGIChunkedBody(object):
         yield self.readline()
 
     def read(self, size=-1):
-        while size < 0 or size > (self._body.len - self._body.pos):
-            chunk_size = self._chunked_read()
-            if not chunk_size:
-                break
+        if not self._filled:
+            while size < 0 or size > (self._size - self._body.tell()):
+                chunk_size = self._chunked_read()
+                if not chunk_size:
+                    break
 
-        return self._body.read(size)
+        ret = ByteString(self._body.read(size))
 
-    def readline(self, size=0):
+#         if self._body.tell() >= self._size:
+#             self._body.seek(0)
+
+        return ret
+
+    def readline(self, size=-1):
         line = self._body.readline(size)
         if not line:
-            chunked_size = self._chunked_read()
-            if chunked_size:
+            chunk_size = self._chunked_read()
+            if chunk_size:
                 line = self._body.readline(size)
 
-        return line
+#         if self._body.tell() >= self._size:
+#             self._body.seek(0)
+
+        pout.v(line)
+        return ByteString(line)
+
+    def seek(self, *args, **kwargs):
+        self._body.seek(*args, **kwargs)
+
+    def tell(self):
+        return self._body.tell()
 
 
 class Application(BaseApplication):

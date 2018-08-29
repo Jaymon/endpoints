@@ -11,6 +11,7 @@ from collections import deque
 from ...compat.environ import *
 from ...utils import Path, String
 from ...http import Url
+from ... import environ
 
 
 def find_module_path():
@@ -67,7 +68,7 @@ class WSGIThread(threading.Thread):
 
         except Exception as e:
             if not self.server.quiet:
-                print(e)
+                self.flush(e)
             raise
 
         finally:
@@ -75,8 +76,10 @@ class WSGIThread(threading.Thread):
             if process:
                 try:
                     process.terminate()
+
                 except OSError:
                     pass
+
                 else:
                     while count < 50:
                         count += 1
@@ -86,6 +89,12 @@ class WSGIThread(threading.Thread):
 
                     if process.poll() == None:
                         process.kill()
+
+                finally:
+                    # fixes ResourceWarning: unclosed file <_io.BufferedReader name=4>
+                    # finally figured this out from captain, so I had evidently
+                    # hunted it down before
+                    process.stdout.close()
 
 
 class WSGIServer(object):
@@ -156,7 +165,7 @@ class WSGIServer(object):
             ret = ""
         return ret
 
-    def __init__(self, controller_prefix, host="localhost:8080", wsgifile="", **kwargs):
+    def __init__(self, controller_prefix, host="", wsgifile="", **kwargs):
         """create a WSGI simple server
 
         controller_prefix -- string -- the endpoints prefix, the value that would be passed
@@ -166,11 +175,13 @@ class WSGIServer(object):
         **kwargs -- dict -- provides an easy hook to set other instance properties
         """
         self.controller_prefix = controller_prefix
+        if not host:
+            host = environ.HOST
         self.host = Url(host)
 
         self.cwd = Path(kwargs.get("cwd", os.curdir))
         self.wsgifile = wsgifile
-        self.env = kwargs.get("env", {})
+        self.env = kwargs.get("environ", kwargs.get("env", {}))
 
     def kill(self):
         key = self.wsgifile
@@ -204,19 +215,21 @@ class WSGIServer(object):
         return args, kwargs
 
     def start(self, **kwargs):
+        #import pdb; pdb.set_trace()
         self.quiet = kwargs.pop("quiet", type(self).quiet)
         self.buf = deque(maxlen=self.bufsize)
         self.thread = WSGIThread(self)
         self.thread.start()
 
-        # if the buffer doesn't increase for N iterations then we assume the server
-        # is fully started up, after 1 second we assume it's ready no matter what
+        # if the buffer doesn't increase for 3 iterations then we assume the server
+        # is fully started up, after 5 second we assume it's ready no matter what
         count = 0
         size = 0
-        for x in range(10):
+        for x in range(50):
             time.sleep(0.1)
             if len(self.buf) > size:
                 count = 0
+                size = len(self.buf)
             else:
                 count += 1
                 if count > 3:

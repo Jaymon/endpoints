@@ -1,16 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-from unittest import TestCase as BaseTestCase, skipIf, SkipTest
+from unittest import skipIf, SkipTest
 import os
 import sys
 import logging
 
 import testdata
 
+from endpoints import environ
 from endpoints.interface import BaseServer
-
-
-os.environ.setdefault("ENDPOINTS_HOST", "localhost:8080")
 
 
 #logging.basicConfig()
@@ -71,7 +69,7 @@ class Server(BaseServer):
         return c.response
 
 
-class TestCase(BaseTestCase):
+class TestCase(testdata.TestCase):
     def get_host(self):
-        return os.environ.get("ENDPOINTS_HOST")
+        return environ.HOST
 

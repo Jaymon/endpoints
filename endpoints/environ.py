@@ -12,4 +12,9 @@ def get(key, default=None, namespace="ENDPOINTS_"):
 
 
 ENCODING = get("ENCODING", "UTF-8")
+"""Default encoding"""
+
+HOST = get("HOST", "localhost:8080")
+"""The host string, usually just domain or domain:port, this is used by the server
+classes and also the tests"""
 

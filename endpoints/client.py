@@ -11,6 +11,7 @@ import requests
 from requests.auth import _basic_auth_str
 
 from .compat.environ import *
+from .compat.imports import urlencode
 from .utils import String
 from .http import Headers, Url
 
@@ -66,11 +67,10 @@ class HTTPClient(object):
             fp.close()
         return ret
 
-    def post_chunked(self, uri, body, **kwargs):
+    def post_chunked(self, uri, filepath, body=None, **kwargs):
         """POST a file to the uri using a Chunked transfer, this works exactly like
         the post() method, but this will only return the body because we use curl
         to do the chunked request"""
-        filepath = kwargs.pop("filepath", None)
         url = self.get_fetch_url(uri)
         body = body or {}
 
@@ -80,13 +80,13 @@ class HTTPClient(object):
             "curl",
             '--header "Transfer-Encoding: Chunked"',
             '-F "file=@{}"'.format(filepath),
-            '-F "{}"'.format(urllib.urlencode(body, doseq=True)),
+            '-F "{}"'.format(urlencode(body, doseq=True)) if body else "",
             url
         ])
         with open(os.devnull, 'w') as stdnull:
             output = subprocess.check_output(cmd, shell=True, stderr=stdnull)
 
-        return output
+        return String(output)
 
         # https://github.com/kennethreitz/requests/blob/master/requests/models.py#L260
         # I couldn't get Requests to successfully do a chunked request, but I could
@@ -146,7 +146,7 @@ class HTTPClient(object):
             all_query.update(query)
 
         if all_query:
-            more_query_str = urllib.urlencode(all_query, doseq=True)
+            more_query_str = urlencode(all_query, doseq=True)
             if query_str:
                 query_str += '&{}'.format(more_query_str)
             else:

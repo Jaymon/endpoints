@@ -9,21 +9,6 @@ from .compat.environ import *
 from . import environ
 
 
-
-# class ByteString(bytes):
-#     def __new__(cls, val, encoding=""):
-#         if not encoding:
-#             encoding = sys.getdefaultencoding()
-# 
-#         if isinstance(val, unicode):
-#             val = val.encode(encoding)
-# 
-#         #instance = super(ByteString, cls).__new__(cls, val)
-#         instance = bytes(val)
-#         #instance.encoding = encoding
-#         return instance
-
-
 class ByteString(Bytes):
     """Wrapper around a byte string b"" to make sure we have a byte string that
     will work across python versions and handle the most annoying encoding issues
@@ -55,19 +40,6 @@ class ByteString(Bytes):
                 val = str(val)
             #val = val.__str__()
             val = bytearray(val, encoding)
-
-
-#             if isinstance(val, Str):
-#                 val = val.encode(encoding)
-# 
-#             elif isinstance(val, (int, float, bool)):
-#                 val = str(val)
-# 
-#             else:
-#                 val = val.__str__()
-#             pout.v(val, type(val))
-#             val = bytearray(val, encoding)
-
 
         instance = super(ByteString, cls).__new__(cls, val)
         instance.encoding = encoding

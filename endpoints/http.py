@@ -170,6 +170,7 @@ class RequestBody(object):
 
         for field_name in body_fields.keys():
             body_field = body_fields[field_name]
+            pout.v(field_name, body_field)
             if body_field.filename:
                 yield field_name, body_field
 
@@ -987,7 +988,7 @@ class Request(Http):
         """return the raw version of the body"""
         body = None
         if self.body_input:
-            body = self.body_input.read(self.get_header('content-length', -1))
+            body = self.body_input.read(int(self.get_header('content-length', -1)))
 
         return body
 
@@ -1031,7 +1032,6 @@ class Request(Http):
                         environ=self.environ
                         #environ=self.raw_request
                     )
-
                     body_kwargs = dict(body)
 
                 else:

@@ -3,11 +3,13 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import os
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 
+from ...compat.environ import *
 from ...compat.imports import socketserver
 from .. import BaseServer
 from ...http import Url
 from ...decorators import _property
 from ...utils import ByteString, String
+from ... import environ
 
 
 # http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
@@ -36,10 +38,17 @@ class Application(BaseServer):
     def handle_http_response(self, call, start_response):
         res = call.response
 
-        start_response(
-            '{} {}'.format(res.code, res.status),
-            list(res.headers.items())
-        )
+        if is_py2:
+            start_response(
+                ByteString('{} {}'.format(res.code, res.status)),
+                list((ByteString(h[0]), ByteString(h[1])) for h in res.headers.items())
+            )
+
+        else:
+            start_response(
+                '{} {}'.format(res.code, res.status),
+                list(res.headers.items())
+            )
 
         # returning the Response, it needs to have an __iter__ for internal wsgi 
         # methods to know how to handle the Response
@@ -126,11 +135,7 @@ class Server(BaseServer):
         self.backend.set_app(v)
 
     def create_backend(self, **kwargs):
-        host = kwargs.pop('host', '')
-        if not host:
-            host = os.environ['ENDPOINTS_HOST']
-
-        host = Url(host)
+        host = Url(kwargs.pop('host', environ.HOST))
         hostname = host.hostname
         port = host.port
         if not port:

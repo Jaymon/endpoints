@@ -6,6 +6,8 @@ import os
 import argparse
 import logging
 import runpy
+import imp
+import uuid
 
 try:
     import endpoints
@@ -14,6 +16,7 @@ except ImportError:
     sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..")))
     import endpoints
 from endpoints.interface.wsgi import Server
+from endpoints import environ
 
 
 def console():
@@ -36,7 +39,7 @@ def console():
     parser.add_argument(
         '--prefix', "--controller-prefix", "-P",
         required=True,
-        help='The endpoints prefix'
+        help='The endpoints controller prefix'
     )
     parser.add_argument(
         '--file', "-F", "--wsgi-file", "--wsgifile",
@@ -61,6 +64,12 @@ def console():
         default=os.getcwd(),
         help='directory to run the server in, usually contains the prefix module path',
     )
+#     parser.add_argument(
+#         '--config', "--config-script", "-S",
+#         dest="config_script",
+#         default="",
+#         help='This script will be loaded before Server is created allowing custom configuration',
+#     )
 
     args = parser.parse_args()
 
@@ -74,14 +83,24 @@ def console():
 
     logger = logging.getLogger(__name__)
     os.environ["ENDPOINTS_HOST"] = args.host
+    environ.HOST = args.host
     os.environ["ENDPOINTS_PREFIX"] = args.prefix
+    #environ.PREFIXES = args.prefix
+
+    config = {}
+    if args.file:
+        # load the configuration file
+        config = runpy.run_path(args.file)
+
+#     if args.config_script:
+#         # load a config script so you can customize the environment
+#         h = "wsgiserver_config_{}".format(uuid.uuid4())
+#         config_module = imp.load_source(h, args.config_script)
 
     s = Server()
 
-    if args.file:
-        # get the application from the passed in wsgi file and use that to serve requests
-        ret = runpy.run_path(args.file)
-        s.application = ret["application"]
+    if "application" in config:
+        s.application = config["application"]
 
     if args.count:
         logger.info("Listening on {} for {} requests".format(args.host, args.prefix))

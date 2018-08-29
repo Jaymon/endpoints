@@ -17,9 +17,9 @@ try:
     # https://github.com/websocket-client/websocket-client
     import websocket
 except ImportError:
-    logger.error("You need to install websocket-client to use {}".format(__name__))
-    raise
+    pass
 
+from ...compat.environ import *
 from ...client import HTTPClient
 from ...http import Headers
 from ...utils import Path
@@ -31,7 +31,7 @@ from . import Payload
 # on Payload which is only in uwsgi portion right now, but if that is ever moved
 # into a generic websocket framework then you can move this to generic client
 class WebsocketClient(HTTPClient):
-    """a websocket client for our chatserver
+    """a websocket client
 
     pretty much every method of this client can accept a timeout argument, if you
     don't include the timeout then self.timeout will be used instead
@@ -48,6 +48,12 @@ class WebsocketClient(HTTPClient):
         return self.ws.connected if ws else False
 
     def __init__(self, host, *args, **kwargs):
+        if not websocket:
+            logger.error("You need to install websocket-client to use {}".format(
+                type(self).__name__
+            ))
+            raise
+
         kwargs.setdefault("headers", Headers())
         kwargs["headers"]['User-Agent'] = "Endpoints Websocket Client"
         super(WebsocketClient, self).__init__(host, *args, **kwargs)
