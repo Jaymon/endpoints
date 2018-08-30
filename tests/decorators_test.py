@@ -603,6 +603,36 @@ class PropertyTest(TestCase):
 
 
 class ParamTest(TestCase):
+    def test_type_issue_76(self):
+        """
+        https://github.com/Jaymon/endpoints/issues/76
+        """
+        c = Server("type_issue_76", [
+            "from endpoints import Controller, param",
+            "",
+            "class Query(object):",
+            "    def get(self, v): return v",
+            "",
+            "class FooType(object):",
+            "    query = Query()",
+            "",
+            "class Foo(Controller):",
+            "    @param(0, default=None, type=FooType.query.get)",
+            "    def GET(self, f):",
+            "        return f",
+            "",
+            "class Bar(Controller):",
+            "    @param(0, default=None, type=lambda x: FooType.query.get(x))",
+            "    def GET(self, f):",
+            "        return f",
+        ])
+
+        res = c.handle("/foo/bar")
+        self.assertEqual("bar", res._body)
+
+        res = c.handle("/bar/foo")
+        self.assertEqual("foo", res._body)
+
     def test_append_list_choices(self):
         c = create_controller()
 
@@ -954,7 +984,7 @@ class ParamTest(TestCase):
     def test_param_regex(self):
         c = create_controller()
 
-        @endpoints.decorators.param('foo', regex="^\S+@\S+$")
+        @endpoints.decorators.param('foo', regex=r"^\S+@\S+$")
         def foo(self, *args, **kwargs):
             return kwargs['foo']
 
@@ -963,7 +993,7 @@ class ParamTest(TestCase):
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **{'foo': ' foo@bar.com'})
 
-        @endpoints.decorators.param('foo', regex=re.compile("^\S+@\S+$", re.I))
+        @endpoints.decorators.param('foo', regex=re.compile(r"^\S+@\S+$", re.I))
         def foo(self, *args, **kwargs):
             return kwargs['foo']
 

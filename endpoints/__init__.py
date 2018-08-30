@@ -19,6 +19,7 @@ from .http import Request, Response, Url
 from .utils import AcceptHeader
 from .call import Controller, Router, Call
 from . import decorators
+from .decorators import param, route, version # this is for fluidity convenience
 
 
 __version__ = '2.1.0'
