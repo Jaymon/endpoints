@@ -17,6 +17,7 @@ else:
         logger.warning("Running gevent.monkey.patch_all() since not run previously")
         gevent.monkey.patch_all()
 
+from ...compat.environ import *
 from . import Application, uwsgi, Payload
 from ...http import Request as BaseRequest
 from ...utils import ByteString
