@@ -119,8 +119,8 @@ class WSGIServer(object):
     """this is the default quiet setting for running a script, if False output is printed to stdout"""
 
     @property
-    def env(self):
-        env = getattr(self, "_env", None)
+    def environ(self):
+        env = getattr(self, "_environ", None)
         if env: return env
 
         env = dict(os.environ)
@@ -145,13 +145,13 @@ class WSGIServer(object):
 
         return env
 
-    @env.setter
-    def env(self, v):
-        self._env = v
+    @environ.setter
+    def environ(self, v):
+        self._environ = v
 
-    @env.deleter
-    def env(self):
-        del self._env
+    @environ.deleter
+    def environ(self):
+        del self._environ
 
     @property
     def path(self):
@@ -181,7 +181,7 @@ class WSGIServer(object):
 
         self.cwd = Path(kwargs.get("cwd", os.curdir))
         self.wsgifile = wsgifile
-        self.env = kwargs.get("environ", kwargs.get("env", {}))
+        self.environ = kwargs.get("environ", kwargs.get("env", {}))
 
     def kill(self):
         key = self.wsgifile
@@ -210,7 +210,7 @@ class WSGIServer(object):
             stdout=subprocess.PIPE,
             stderr=subprocess.STDOUT,
             cwd=self.cwd,
-            env=self.env
+            env=self.environ
         )
         return args, kwargs
 
