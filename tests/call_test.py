@@ -554,7 +554,7 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/testcallstop")
-        self.assertEqual(ByteString(''), res.body)
+        self.assertEqual('', res.body)
         self.assertEqual(None, res._body)
         self.assertEqual(205, res.code)
 

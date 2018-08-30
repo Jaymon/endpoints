@@ -11,10 +11,10 @@ try:
 except ImportError:
     logger.error("you need to install gevent to use {}".format(__name__))
     raise
-finally:
+else:
     if not gevent.monkey.saved:
         # https://github.com/gevent/gevent/blob/master/src/gevent/monkey.py
-        logger.info("Running gevent.monkey.patch_all() since not run previously")
+        logger.warning("Running gevent.monkey.patch_all() since not run previously")
         gevent.monkey.patch_all()
 
 from . import Application, uwsgi, Payload

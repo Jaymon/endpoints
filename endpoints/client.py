@@ -67,48 +67,6 @@ class HTTPClient(object):
             fp.close()
         return ret
 
-    def post_chunked(self, uri, filepath, body=None, **kwargs):
-        """POST a file to the uri using a Chunked transfer, this works exactly like
-        the post() method, but this will only return the body because we use curl
-        to do the chunked request"""
-        url = self.get_fetch_url(uri)
-        body = body or {}
-
-        # http://superuser.com/a/149335/164279
-        # http://comments.gmane.org/gmane.comp.web.curl.general/10711
-        cmd = " ".join([
-            "curl",
-            '--header "Transfer-Encoding: Chunked"',
-            '-F "file=@{}"'.format(filepath),
-            '-F "{}"'.format(urlencode(body, doseq=True)) if body else "",
-            url
-        ])
-        with open(os.devnull, 'w') as stdnull:
-            output = subprocess.check_output(cmd, shell=True, stderr=stdnull)
-
-        return String(output)
-
-        # https://github.com/kennethreitz/requests/blob/master/requests/models.py#L260
-        # I couldn't get Requests to successfully do a chunked request, but I could
-        # get curl to do it, so that's what we're going to use
-#         files = {'file': open(fileuri, 'rb')}
-#         req = requests.Request('POST', url, data=body, files=files)
-#         r = req.prepare()
-#         r.headers.pop('Content-Length', None)
-#         r.headers['Transfer-Encoding'] = 'Chunked'
-# 
-#         s = requests.Session()
-#         s.stream = True
-#         res = s.send(r)
-#         return self.get_response(res)
-
-        # another way to try chunked in pure python
-        # http://stackoverflow.com/questions/9237961/how-to-force-http-client-to-send-chunked-encoding-http-body-in-python
-        # http://stackoverflow.com/questions/17661962/how-to-post-chunked-encoded-data-in-python
-
-        # and one more way to test it using raw sockets
-        # http://lists.unbit.it/pipermail/uwsgi/2013-June/006170.html
-
     def delete(self, uri, query=None, **kwargs):
         """make a DELETE request"""
         return self.fetch('delete', uri, query, **kwargs)

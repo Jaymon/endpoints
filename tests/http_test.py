@@ -7,8 +7,19 @@ import testdata
 
 from endpoints.compat.environ import *
 from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
-from endpoints.http import Headers, Url, Response, Request
+from endpoints.http import Headers, Url, Response, Request, Environ
 from endpoints.utils import String, ByteString
+
+
+class EnvironTest(TestCase):
+    def test_values(self):
+        d = Environ()
+
+        d["foo"] = None
+        self.assertEqual(None, d["foo"])
+
+        d["bar"] = 1
+        self.assertEqual(1, d["bar"])
 
 
 class HeadersTest(TestCase):
@@ -83,15 +94,15 @@ class HeadersTest(TestCase):
         hs['CONTENT-LENGTH'] = "1234"
         hs['FOO-bAR'] = "che"
         for k in hs.keys():
-            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegex(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertTrue(k in hs)
 
         for k, v in hs.items():
-            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegex(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertEqual(hs[k], v)
 
         for k in hs:
-            self.assertRegexpMatches(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
+            self.assertRegex(k, r"^[A-Z][a-z]+(?:\-[A-Z][a-z]+)*$")
             self.assertTrue(k in hs)
 
     def test___init__(self):
@@ -394,9 +405,9 @@ class ResponseTest(TestCase):
 
         r = Response()
         r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual(ByteString(''), r.body)
+        self.assertEqual('', r.body)
         r.body = b
-        self.assertEqual(ByteString(b), r.body)
+        self.assertEqual(String(b), r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
@@ -405,10 +416,10 @@ class ResponseTest(TestCase):
 
         r = Response()
         r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual(ByteString(''), r.body)
-        self.assertEqual(ByteString(''), r.body) # Make sure it doesn't change
+        self.assertEqual('', r.body)
+        self.assertEqual('', r.body) # Make sure it doesn't change
         r.body = b
-        self.assertEqual(ByteString(b), r.body)
+        self.assertEqual(String(b), r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
@@ -422,12 +433,12 @@ class ResponseTest(TestCase):
         #self.assertEqual(r.body, '{"errno": 500, "errmsg": "this is the message"}')
         self.assertEqual(r.body, '{"errmsg": "this is the message"}')
         r.headers['Content-Type'] = ''
-        self.assertEqual(ByteString("this is the message"), r.body)
+        self.assertEqual("this is the message", r.body)
 
         r = Response()
         r.headers['Content-Type'] = 'application/json'
         r.body = None
-        self.assertEqual(ByteString(''), r.body) # was getting "null" when content-type was set to json
+        self.assertEqual('', r.body) # was getting "null" when content-type was set to json
 
         # TODO: this really needs to be better tested with unicode data
 

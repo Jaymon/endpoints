@@ -362,7 +362,6 @@ class AuthTest(TestCase):
 
         username = "bar"
         r.set_header('authorization', self.get_basic_auth_header(username, password))
-        pout.v(r)
         c.foo()
 
         with self.assertRaises(endpoints.AccessDenied):

@@ -17,7 +17,7 @@ try:
     # https://github.com/websocket-client/websocket-client
     import websocket
 except ImportError:
-    pass
+    websocket = None
 
 from ...compat.environ import *
 from ...client import HTTPClient
@@ -52,7 +52,7 @@ class WebsocketClient(HTTPClient):
             logger.error("You need to install websocket-client to use {}".format(
                 type(self).__name__
             ))
-            raise
+            raise ImportError("websocket-client is not installed")
 
         kwargs.setdefault("headers", Headers())
         kwargs["headers"]['User-Agent'] = "Endpoints Websocket Client"
@@ -366,6 +366,7 @@ class UWSGIServer(WSGIServer):
     def get_start_cmd(self):
         return [
             "uwsgi",
+            "--need-app",
             "--http={}".format(self.host.netloc),
             "--show-config",
             "--master",
@@ -380,4 +381,15 @@ class UWSGIServer(WSGIServer):
 #     def get_subprocess_args_and_kwargs(self):
 #         self.env["ENDPOINTS_PREFIX"] = self.controller_prefix
 #         return super(UWSGIServer, self).get_subprocess_args_and_kwargs()
+
+
+class WebsocketServer(UWSGIServer):
+    gevent_process_count = 50
+    def get_start_cmd(self):
+        args = super(WebsocketServer, self).get_start_cmd()
+        args.extend([
+            "--http-websockets",
+            "--gevent={}".format(self.gevent_process_count),
+        ])
+        return args
 

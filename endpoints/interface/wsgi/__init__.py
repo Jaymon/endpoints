@@ -12,12 +12,6 @@ from ...utils import ByteString, String
 from ... import environ
 
 
-# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
-class WSGIHTTPServer(socketserver.ThreadingMixIn, WSGIServer):
-    """This is here to make the standard wsgi server multithreaded"""
-    pass
-
-
 class Application(BaseServer):
     """The Application that a WSGI server needs
 
@@ -84,7 +78,7 @@ class Application(BaseServer):
 
             else:
                 if r.get_header('transfer-encoding', "").lower().startswith('chunked'):
-                    self.handle_chunked_request(r)
+                    raise IOError("Server does not support chunked requests")
 
                 else:
                     r.body_input = raw_request['wsgi.input']
@@ -93,9 +87,6 @@ class Application(BaseServer):
             r.body_kwargs = {}
 
         return r
-
-    def handle_chunked_request(self, req):
-        raise IOError("Server does not support chunked requests")
 
     def create_backend(self, **kwargs):
         raise NotImplementedError()
@@ -108,6 +99,12 @@ class Application(BaseServer):
 
     def serve_count(self, count):
         raise NotImplementedError()
+
+
+# http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
+class WSGIHTTPServer(socketserver.ThreadingMixIn, WSGIServer):
+    """This is here to make the standard wsgi server multithreaded"""
+    pass
 
 
 class Server(BaseServer):

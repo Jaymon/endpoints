@@ -40,59 +40,60 @@ class Headers(BaseHeaders, Mapping):
     wsgiref class docs:
         https://docs.python.org/2/library/wsgiref.html#module-wsgiref.headers
         https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
+    actual python3 code:
+        https://github.com/python/cpython/blob/master/Lib/wsgiref/headers.py
     """
-    @classmethod
-    def normalize_name(cls, k):
-        """converts things like FOO_BAR to Foo-Bar which is the normal form"""
-        k = String(k)
-        klower = k.lower().replace('_', '-')
-        bits = klower.split('-')
-        return "-".join((bit.title() for bit in bits))
-
-    @classmethod
-    def normalize_val(cls, v):
-        # wsgiref.headers.Headers expects a str() (py3) or unicode (py2), it
-        # does not accept even a child of str, so we need to convert the String
-        # instance to the actual str
-        return String(v).raw()
-
     def __init__(self, headers=None, **kwargs):
         super(Headers, self).__init__([])
         self.update(headers, **kwargs)
 
+    def _convert_string_name(self, k):
+        """converts things like FOO_BAR to Foo-Bar which is the normal form"""
+        k = String(k, "iso-8859-1")
+        klower = k.lower().replace('_', '-')
+        bits = klower.split('-')
+        return "-".join((bit.title() for bit in bits))
+
+    def _convert_string_type(self, v):
+        """Override the internal method wsgiref.headers.Headers uses to check values
+        to make sure they are strings"""
+        # wsgiref.headers.Headers expects a str() (py3) or unicode (py2), it
+        # does not accept even a child of str, so we need to convert the String
+        # instance to the actual str, as does the python wsgi methods, so even
+        # though we override this method we still return raw() strings so we get
+        # passed all the type(v) == "str" checks
+        return String(v).raw()
+
     def __setitem__(self, name, val):
-        name = self.normalize_name(name)
-        val = self.normalize_val(val)
+        name = self._convert_string_name(name)
         return super(Headers, self).__setitem__(name, val)
 
     def __delitem__(self, name):
-        name = self.normalize_name(name)
+        name = self._convert_string_name(name)
         return super(Headers, self).__delitem__(name)
 
     def get_all(self, name):
-        name = self.normalize_name(name)
+        name = self._convert_string_name(name)
         return super(Headers, self).get_all(name)
 
     def get(self, name, default=None):
-        name = self.normalize_name(name)
+        name = self._convert_string_name(name)
         return super(Headers, self).get(name, default)
 
     def setdefault(self, name, val):
-        name = self.normalize_name(name)
-        val = self.normalize_val(val)
+        name = self._convert_string_name(name)
         return super(Headers, self).setdefault(name, val)
 
     def add_header(self, name, val, **params):
-        name = self.normalize_name(name)
-        val = self.normalize_val(val)
+        name = self._convert_string_name(name)
         return super(Headers, self).add_header(name, val, **params)
 
     def keys(self):
-        return [self.normalize_name(k) for k, v in self._headers]
+        return [self._convert_string_name(k) for k, v in self._headers]
 
     def items(self):
         for k, v in self._headers:
-            yield self.normalize_name(k), v
+            yield self._convert_string_name(k), v
 
     def iteritems(self):
         return self.items()
@@ -103,7 +104,7 @@ class Headers(BaseHeaders, Mapping):
 
     def __iter__(self):
         for k, v in self._headers:
-            yield self.normalize_name(k)
+            yield self._convert_string_name(k)
 
     def pop(self, name, *args, **kwargs):
         val = self.get(name)
@@ -141,6 +142,13 @@ class Headers(BaseHeaders, Mapping):
 
     def __deepcopy__(self):
         return type(self)(self._headers)
+
+
+class Environ(Headers):
+    """just like Headers but allows any values (headers converts everything to unicode
+    string)"""
+    def _convert_string_type(self, v):
+        return v
 
 
 class RequestBody(object):
@@ -739,9 +747,10 @@ class Http(object):
 
                 else:
                     if key == "environ":
+                        shallow = set(["wsgi.input", "wsgi.errors"])
                         d = type(val)()
                         for k, v in val.items():
-                            if k.lower() == "wsgi.input":
+                            if k.lower() in shallow:
                                 d[k] = v
                             else:
                                 d[k] = copy.deepcopy(v, memodict)
@@ -1056,7 +1065,7 @@ class Request(Http):
         return kwargs
 
     def __init__(self):
-        self.environ = Headers()
+        self.environ = Environ()
         super(Request, self).__init__()
 
     def version(self, content_type="*/*"):
