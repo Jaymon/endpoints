@@ -34,8 +34,8 @@ class Application(BaseServer):
 
         if is_py2:
             start_response(
-                ByteString('{} {}'.format(res.code, res.status)),
-                list((ByteString(h[0]), ByteString(h[1])) for h in res.headers.items())
+                ByteString('{} {}'.format(res.code, res.status)).raw(),
+                list((ByteString(h[0]).raw(), ByteString(h[1]).raw()) for h in res.headers.items())
             )
 
         else:

@@ -62,15 +62,9 @@ class Headers(BaseHeaders, Mapping):
         # instance to the actual str, as does the python wsgi methods, so even
         # though we override this method we still return raw() strings so we get
         # passed all the type(v) == "str" checks
+        # sadly, this method is missing in 2.7
+        # https://github.com/python/cpython/blob/2.7/Lib/wsgiref/headers.py
         return String(v).raw()
-
-    def __setitem__(self, name, val):
-        name = self._convert_string_name(name)
-        return super(Headers, self).__setitem__(name, val)
-
-    def __delitem__(self, name):
-        name = self._convert_string_name(name)
-        return super(Headers, self).__delitem__(name)
 
     def get_all(self, name):
         name = self._convert_string_name(name)
@@ -80,12 +74,26 @@ class Headers(BaseHeaders, Mapping):
         name = self._convert_string_name(name)
         return super(Headers, self).get(name, default)
 
+    def __delitem__(self, name):
+        name = self._convert_string_name(name)
+        return super(Headers, self).__delitem__(name)
+
+    def __setitem__(self, name, val):
+        name = self._convert_string_name(name)
+        if is_py2:
+            val = self._convert_string_type(val)
+        return super(Headers, self).__setitem__(name, val)
+
     def setdefault(self, name, val):
         name = self._convert_string_name(name)
+        if is_py2:
+            val = self._convert_string_type(val)
         return super(Headers, self).setdefault(name, val)
 
     def add_header(self, name, val, **params):
         name = self._convert_string_name(name)
+        if is_py2:
+            val = self._convert_string_type(val)
         return super(Headers, self).add_header(name, val, **params)
 
     def keys(self):
