@@ -21,5 +21,5 @@ from .call import Controller, Router, Call
 from . import decorators
 
 
-__version__ = '2.0.0'
+__version__ = '2.1.0'
 

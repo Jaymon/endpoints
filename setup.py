@@ -24,13 +24,14 @@ setup(
     install_requires=['decorators'],
     tests_require=['testdata', 'requests'],
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
-        'Development Status :: 4 - Beta',
+        'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
         'Intended Audience :: Developers',
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries',
         'Programming Language :: Python :: 2.7',
+        'Programming Language :: Python :: 3.6',
     ],
     entry_points = {
         'console_scripts': [
