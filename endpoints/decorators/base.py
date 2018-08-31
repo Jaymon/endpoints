@@ -44,6 +44,7 @@ class TargetDecorator(FuncDecorator):
 
         :param e: the raised error
         """
+        logger.warning(e, exc_info=True)
         raise e
 
     def handle_target(self, request, controller_args, controller_kwargs):
@@ -66,7 +67,6 @@ class TargetDecorator(FuncDecorator):
             raise
 
         except Exception as e:
-            logger.warning(e, exc_info=True)
             self.handle_error(e)
 
     def decorate(self, func, target, *anoop, **kwnoop):
