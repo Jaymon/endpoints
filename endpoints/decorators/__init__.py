@@ -447,6 +447,16 @@ class param(FuncDecorator):
             if paction not in set(['store', 'store_false', 'store_true']):
                 raise RuntimeError('unknown param action {}'.format(paction))
 
+        if regex:
+            failed = False
+            if isinstance(regex, basestring):
+                if not re.search(regex, val): failed = True
+            else:
+                if not regex.search(val): failed = True
+
+            if failed:
+                raise ValueError("param failed regex check")
+
         if ptype:
             if isinstance(val, list) and ptype != list:
                 val = list(map(ptype, val))
@@ -515,16 +525,6 @@ class param(FuncDecorator):
 
             if failed:
                 raise ValueError("param was bigger than {}".format(max_size))
-
-        if regex:
-            failed = False
-            if isinstance(regex, basestring):
-                if not re.search(regex, val): failed = True
-            else:
-                if not regex.search(val): failed = True
-
-            if failed:
-                raise ValueError("param failed regex check")
 
         return val
 

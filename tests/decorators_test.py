@@ -633,6 +633,31 @@ class ParamTest(TestCase):
         res = c.handle("/bar/foo")
         self.assertEqual("foo", res._body)
 
+    def test_regex_issue_77(self):
+        """
+        https://github.com/Jaymon/endpoints/issues/77
+        """
+        c = Server("regex_issue_77", [
+            "import datetime",
+            "from endpoints import Controller, param",
+            "",
+            "def parse(dts):",
+            "    return datetime.datetime.strptime(dts, '%Y-%m-%d')",
+            "",
+            "class Foo(Controller):",
+            "    @param('dt', regex=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$', type=parse)",
+            "    def GET(self, **kwargs):",
+            "        return kwargs['dt']",
+            "",
+        ])
+
+        res = c.handle("/foo", query="dt=2018-01-01")
+        self.assertEqual(res._body.year, 2018)
+        self.assertEqual(res._body.month, 1)
+        self.assertEqual(res._body.day, 1)
+        #self.assertEqual("bar", res._body)
+
+
     def test_append_list_choices(self):
         c = create_controller()
 
