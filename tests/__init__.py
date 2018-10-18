@@ -50,7 +50,9 @@ class Server(BaseServer):
         if version is not None:
             req.set_header('Accept', '*/*;version={}'.format(version))
 
-        for k, v in self.kwargs.items():
+        d = dict(self.kwargs)
+        d.setdefault("host", "endpoints.fake")
+        for k, v in d.items():
             setattr(req, k, v)
 
         req.path = path

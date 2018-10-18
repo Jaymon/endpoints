@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-from . import TestCase
+from . import TestCase, Server
 import json
 
 import testdata
@@ -505,6 +505,41 @@ class ResponseTest(TestCase):
 
 
 class UrlTest(TestCase):
+    def test_parent(self):
+        u = Url("http://example.com/foo/bar/che")
+
+        u2 = u.parent(che=4)
+        self.assertEqual("http://example.com/foo/bar?che=4", u2)
+
+        u2 = u.parent("baz", che=4)
+        self.assertEqual("http://example.com/foo/bar/baz?che=4", u2)
+
+        u = Url("http://example.com/")
+        u2 = u.parent("baz", che=5)
+        self.assertEqual("http://example.com/baz?che=5", u2)
+
+    def test_module(self):
+        controller_prefix = "url_module"
+        c = Server(controller_prefix, {
+            "foo": [
+                "from endpoints import Controller",
+                "class Bar(Controller):",
+                "    def GET(self):",
+                "        u = self.request.url",
+                "        u.module()",
+                "",
+                "class Default(Controller):",
+                "    def GET(self):",
+                "        u = self.request.url",
+                "        u.module()",
+                "",
+            ],
+        })
+
+        res = c.handle("/foo/bar")
+        pout.b()
+        res = c.handle("/foo")
+
     def test_no_scheme(self):
         h = Url("localhost:8080/foo/bar?che=1")
         self.assertEqual(8080, h.port)

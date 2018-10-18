@@ -208,7 +208,7 @@ class ResponseBody(json.JSONEncoder):
             return json.JSONEncoder.default(self, obj)
 
 
-class Url(str):
+class Url(String):
     """a url object on steroids, this is here to make it easy to manipulate urls
     we try to map the supported fields to their urlparse equivalents, with some additions
 
@@ -531,6 +531,19 @@ class Url(str):
                     sub_kwargs.pop(k)
 
         return self.create(**sub_kwargs)
+
+    def parent(self, *paths, **query_kwargs):
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        path_args = self.path.split("/")
+        if path_args:
+            urlstring = self.subtract(path_args[-1])
+        else:
+            urlstring = self
+
+        return urlstring.add(**kwargs)
+
+    def module(self, *paths, **query_kwargs):
+        pout.v(self.controller_path)
 
     def controller(self, *paths, **query_kwargs):
         """create a new url object using the controller path as a base
@@ -955,6 +968,7 @@ class Request(Http):
 
         controller_path = ""
         if self.controller_info:
+            pout.v(self.controller_info)
             controller_path = self.controller_info.get("path", "")
 
         u = Url(

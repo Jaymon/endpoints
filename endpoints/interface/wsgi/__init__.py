@@ -66,14 +66,14 @@ class Application(BaseServer):
         r.query = raw_request['QUERY_STRING']
 
         # handle headers not prefixed with http
-        for k, t in {'CONTENT_TYPE': None, 'CONTENT_LENGTH': int}.items():
+        for k in ['CONTENT_TYPE', 'CONTENT_LENGTH']:
             v = r.environ.pop(k, None)
             if v:
-                r.set_header(k, t(v) if t else v)
+                r.set_header(k, v)
 
         if 'wsgi.input' in raw_request:
 
-            if "CONTENT_LENGTH" in raw_request and int(r.get_header("CONTENT_LENGTH", 0)) <= 0:
+            if int(r.get_header("CONTENT_LENGTH", 0)) <= 0:
                 r.body_kwargs = {}
 
             else:

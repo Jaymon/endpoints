@@ -54,20 +54,11 @@ class BaseServer(object):
     def backend(self):
         return self.create_backend()
 
-    @_property
-    def router(self):
-        return self.create_router()
-
     def __init__(self, controller_prefix='', **kwargs):
         if controller_prefix:
             self.controller_prefix = controller_prefix
         else:
             self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
-
-#         classes = (n[0] for n in inspect.getmembers(Foo) if n[0].endswith("_class"))
-#         for k in classes:
-#             if k in kwargs:
-#                 setattr(self, k, kwargs[k])
 
         for k, v in kwargs.items():
             if k.endswith("_class"):
