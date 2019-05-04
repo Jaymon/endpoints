@@ -1,8 +1,8 @@
 # Endpoints
 
-Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/).
+Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/) but since used in multiple projects.
 
-This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/firstopinion/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once we consider _version 2_ stable we will publish it to pip also.
+This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/jaymon/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once we consider _version 2_ stable we will publish it to pip also.
 
 
 ## 5 Minute Getting Started
@@ -15,7 +15,7 @@ First, install endpoints with the following command.
 
 If you want the latest and greatest you can also install from source:
 
-    $ pip install git+https://github.com/firstopinion/endpoints#egg=endpoints
+    $ pip install git+https://github.com/jaymon/endpoints#egg=endpoints
 
 **Note:** if you get the following error
 
@@ -144,5 +144,5 @@ If you have gotten to this point, congratulations. You understand the basics of 
 
 ## Learn more about Endpoints
 
-Now you should dive into some of the other features discussed in the [docs folder](https://github.com/firstopinion/endpoints/tree/master/docs).
+Now you should dive into some of the other features discussed in the [docs folder](https://github.com/jaymon/endpoints/tree/master/docs).
 
