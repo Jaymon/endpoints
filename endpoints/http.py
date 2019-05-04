@@ -186,7 +186,7 @@ class RequestBody(object):
 
         for field_name in body_fields.keys():
             body_field = body_fields[field_name]
-            pout.v(field_name, body_field)
+            #pout.v(field_name, body_field)
             if body_field.filename:
                 yield field_name, body_field
 
@@ -249,7 +249,9 @@ class Url(String):
 
     fragment = ""
 
-    controller_path = ""
+    class_path = ""
+
+    module_path = ""
 
     @property
     def root(self):
@@ -305,7 +307,8 @@ class Url(String):
             "hostname": cls.hostname,
             "port": cls.port,
             "query_kwargs": dict(cls.query_kwargs),
-            "controller_path": cls.controller_path,
+            "class_path": cls.class_path,
+            "module_path": cls.module_path,
             "scheme": cls.scheme,
             "netloc": cls.netloc,
             "path": cls.path,
@@ -533,6 +536,14 @@ class Url(String):
         return self.create(**sub_kwargs)
 
     def parent(self, *paths, **query_kwargs):
+        """create a new Url instance one level up from the current Url instance
+
+        so if self contains /foo/bar then self.parent() would return /foo
+
+        :param *paths: list, the paths to append to the parent path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
         kwargs = self._normalize_params(*paths, **query_kwargs)
         path_args = self.path.split("/")
         if path_args:
@@ -543,7 +554,20 @@ class Url(String):
         return urlstring.add(**kwargs)
 
     def module(self, *paths, **query_kwargs):
-        pout.v(self.controller_path)
+        """create a new Url instance using the module path as a base
+
+        :param *paths: list, the paths to append to the module path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        if self.module_path:
+            if "path" in kwargs:
+                paths = self.normalize_paths(self.module_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
+            else:
+                kwargs["path"] = self.module_path
+        return self.create(self.root, **kwargs)
 
     def controller(self, *paths, **query_kwargs):
         """create a new url object using the controller path as a base
@@ -562,14 +586,15 @@ class Url(String):
 
         :param *paths: list, the paths to append to the controller path
         :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
         """
         kwargs = self._normalize_params(*paths, **query_kwargs)
-        if self.controller_path:
+        if self.class_path:
             if "path" in kwargs:
-                paths = self.normalize_paths(self.controller_path, kwargs["path"])
+                paths = self.normalize_paths(self.class_path, kwargs["path"])
                 kwargs["path"] = "/".join(paths)
             else:
-                kwargs["path"] = self.controller_path
+                kwargs["path"] = self.class_path
         return self.create(self.root, **kwargs)
 
     def base(self, *paths, **query_kwargs):
@@ -634,7 +659,8 @@ class Url(String):
             path=self.path,
             query_kwargs=self.query_kwargs,
             fragment=self.fragment,
-            controller_path=self.controller_path,
+            class_path=self.class_path,
+            module_path=self.module_path,
         )
 
     def __add__(self, other):
@@ -966,10 +992,11 @@ class Request(Http):
         if host_port:
             port = host_port
 
-        controller_path = ""
+        class_path = ""
+        module_path = ""
         if self.controller_info:
-            pout.v(self.controller_info)
-            controller_path = self.controller_info.get("path", "")
+            class_path = self.controller_info.get("class_path", "")
+            module_path = self.controller_info.get("module_path", "")
 
         u = Url(
             scheme=scheme,
@@ -977,7 +1004,8 @@ class Request(Http):
             path=path,
             query=query,
             port=port,
-            controller_path=controller_path,
+            class_path=class_path,
+            module_path=module_path
         )
         return u
 

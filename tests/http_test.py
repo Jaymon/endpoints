@@ -134,7 +134,7 @@ class RequestTest(TestCase):
 
         req = RO()
         req.path = "/foo/bar"
-        pout.v(req.path, req)
+        #pout.v(req.path, req)
 
     def test_copy(self):
         r = Request()
@@ -526,19 +526,21 @@ class UrlTest(TestCase):
                 "class Bar(Controller):",
                 "    def GET(self):",
                 "        u = self.request.url",
-                "        u.module()",
+                "        return u.module()",
                 "",
                 "class Default(Controller):",
                 "    def GET(self):",
                 "        u = self.request.url",
-                "        u.module()",
+                "        return u.module()",
                 "",
             ],
         })
 
         res = c.handle("/foo/bar")
-        pout.b()
+        self.assertEqual("http://endpoints.fake/foo", res._body)
+
         res = c.handle("/foo")
+        self.assertEqual("http://endpoints.fake/foo", res._body)
 
     def test_no_scheme(self):
         h = Url("localhost:8080/foo/bar?che=1")
@@ -560,7 +562,7 @@ class UrlTest(TestCase):
         self.assertEqual("localhost", h.hostname)
 
     def test_controller(self):
-        u = Url("http://example.com/foo/bar/che", controller_path="foo")
+        u = Url("http://example.com/foo/bar/che", class_path="foo")
         u2 = u.controller(che=4)
         self.assertEqual("http://example.com/foo?che=4", u2)
 

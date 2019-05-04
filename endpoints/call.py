@@ -265,10 +265,10 @@ class Router(object):
 
     def find(self, req, res):
         ret = {}
-        controller_path_args = []
+        controller_path = []
         request_path_args = list(req.path_args)
 
-        module_name, controller_method_args = self.get_module_name(request_path_args)
+        module_name, module_path, controller_method_args = self.get_module_name(request_path_args)
         controller_module_name = module_name
         controller_module = self.get_module(module_name)
 
@@ -280,7 +280,7 @@ class Router(object):
             )
 
         if controller_class:
-            controller_path_args.append(controller_method_args.pop(0))
+            controller_path.append(controller_method_args.pop(0))
             controller_class_name = controller_class.__name__
 
         else:
@@ -294,14 +294,14 @@ class Router(object):
                 )
             )
 
-        ret['path'] = "/".join(controller_path_args)
-
         ret['module'] = controller_module
         ret['module_name'] = controller_module_name
+        ret['module_path'] = "/".join(module_path)
 
         ret['class'] = controller_class
         ret['class_name'] = controller_class_name
         ret['class_instance'] = self.get_class_instance(req, res, controller_class)
+        ret['class_path'] = "/".join(controller_path)
 
         ret['method_args'] = controller_method_args
         ret['method_kwargs'] = req.kwargs
@@ -338,20 +338,22 @@ class Router(object):
     def get_module_name(self, path_args):
         """returns the module_name and remaining path args.
 
-        return -- tuple -- (module_name, path_args)"""
+        :returns: tuple, (module_name, module_path, path_args)
+        """
         controller_prefix = self.controller_prefix
         cset = self.module_names
+        module_path = []
         module_name = controller_prefix
         mod_name = module_name
         while path_args:
             mod_name += "." + path_args[0]
             if mod_name in cset:
                 module_name = mod_name
-                path_args.pop(0)
+                module_path.append(path_args.pop(0))
             else:
                 break
 
-        return module_name, path_args
+        return module_name, module_path, path_args
 
     def get_module(self, module_name):
         """load a module by name"""
