@@ -118,6 +118,10 @@ class Server(BaseServer):
 
     backend_class = WSGIHTTPServer
 
+    @property
+    def hostloc(self):
+        return ":".join(map(String, self.backend.server_address))
+
     @_property
     def application(self):
         """if no application has been set, then create it using application_class"""
@@ -133,12 +137,10 @@ class Server(BaseServer):
         self.backend.set_app(v)
 
     def create_backend(self, **kwargs):
-        host = Url(kwargs.pop('host', environ.HOST))
-        hostname = host.hostname
-        port = host.port
-        if not port:
-            raise RuntimeError("Please specify a port using the format host:PORT")
-        server_address = (hostname, port)
+        hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
+#         if not port:
+#             raise RuntimeError("Please specify a port using the format host:PORT")
+        server_address = (hostname, port if port else 0)
 
         s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)

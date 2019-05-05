@@ -49,7 +49,8 @@ def console():
     )
     parser.add_argument(
         '--host', "-H",
-        required=True,
+        #default="localhost:3030",
+        default="localhost",
         help='The host to serve on in the form host:port'
     )
     parser.add_argument(
@@ -85,7 +86,7 @@ def console():
     os.environ["ENDPOINTS_HOST"] = args.host
     environ.HOST = args.host
     for i, prefix in enumerate(args.prefix, 1):
-        os.environ["ENDPOINTS_PREFIX_{}".format(i)] = args.prefix
+        os.environ["ENDPOINTS_PREFIX_{}".format(i)] = prefix
     #environ.PREFIXES = args.prefix
 
     config = {}
@@ -104,11 +105,11 @@ def console():
         s.application = config["application"]
 
     if args.count:
-        logger.info("Listening on {} for {} requests".format(args.host, args.prefix))
+        logger.info("Listening on {} for {} requests".format(s.hostloc, args.prefix))
         s.serve_count(args.count)
 
     else:
-        logger.info("Listening on {}".format(args.host))
+        logger.info("Listening on {}".format(s.hostloc))
         s.serve_forever()
 
     return 0

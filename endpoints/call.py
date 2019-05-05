@@ -513,6 +513,15 @@ class Controller(object):
         super(Controller, self).__init__(*args, **kwargs)
         self.set_cors_common_headers()
 
+        # we use self.logger and set the name to endpoints.call.module.class so
+        # you can filter all controllers using endpoints.call, filter all
+        # controllers in a certain module using endpoints.call.module or just a
+        # specific controller using endpoints.call.module.class
+        logger_name = logger.name
+        class_name = self.__class__.__name__
+        module_name = self.__class__.__module__
+        self.logger = logging.getLogger("{}.{}.{}".format(logger_name, class_name, module_name))
+
     def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
 
@@ -582,7 +591,7 @@ class Controller(object):
         #controller_args, controller_kwargs = self.find_method_params()
         for controller_method_name, controller_method in controller_methods:
             try:
-                logger.debug("Attempting to handle request with {}.{}.{}".format(
+                self.logger.debug("Attempting to handle request with {}.{}.{}".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name
@@ -595,7 +604,7 @@ class Controller(object):
                 break
 
             except VersionError as e:
-                logger.debug("Request {}.{}.{} failed version check [{} not in {}]".format(
+                self.logger.debug("Request {}.{}.{} failed version check [{} not in {}]".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name,
@@ -604,7 +613,7 @@ class Controller(object):
                 ))
 
             except RouteError:
-                logger.debug("Request {}.{}.{} failed routing check".format(
+                self.logger.debug("Request {}.{}.{} failed routing check".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name
@@ -655,7 +664,7 @@ class Controller(object):
             # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
             # and 501 (Not Implemented) if the method is unrecognized or not
             # implemented by the origin server
-            logger.warning("No methods to handle {} found".format(method_name), exc_info=True)
+            self.logger.warning("No methods to handle {} found".format(method_name), exc_info=True)
             raise CallError(501, "{} {} not implemented".format(req.method, req.path))
 
         elif len(methods) > 1 and method_name in method_names:
@@ -686,20 +695,20 @@ class Controller(object):
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""
-        if not logger.isEnabledFor(logging.INFO): return
+        if not self.logger.isEnabledFor(logging.INFO): return
 
         try:
             req = self.request
 
-            logger.info("REQUEST {} {}?{}".format(req.method, req.path, req.query))
-            logger.info(datetime.datetime.strftime(datetime.datetime.utcnow(), "DATE %Y-%m-%dT%H:%M:%S.%f"))
+            self.logger.info("REQUEST {} {}?{}".format(req.method, req.path, req.query))
+            self.logger.info(datetime.datetime.strftime(datetime.datetime.utcnow(), "DATE %Y-%m-%dT%H:%M:%S.%f"))
 
             ip = req.ip
             if ip:
-                logger.info("\tIP ADDRESS: {}".format(ip))
+                self.logger.info("\tIP ADDRESS: {}".format(ip))
 
             if 'authorization' in req.headers:
-                logger.info('AUTH {}'.format(req.headers['authorization']))
+                self.logger.info('AUTH {}'.format(req.headers['authorization']))
 
             ignore_hs = set([
                 'accept-language',
@@ -714,18 +723,18 @@ class Controller(object):
                 if k not in ignore_hs:
                     hs.append("\t{}: {}".format(k, v))
 
-            logger.info(os.linesep.join(hs))
+            self.logger.info(os.linesep.join(hs))
 
         except Exception as e:
-            logger.warn(e, exc_info=True)
+            self.logger.warn(e, exc_info=True)
 
     def log_stop(self, start):
         """log a summary line on how the request went"""
-        if not logger.isEnabledFor(logging.INFO): return
+        if not self.logger.isEnabledFor(logging.INFO): return
 
         stop = time.time()
         get_elapsed = lambda start, stop, multiplier, rnd: round(abs(stop - start) * float(multiplier), rnd)
         elapsed = get_elapsed(start, stop, 1000.00, 1)
         total = "%0.1f ms" % (elapsed)
-        logger.info("RESPONSE {} {} in {}".format(self.response.code, self.response.status, total))
+        self.logger.info("RESPONSE {} {} in {}".format(self.response.code, self.response.status, total))
 
