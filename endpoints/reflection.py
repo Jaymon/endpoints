@@ -325,31 +325,20 @@ class Reflect(object):
     controller_class = ReflectController
 
     @property
-    def modules(self):
-        for module in self.router.modules:
-            if module.__name__.startswith('_'): continue
-            yield module
-
-    @property
     def controllers(self):
-        for module in self.modules:
-            classes = inspect.getmembers(module, inspect.isclass)
-            for controller_class_name, controller_class in classes:
-                if controller_class_name.startswith('_'): continue
-                if not issubclass(controller_class, Controller): continue
-                if controller_class == Controller: continue
+        for controller_prefix, controller_class_name, controller_class in self.router.classes:
+            if controller_class == Controller: continue
 
-                endpoint = self.create_controller(
-                    controller_prefix=self.router.controller_prefix,
-                    controller_class=controller_class,
-                )
+            controller = self.create_controller(
+                controller_prefix=controller_prefix,
+                controller_class=controller_class,
+            )
 
-                # filter out controllers that can't handle any requests
-                if endpoint.methods:
-                    yield endpoint
+            # filter out controllers that can't handle any requests
+            if controller.methods:
+                yield controller
 
     def __init__(self, router):
-        self.controller_prefix = router.controller_prefix
         self.router = router
 
     def create_controller(self, *args, **kwargs):

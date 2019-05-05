@@ -173,7 +173,7 @@ class Call(object):
                 logger.warning(
                     " ".join([
                         "Either the path arguments ({} args) or the keyword arguments",
-                        "({} args) for {}.{} do not match the {} handling method's",
+                        "({} kwargs) for {}.{} do not match the {} handling method's",
                         "definition"
                     ]).format(
                         len(req.controller_info["method_args"]),
@@ -220,48 +220,76 @@ class Router(object):
     GET /foo/bar/che -> controller_prefix.foo.Bar.get(che)
     POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.post(che, baz=foo)
     """
+    default_class_name = "Default"
+
+    _module_name_cache = {}
+
+    @property
+    def classes(self):
+        """yields all controller classes found in controller_prefixes modules
+
+        :returns: generator, yields a tuple (controller_prefix, class_name, class)
+        """
+        _module_name_cache = type(self)._module_name_cache
+
+        for module in self.modules:
+            classes = inspect.getmembers(module, inspect.isclass)
+            for controller_class_name, controller_class in classes:
+                if controller_class_name.startswith('_'): continue
+                if not issubclass(controller_class, Controller): continue
+
+                for controller_prefix, module_names in _module_name_cache.items():
+                    if module.__name__ in module_names:
+                        yield controller_prefix, controller_class_name, controller_class
+                        break
+
     @property
     def module_names(self):
-        """get all the modules in the controller_prefix
+        """get all the modules in the controller_prefixes
 
         :returns: set, a set of string module names
         """
-        controller_prefix = self.controller_prefix
-        _module_name_cache = self._module_name_cache
-        if controller_prefix in _module_name_cache:
-            return _module_name_cache[controller_prefix]
+        ret = set()
+        _module_name_cache = type(self)._module_name_cache
 
-        module = self.get_module(controller_prefix)
+        for controller_prefix in self.controller_prefixes:
 
-        if hasattr(module, "__path__"):
-            # path attr exists so this is a package
-            modules = self.find_modules(module.__path__[0], controller_prefix)
+            if controller_prefix in _module_name_cache:
+                ret.update(_module_name_cache[controller_prefix])
 
-        else:
-            # we have a lonely .py file
-            modules = set([controller_prefix])
+            else:
 
-        _module_name_cache.setdefault(controller_prefix, {})
-        _module_name_cache[controller_prefix] = modules
+                module = self.get_module(controller_prefix)
 
-        return modules
+                if hasattr(module, "__path__"):
+                    # path attr exists so this is a package
+                    modules = self.find_module_names(module.__path__[0], controller_prefix)
+
+                else:
+                    # we have a lonely .py file
+                    modules = set([controller_prefix])
+
+                #_module_name_cache.setdefault(controller_prefix, {})
+                type(self)._module_name_cache[controller_prefix] = modules
+                ret.update(modules)
+
+        return ret
 
     @property
     def modules(self):
         """Returns an iterator of the actual modules, not just their names
 
-        :returns: generator, each module under self.controller_prefix
+        :returns: generator, each module under self.controller_prefixes
         """
         for modname in self.module_names:
             module = importlib.import_module(modname)
             yield module
 
-    def __init__(self, controller_prefix):
-        if not controller_prefix:
-            raise ValueError("controller prefix is empty")
+    def __init__(self, controller_prefixes):
+        if not controller_prefixes:
+            raise ValueError("controller_prefixes is empty")
 
-        self.controller_prefix = controller_prefix
-        self._module_name_cache = {}
+        self.controller_prefixes = controller_prefixes
 
     def find(self, req, res):
         ret = {}
@@ -276,7 +304,7 @@ class Router(object):
         if controller_method_args:
             controller_class = self.get_class(
                 controller_module,
-                controller_method_args[0].capitalize()
+                controller_method_args[0]
             )
 
         if controller_class:
@@ -284,7 +312,7 @@ class Router(object):
             controller_class_name = controller_class.__name__
 
         else:
-            controller_class_name = "Default"
+            controller_class_name = self.default_class_name
             controller_class = self.get_class(controller_module, controller_class_name)
 
         if not controller_class:
@@ -314,9 +342,12 @@ class Router(object):
         instance.router = self
         return instance
 
-    def find_modules(self, path, prefix):
+    def find_module_names(self, path, prefix):
         """recursive method that will find all the submodules of the given module
-        at prefix with path"""
+        at prefix with path
+
+        :returns: list, a list of submodule names under prefix.path
+        """
 
         modules = set([prefix])
 
@@ -328,7 +359,7 @@ class Router(object):
             module_prefix = ".".join([prefix, module_info[1]])
             if module_info[2]:
                 # module is a package
-                submodules = self.find_modules(os.path.join(path, module_info[1]), module_prefix)
+                submodules = self.find_module_names(os.path.join(path, module_info[1]), module_prefix)
                 modules.update(submodules)
             else:
                 modules.add(module_prefix)
@@ -340,18 +371,60 @@ class Router(object):
 
         :returns: tuple, (module_name, module_path, path_args)
         """
-        controller_prefix = self.controller_prefix
-        cset = self.module_names
+        module_name = ""
         module_path = []
-        module_name = controller_prefix
-        mod_name = module_name
-        while path_args:
-            mod_name += "." + path_args[0]
-            if mod_name in cset:
-                module_name = mod_name
-                module_path.append(path_args.pop(0))
-            else:
-                break
+
+        # using the path_args we are going to try and find the best module path
+        # for the request
+        if path_args:
+            cset = self.module_names
+            for controller_prefix in self.controller_prefixes:
+                mod_name = controller_prefix + "." + path_args[0]
+                if mod_name in cset:
+                    module_name = mod_name
+                    module_path.append(path_args.pop(0))
+
+                    while path_args:
+                        mod_name += "." + path_args[0]
+                        if mod_name in cset:
+                            module_name = mod_name
+                            module_path.append(path_args.pop(0))
+                        else:
+                            break
+
+                    break
+
+        if not module_name:
+            # we didn't find the correct module using module paths, so now let's
+            # try class paths, first found class path wins
+            default_module_name = ""
+
+            for controller_prefix in self.controller_prefixes:
+                controller_module = self.get_module(controller_prefix)
+                if path_args:
+                    controller_class = self.get_class(controller_module, path_args[0])
+                    if controller_class:
+                        module_name = controller_prefix
+                        break
+
+                if not default_module_name:
+                    # look for the default class just in case
+                    controller_class = self.get_class(controller_module, self.default_class_name)
+                    if controller_class:
+                        default_module_name = controller_prefix
+
+            if not module_name:
+                if default_module_name:
+                    module_name = default_module_name
+
+                else:
+                    raise TypeError(
+                        "Could not find a valid module with path {} and controller_prefixes {}".format(
+                            "/".join(path_args),
+                            self.controller_prefixes
+                        )
+                    )
+                    #module_name = self.controller_prefixes[0]
 
         return module_name, module_path, path_args
 
@@ -363,7 +436,9 @@ class Router(object):
         """try and get the class_name from the module and make sure it is a valid
         controller"""
         # let's get the class
+        class_name = class_name.capitalize()
         class_object = getattr(module, class_name, None)
+        logger.debug("Getting class {}.{}".format(module.__name__, class_name))
         if not class_object or not issubclass(class_object, Controller):
             class_object = None
 

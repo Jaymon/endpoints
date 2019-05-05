@@ -102,7 +102,8 @@ class Application(BaseServer):
 
 
 # http://stackoverflow.com/questions/20745352/creating-a-multithreaded-server
-class WSGIHTTPServer(socketserver.ThreadingMixIn, WSGIServer):
+#class WSGIHTTPServer(socketserver.ThreadingMixIn, WSGIServer):
+class WSGIHTTPServer(socketserver.ForkingMixIn, WSGIServer):
     """This is here to make the standard wsgi server multithreaded"""
     pass
 

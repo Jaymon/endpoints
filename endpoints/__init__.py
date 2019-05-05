@@ -8,7 +8,7 @@ import logging
 # this has to go before importing child modules to make sure they don't configure
 # their loggers before Null logger is added
 logger = logging.getLogger(__name__)
-if logger.handlers:
+if not logger.handlers:
     logger.addHandler(logging.NullHandler())
 del(logger)
 
@@ -22,5 +22,5 @@ from . import decorators
 from .decorators import param, route, version # this is for fluidity convenience
 
 
-__version__ = '2.1.1'
+__version__ = '2.2.0'
 

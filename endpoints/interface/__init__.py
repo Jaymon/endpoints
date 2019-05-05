@@ -7,6 +7,7 @@ import json
 import sys
 
 from ..http import Request, Response
+from .. import environ
 from ..call import Router, Call
 from ..decorators import _property
 from ..exception import CallError, Redirect, CallStop, AccessDenied
@@ -23,8 +24,8 @@ class BaseServer(object):
     for serving the requests, while the interface will translate the requests to
     and from endpoints itself into something the server backend can understand
     """
-    controller_prefix = ''
-    """the controller prefix you want to use to find your Controller subclasses"""
+    controller_prefixes = None
+    """the controller prefixes (python module paths) you want to use to find your Controller subclasses"""
 
     #interface_class = None
     """the interface that should be used to translate between the supported server"""
@@ -43,7 +44,7 @@ class BaseServer(object):
     Response() instances"""
 
     router_class = Router
-    """the endpoints.call.Router compatible class that hadnles translating a request
+    """the endpoints.call.Router compatible class that handles translating a request
     into the Controller class and method that will actual run"""
 
     call_class = Call
@@ -54,11 +55,11 @@ class BaseServer(object):
     def backend(self):
         return self.create_backend()
 
-    def __init__(self, controller_prefix='', **kwargs):
-        if controller_prefix:
-            self.controller_prefix = controller_prefix
+    def __init__(self, controller_prefixes=None, **kwargs):
+        if controller_prefixes:
+            self.controller_prefixes = controller_prefixes
         else:
-            self.controller_prefix = os.environ.get('ENDPOINTS_PREFIX', '')
+            self.controller_prefixes = environ.get_controller_prefixes()
 
         for k, v in kwargs.items():
             if k.endswith("_class"):
@@ -86,7 +87,7 @@ class BaseServer(object):
         return c
 
     def create_router(self, **kwargs):
-        kwargs.setdefault('controller_prefix', self.controller_prefix)
+        kwargs.setdefault('controller_prefixes', self.controller_prefixes)
         r = self.router_class(**kwargs)
         return r
 

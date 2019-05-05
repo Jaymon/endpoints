@@ -27,7 +27,7 @@ class Server(BaseServer):
     """This is just a wrapper to get access to the Interface handling code"""
     def __init__(self, controller_prefix, contents):
         super(Server, self).__init__(
-            controller_prefix=controller_prefix,
+            controller_prefixes=[controller_prefix]
         )
 
         if isinstance(contents, dict):

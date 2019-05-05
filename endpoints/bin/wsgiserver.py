@@ -38,7 +38,7 @@ def console():
     )
     parser.add_argument(
         '--prefix', "--controller-prefix", "-P",
-        required=True,
+        nargs="+",
         help='The endpoints controller prefix'
     )
     parser.add_argument(
@@ -84,7 +84,8 @@ def console():
     logger = logging.getLogger(__name__)
     os.environ["ENDPOINTS_HOST"] = args.host
     environ.HOST = args.host
-    os.environ["ENDPOINTS_PREFIX"] = args.prefix
+    for i, prefix in enumerate(args.prefix, 1):
+        os.environ["ENDPOINTS_PREFIX_{}".format(i)] = args.prefix
     #environ.PREFIXES = args.prefix
 
     config = {}

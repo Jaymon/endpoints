@@ -12,7 +12,7 @@ from endpoints.reflection import Reflect, ReflectMethod, ReflectController
 class ReflectTest(TestCase):
 
     def create_reflect(self, controller_prefix):
-        rou = Router(controller_prefix)
+        rou = Router([controller_prefix])
         return Reflect(rou)
 
     def find_reflect(self, uri, controllers):

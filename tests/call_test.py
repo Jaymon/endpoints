@@ -76,6 +76,26 @@ class RouterTest(TestCase):
         res = Response()
         return req, res
 
+    def test_multiple_controller_prefixes_1(self):
+        r = testdata.create_modules({
+            "foo": os.linesep.join([
+                "from endpoints import Controller",
+                "class Default(Controller): pass",
+            ]),
+            "bar": os.linesep.join([
+                "from endpoints import Controller",
+                "class User(Controller): pass",
+            ]),
+        })
+        r = Router(["foo", "bar"])
+
+        t = r.find(*self.get_http_instances("/user"))
+        self.assertTrue("bar", t["module_name"])
+
+        t = r.find(*self.get_http_instances("/che"))
+        self.assertTrue("foo", t["module_name"])
+
+
     def test_mixed_modules_packages(self):
         # make sure a package with modules and other packages will resolve correctly
         controller_prefix = "mmp"
@@ -97,7 +117,7 @@ class RouterTest(TestCase):
                 "class Default(Controller): pass",
             ]),
         })
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         self.assertEqual(set(['mmp.foo', 'mmp', 'mmp.foo.bar', 'mmp.che']), r.module_names)
 
         # make sure just a file will resolve correctly
@@ -106,7 +126,7 @@ class RouterTest(TestCase):
             "from endpoints import Controller",
             "class Bar(Controller): pass",
         ]))
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         self.assertEqual(set(['mmp2']), r.module_names)
 
     def test_routing_module(self):
@@ -117,7 +137,7 @@ class RouterTest(TestCase):
             "    def GET(*args, **kwargs): pass"
         ]
         testdata.create_module("{}.foo".format(controller_prefix), contents=contents)
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         self.assertTrue(controller_prefix in r.module_names)
         self.assertEqual(2, len(r.module_names))
 
@@ -132,7 +152,7 @@ class RouterTest(TestCase):
         ]
         f = testdata.create_package(controller_prefix, contents=contents)
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         self.assertTrue(controller_prefix in r.module_names)
         self.assertEqual(1, len(r.module_names))
 
@@ -153,12 +173,12 @@ class RouterTest(TestCase):
         ]
         testdata.create_module(controller_prefix, contents=contents)
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         info = r.find(*self.get_http_instances())
         self.assertEqual(info['module_name'], controller_prefix)
         self.assertEqual(info['class_name'], "Default")
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         info = r.find(*self.get_http_instances("/foo/che/baz"))
         self.assertEqual(2, len(info['method_args']))
         self.assertEqual(info['class_name'], "Foo")
@@ -209,7 +229,7 @@ class RouterTest(TestCase):
         s = set(d.keys())
 
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         controllers = r.module_names
         self.assertEqual(s, controllers)
 
@@ -250,7 +270,7 @@ class RouterTest(TestCase):
         m = testdata.create_modules(contents)
 
         path = '/nomodbar' # same name as one of the non controller classes
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         info = r.find(*self.get_http_instances(path))
         self.assertEqual('Default', info['class_name'])
         self.assertEqual('nomodcontroller', info['module_name'])
@@ -282,7 +302,7 @@ class RouterTest(TestCase):
             ])
         })
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
         info = r.find(*self.get_http_instances("/"))
         self.assertEqual('Default', info['class_name'])
         self.assertTrue(issubclass(info['class'], Controller))
@@ -292,7 +312,7 @@ class RouterTest(TestCase):
         req, res = self.get_http_instances("/foo/bar")
         req.query_kwargs = {'foo': 'bar', 'che': 'baz'}
 
-        r = Router(controller_prefix)
+        r = Router([controller_prefix])
 
         with self.assertRaises(ImportError):
             d = r.find(req, res)
@@ -422,11 +442,10 @@ class RouterTest(TestCase):
 #             for key, val in t['in'].items():
 #                 setattr(r, key, val)
 
-            r = Router(controller_prefix)
+            r = Router([controller_prefix])
             d = r.find(req, res)
             for key, val in t['out'].items():
                 self.assertEqual(val, d[key])
-
 
 
 class CallTest(TestCase):
