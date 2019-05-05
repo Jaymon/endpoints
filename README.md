@@ -1,8 +1,8 @@
 # Endpoints
 
-Quickest API builder in the West! Lovingly crafted for [First Opinion](http://firstopinionapp.com/) but since used in multiple projects.
+Quickest API builder in the West!
 
-This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/jaymon/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once we consider _version 2_ stable we will publish it to pip also.
+This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/jaymon/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once I consider _version 2_ stable we will publish it to pip also.
 
 
 ## 5 Minute Getting Started
@@ -21,9 +21,7 @@ If you want the latest and greatest you can also install from source:
 
     $ pip: command not found
 
-you will need to install pip using the following command.
-
-    $ sudo easy_install pip
+you will need to [install pip](https://pip.pypa.io/en/stable/installing/).
 
 
 ### Set Up Your Controller File
@@ -52,7 +50,7 @@ class Foo(Controller):
 
 ### Start a Server
 
-Now that you have your `controllers.py`, let's use the built-in WSGI server to serve them:
+Now that you have your `controllers.py`, let's use the built-in WSGI server to serve them, we'll set our `controllers.py` file as the [controller prefix](docs/PREFIXES.md) so Endpoints will know where to find the [Controller classes](docs/CONTROLLERS.md) we just defined:
 
     $ endpoints --prefix=controllers --host=localhost:8000
 

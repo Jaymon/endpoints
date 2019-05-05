@@ -136,3 +136,54 @@ class Default(Controller):
     return "This will not have CORS support"
 ```
 
+## Default Controllers
+
+If a suitable controller can't be found using the path then Endpoints will default to a Controller class named `Default`.
+
+For example:
+
+
+```python
+# controllers.py
+
+from endpoints import Controller
+
+class Default(Controller):
+	def GET(self, *args, **kwargs):
+		return "GET {}".format("/".join(args))
+	
+	def POST(self, *args, **kwargs):
+		return "POST {}".format("/".join(args))
+```
+
+The request:
+
+	POST /foo/bar
+	
+would be handled by `controllers.Default` and return:
+
+	POST foo/bar
+
+This makes it possible for you to define your paths in multiple different ways, for example:
+
+```python
+#controllers.py
+
+from endpoints import Controller
+
+class User(Controller):
+	def GET(self): pass
+```
+
+would be equivalent to:
+
+```python
+#controllers/user.py
+
+from endpoints import Controller
+
+class Default(Controller):
+	def GET(self): pass
+```
+
+Endpoints first checks module paths, then it checks classes in the found module, then defaults to the `Default` class if no other suitable class is found.

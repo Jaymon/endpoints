@@ -11,7 +11,7 @@ import collections
 #import keyword
 from .compat.imports import builtins
 
-from .call import Router, Controller
+from .call import Controller
 from .decorators import _property, version, param
 
 
