@@ -701,7 +701,9 @@ class Controller(object):
             req = self.request
 
             self.logger.info("REQUEST {} {}?{}".format(req.method, req.path, req.query))
-            self.logger.info(datetime.datetime.strftime(datetime.datetime.utcnow(), "DATE %Y-%m-%dT%H:%M:%S.%f"))
+            self.logger.info(
+                datetime.datetime.utcfromtimestamp(start).strftime("DATE %Y-%m-%dT%H:%M:%S.%f")
+            )
 
             ip = req.ip
             if ip:
@@ -724,9 +726,28 @@ class Controller(object):
                     hs.append("\t{}: {}".format(k, v))
 
             self.logger.info(os.linesep.join(hs))
+            self.log_start_body()
 
         except Exception as e:
             self.logger.warn(e, exc_info=True)
+
+    def log_start_body(self):
+        """Log the request body
+
+        this is separate from log_start so it can be easily overridden in children
+        """
+        if not self.logger.isEnabledFor(logging.DEBUG): return
+
+        req = self.request
+
+        if req.has_body():
+            try:
+                self.logger.debug("BODY: {}".format(req.body_kwargs))
+
+            except Exception:
+                self.logger.debug("BODY RAW: {}".format(req.body))
+                #logger.debug("RAW REQUEST: {}".format(req.raw_request))
+                raise
 
     def log_stop(self, start):
         """log a summary line on how the request went"""
