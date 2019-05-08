@@ -8,18 +8,33 @@ import os
 
 
 name = "endpoints"
-with open(os.path.join(name, "__init__.py"), 'rU') as f:
-    version = re.search("^__version__\s*=\s*[\'\"]([^\'\"]+)", f.read(), flags=re.I | re.M).group(1)
+kwargs = {"name": name}
+
+def read(path):
+    if os.path.isfile(path):
+        with open(path, encoding='utf-8') as f:
+            return f.read()
+    return ""
+
+
+vpath = os.path.join(name, "__init__.py")
+if os.path.isfile(vpath):
+    kwargs["packages"] = find_packages()
+else:
+    vpath = "{}.py".format(name)
+    kwargs["py_modules"] = [name]
+version = re.search(r"^__version__\s*=\s*[\'\"]([^\'\"]+)", read(vpath), flags=re.I | re.M).group(1)
+
+
+kwargs["long_description"] = read('README.rst')
 
 
 setup(
-    name=name,
     version=version,
     description='Get an api up and running quickly',
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
     url='http://github.com/firstopinion/{}'.format(name),
-    packages=find_packages(),
     license="MIT",
     install_requires=['decorators'],
     tests_require=['testdata', 'requests'],
@@ -31,14 +46,12 @@ setup(
         'Operating System :: OS Independent',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries',
         'Programming Language :: Python :: 2.7',
-        'Programming Language :: Python :: 3.6',
+        'Programming Language :: Python :: 3',
     ],
     entry_points = {
         'console_scripts': [
-            #'endpoints-wsgiserver = {}.bin.wsgiserver:console'.format(name),
-            '{} = {}.bin.wsgiserver:console'.format(name, name),
+            '{} = {}.__main__:console'.format(name, name),
         ],
     },
-    scripts=['{}/bin/endpoints_wsgifile.py'.format(name)]
-    #test_suite = "endpoints_test",
+    **kwargs
 )

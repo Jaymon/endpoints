@@ -11,16 +11,10 @@ from endpoints import environ
 from endpoints.interface import BaseServer
 
 
+testdata.basic_logging()
 #logging.basicConfig()
-logging.basicConfig(format="[%(levelname).1s] %(message)s", level=logging.DEBUG, stream=sys.stdout)
-logger = logging.getLogger(__name__)
-
-# logger = logging.getLogger()
-# logger.setLevel(logging.DEBUG)
-# log_handler = logging.StreamHandler(stream=sys.stderr)
-# log_formatter = logging.Formatter('[%(levelname)s] %(message)s')
-# log_handler.setFormatter(log_formatter)
-# logger.addHandler(log_handler)
+#logging.basicConfig(format="[%(levelname).1s] %(message)s", level=logging.DEBUG, stream=sys.stdout)
+#logger = logging.getLogger(__name__)
 
 
 class Server(BaseServer):

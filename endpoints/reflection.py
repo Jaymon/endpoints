@@ -10,8 +10,8 @@ import ast
 import collections
 #import keyword
 from .compat.imports import builtins
+import pkgutil
 
-from .call import Controller
 from .decorators import _property, version, param
 
 
@@ -241,7 +241,7 @@ class ReflectController(object):
         node_iter = ast.NodeVisitor()
         node_iter.visit_FunctionDef = visit_FunctionDef
         for target_cls in inspect.getmro(self.controller_class):
-            if target_cls == Controller: break
+            if target_cls == object: break
             node_iter.visit(ast.parse(inspect.getsource(target_cls)))
 
         return res
@@ -256,7 +256,7 @@ class ReflectController(object):
 
     @_property
     def module(self):
-        return importlib.import_module(self.module_name)
+        return ReflectModule(self.module_name).module
 
     @_property
     def bits(self):
@@ -309,6 +309,15 @@ class ReflectController(object):
         return ret
 
     def __init__(self, controller_prefix, controller_class):
+        """reflect a controller
+
+        :param controller_prefix: the base controller prefix that this controller
+            class resides in, this is needed so the path can be figured out, basically
+            if the controller prefix is foo.controllers and this controller is located
+            in the module foo.controllers.bar.che then the module path can be worked
+            out to bar/che using controller_prefix
+        :param controller_class: type, the actual python class
+        """
         self.controller_prefix = controller_prefix
         self.controller_class = controller_class
         self.content_type = controller_class.content_type
@@ -326,24 +335,129 @@ class Reflect(object):
 
     @property
     def controllers(self):
-        for controller_prefix, controller_class_name, controller_class in self.router.classes:
-            if controller_class == Controller: continue
+        # avoid circular dependencies
+        from .call import Controller
 
-            controller = self.create_controller(
-                controller_prefix=controller_prefix,
-                controller_class=controller_class,
-            )
+        for controller_prefix in self.controller_prefixes:
+            for rm in ReflectModule(controller_prefix):
+                for controller_class_name, controller_class in rm.classes:
+                    if not issubclass(controller_class, Controller): continue
+                    if controller_class == Controller: continue
 
-            # filter out controllers that can't handle any requests
-            if controller.methods:
-                yield controller
+                    controller = self.create_controller(
+                        controller_prefix=controller_prefix,
+                        controller_class=controller_class,
+                    )
 
-    def __init__(self, router):
-        self.router = router
+                    # filter out controllers that can't handle any requests
+                    if controller.methods:
+                        yield controller
+
+    def __init__(self, controller_prefixes):
+        self.controller_prefixes = controller_prefixes
 
     def create_controller(self, *args, **kwargs):
         return self.controller_class(*args, **kwargs)
 
     def __iter__(self):
         return self.controllers
+
+
+class ReflectModule(object):
+    @property
+    def path(self):
+        return self.find_module_import_path()
+
+    @property
+    def module(self):
+        """return the actual python module found at self.module_name"""
+        return self.get_module(self.module_name)
+
+    @property
+    def classes(self):
+        """yields all the (class_name, class_type) that is found in only this
+        module (not submodules)
+
+        this filters our private classes (classes that start with _)
+
+        :returns: a generator of tuples (class_name, class_type)
+        """
+        module = self.module
+        classes = inspect.getmembers(module, inspect.isclass)
+        for class_name, class_type in classes:
+            if class_name.startswith('_'): continue
+            yield class_name, class_type
+
+    @property
+    def module_names(self):
+        """return all the module names that this module encompasses
+
+        :returns: set, a set of string module names
+        """
+        module = self.get_module(self.module_name)
+
+        if hasattr(module, "__path__"):
+            # path attr exists so this is a package
+            module_names = self.find_module_names(module.__path__[0], self.module_name)
+
+        else:
+            # we have a lonely .py file
+            module_names = set([self.module_name])
+
+        return module_names
+
+    def __init__(self, module_name):
+        self.module_name = module_name
+
+    def __iter__(self):
+        """This will iterate through this module and all its submodules
+
+        :returns: a generator that yields ReflectModule instances
+        """
+        for module_name in self.module_names:
+            yield type(self)(module_name)
+
+    def find_module_names(self, path, prefix):
+        """recursive method that will find all the submodules of the given module
+        at prefix with path
+
+        :returns: list, a list of submodule names under prefix.path
+        """
+
+        module_names = set([prefix])
+
+        # https://docs.python.org/2/library/pkgutil.html#pkgutil.iter_modules
+        for module_info in pkgutil.iter_modules([path]):
+            # we want to ignore any "private" modules
+            if module_info[1].startswith('_'): continue
+
+            module_prefix = ".".join([prefix, module_info[1]])
+            if module_info[2]:
+                # module is a package
+                submodule_names = self.find_module_names(os.path.join(path, module_info[1]), module_prefix)
+                module_names.update(submodule_names)
+            else:
+                module_names.add(module_prefix)
+
+        return module_names
+
+    def get_module(self, module_name):
+        """load a module by name"""
+        return importlib.import_module(module_name)
+
+    def find_module_path(self):
+        """find where the master module is located"""
+        master_modname = self.module_name.split(".", 1)[0]
+        master_module = sys.modules[master_modname]
+        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
+        path = os.path.dirname(inspect.getsourcefile(master_module))
+        return path
+
+    def find_module_import_path(self):
+        """find and return the importable path for endpoints"""
+        module_path = self.find_module_path()
+        path = os.path.dirname(module_path)
+        return path
+        #path = os.path.dirname(os.path.realpath(os.path.join(module_path, "..")))
+        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
 

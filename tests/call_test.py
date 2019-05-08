@@ -96,66 +96,6 @@ class RouterTest(TestCase):
         self.assertTrue("foo", t["module_name"])
 
 
-    def test_mixed_modules_packages(self):
-        # make sure a package with modules and other packages will resolve correctly
-        controller_prefix = "mmp"
-        r = testdata.create_modules({
-            controller_prefix: os.linesep.join([
-                "from endpoints import Controller",
-                "class Default(Controller): pass",
-            ]),
-            "{}.foo".format(controller_prefix): os.linesep.join([
-                "from endpoints import Controller",
-                "class Default(Controller): pass",
-            ]),
-            "{}.foo.bar".format(controller_prefix): os.linesep.join([
-                "from endpoints import Controller",
-                "class Default(Controller): pass",
-            ]),
-            "{}.che".format(controller_prefix): os.linesep.join([
-                "from endpoints import Controller",
-                "class Default(Controller): pass",
-            ]),
-        })
-        r = Router([controller_prefix])
-        self.assertEqual(set(['mmp.foo', 'mmp', 'mmp.foo.bar', 'mmp.che']), r.module_names)
-
-        # make sure just a file will resolve correctly
-        controller_prefix = "mmp2"
-        testdata.create_module(controller_prefix, os.linesep.join([
-            "from endpoints import Controller",
-            "class Bar(Controller): pass",
-        ]))
-        r = Router([controller_prefix])
-        self.assertEqual(set(['mmp2']), r.module_names)
-
-    def test_routing_module(self):
-        controller_prefix = "callback_info"
-        contents = [
-            "from endpoints import Controller",
-            "class Bar(Controller):",
-            "    def GET(*args, **kwargs): pass"
-        ]
-        testdata.create_module("{}.foo".format(controller_prefix), contents=contents)
-        r = Router([controller_prefix])
-        self.assertTrue(controller_prefix in r.module_names)
-        self.assertEqual(2, len(r.module_names))
-
-    def test_routing_package(self):
-        controller_prefix = "routepack"
-        contents = [
-            "from endpoints import Controller",
-            "",
-            "class Default(Controller):",
-            "    def GET(self): pass",
-            "",
-        ]
-        f = testdata.create_package(controller_prefix, contents=contents)
-
-        r = Router([controller_prefix])
-        self.assertTrue(controller_prefix in r.module_names)
-        self.assertEqual(1, len(r.module_names))
-
     def test_routing(self):
         """there was a bug that caused errors raised after the yield to return another
         iteration of a body instead of raising them"""
@@ -182,60 +122,6 @@ class RouterTest(TestCase):
         info = r.find(*self.get_http_instances("/foo/che/baz"))
         self.assertEqual(2, len(info['method_args']))
         self.assertEqual(info['class_name'], "Foo")
-
-    def test_controllers(self):
-        controller_prefix = "get_controllers"
-        d = {
-            controller_prefix: [
-                "from endpoints import Controller",
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                ""
-            ],
-            "{}.default".format(controller_prefix): [
-                "from endpoints import Controller",
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                ""
-            ],
-            "{}.foo".format(controller_prefix): [
-                "from endpoints import Controller",
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "",
-                "class Bar(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "    def POST(*args, **kwargs): pass",
-                ""
-            ],
-            "{}.foo.baz".format(controller_prefix): [
-                "from endpoints import Controller",
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "",
-                "class Che(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                ""
-            ],
-            "{}.foo.boom".format(controller_prefix): [
-                "from endpoints import Controller",
-                "",
-                "class Bang(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                ""
-            ],
-        }
-        r = testdata.create_modules(d)
-        s = set(d.keys())
-
-
-        r = Router([controller_prefix])
-        controllers = r.module_names
-        self.assertEqual(s, controllers)
-
-        # just making sure it always returns the same list
-        controllers = r.module_names
-        self.assertEqual(s, controllers)
 
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to default class

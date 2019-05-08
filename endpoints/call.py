@@ -17,6 +17,7 @@ from .http import Response, Request
 from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError, VersionError
 from .decorators import _property
 from .compat.environ import *
+from .reflection import ReflectModule
 
 
 logger = logging.getLogger(__name__)
@@ -225,25 +226,6 @@ class Router(object):
     _module_name_cache = {}
 
     @property
-    def classes(self):
-        """yields all controller classes found in controller_prefixes modules
-
-        :returns: generator, yields a tuple (controller_prefix, class_name, class)
-        """
-        _module_name_cache = type(self)._module_name_cache
-
-        for module in self.modules:
-            classes = inspect.getmembers(module, inspect.isclass)
-            for controller_class_name, controller_class in classes:
-                if controller_class_name.startswith('_'): continue
-                if not issubclass(controller_class, Controller): continue
-
-                for controller_prefix, module_names in _module_name_cache.items():
-                    if module.__name__ in module_names:
-                        yield controller_prefix, controller_class_name, controller_class
-                        break
-
-    @property
     def module_names(self):
         """get all the modules in the controller_prefixes
 
@@ -258,32 +240,14 @@ class Router(object):
                 ret.update(_module_name_cache[controller_prefix])
 
             else:
-
-                module = self.get_module(controller_prefix)
-
-                if hasattr(module, "__path__"):
-                    # path attr exists so this is a package
-                    modules = self.find_module_names(module.__path__[0], controller_prefix)
-
-                else:
-                    # we have a lonely .py file
-                    modules = set([controller_prefix])
+                rm = ReflectModule(controller_prefix)
+                module_names = rm.module_names
 
                 #_module_name_cache.setdefault(controller_prefix, {})
-                type(self)._module_name_cache[controller_prefix] = modules
-                ret.update(modules)
+                type(self)._module_name_cache[controller_prefix] = module_names
+                ret.update(module_names)
 
         return ret
-
-    @property
-    def modules(self):
-        """Returns an iterator of the actual modules, not just their names
-
-        :returns: generator, each module under self.controller_prefixes
-        """
-        for modname in self.module_names:
-            module = importlib.import_module(modname)
-            yield module
 
     def __init__(self, controller_prefixes):
         if not controller_prefixes:
@@ -298,7 +262,7 @@ class Router(object):
 
         module_name, module_path, controller_method_args = self.get_module_name(request_path_args)
         controller_module_name = module_name
-        controller_module = self.get_module(module_name)
+        controller_module = ReflectModule(module_name).module
 
         controller_class = None
         if controller_method_args:
@@ -342,30 +306,6 @@ class Router(object):
         instance.router = self
         return instance
 
-    def find_module_names(self, path, prefix):
-        """recursive method that will find all the submodules of the given module
-        at prefix with path
-
-        :returns: list, a list of submodule names under prefix.path
-        """
-
-        modules = set([prefix])
-
-        # https://docs.python.org/2/library/pkgutil.html#pkgutil.iter_modules
-        for module_info in pkgutil.iter_modules([path]):
-            # we want to ignore any "private" modules
-            if module_info[1].startswith('_'): continue
-
-            module_prefix = ".".join([prefix, module_info[1]])
-            if module_info[2]:
-                # module is a package
-                submodules = self.find_module_names(os.path.join(path, module_info[1]), module_prefix)
-                modules.update(submodules)
-            else:
-                modules.add(module_prefix)
-
-        return modules
-
     def get_module_name(self, path_args):
         """returns the module_name and remaining path args.
 
@@ -400,7 +340,7 @@ class Router(object):
             default_module_name = ""
 
             for controller_prefix in self.controller_prefixes:
-                controller_module = self.get_module(controller_prefix)
+                controller_module = ReflectModule(controller_prefix).module
                 if path_args:
                     controller_class = self.get_class(controller_module, path_args[0])
                     if controller_class:
@@ -427,10 +367,6 @@ class Router(object):
                     #module_name = self.controller_prefixes[0]
 
         return module_name, module_path, path_args
-
-    def get_module(self, module_name):
-        """load a module by name"""
-        return importlib.import_module(module_name)
 
     def get_class(self, module, class_name):
         """try and get the class_name from the module and make sure it is a valid

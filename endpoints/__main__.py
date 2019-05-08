@@ -6,15 +6,9 @@ import os
 import argparse
 import logging
 import runpy
-import imp
 import uuid
 
-try:
-    import endpoints
-except ImportError:
-    # this should only happen when running endpoints from source
-    sys.path.append(os.path.realpath(os.path.join(os.path.dirname(__file__), "..", "..")))
-    import endpoints
+from endpoints import __version__
 from endpoints.interface.wsgi import Server
 from endpoints import environ
 
@@ -29,7 +23,7 @@ def console():
     parser.add_argument(
         "-v", "--version",
         action='version',
-        version="%(prog)s {}".format(endpoints.__version__)
+        version="%(prog)s {}".format(__version__)
     )
     parser.add_argument(
         "--quiet",
@@ -39,7 +33,7 @@ def console():
     parser.add_argument(
         '--prefix', "--controller-prefix", "-P",
         nargs="+",
-        help='The endpoints controller prefix'
+        help='The endpoints controller prefix(es)'
     )
     parser.add_argument(
         '--file', "-F", "--wsgi-file", "--wsgifile",

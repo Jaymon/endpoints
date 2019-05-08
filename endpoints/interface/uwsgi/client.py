@@ -354,33 +354,37 @@ class WebsocketClient(HTTPClient):
 
 class UWSGIServer(WSGIServer):
 
-    bin_script = "endpoints_wsgifile.py"
     process_count = 1
 
     def __init__(self, *args, **kwargs):
         super(UWSGIServer, self).__init__(*args, **kwargs)
 
-        if not self.wsgifile:
-            self.wsgifile = self.path
-
     def get_start_cmd(self):
-        return [
+        args = [
             "uwsgi",
             "--need-app",
-            "--http={}".format(self.host.netloc),
+            "--http", self.host.netloc,
             "--show-config",
             "--master",
-            "--processes={}".format(self.process_count),
-            "--cpu-affinity=1",
+            "--processes", str(self.process_count),
+            "--cpu-affinity", "1",
             "--thunder-lock",
             "--http-raw-body",
-            "--chdir={}".format(self.cwd),
-            "--wsgi-file={}".format(Path(self.wsgifile)),
+            "--chdir", self.cwd,
         ]
 
-#     def get_subprocess_args_and_kwargs(self):
-#         self.env["ENDPOINTS_PREFIX"] = self.controller_prefix
-#         return super(UWSGIServer, self).get_subprocess_args_and_kwargs()
+        if self.wsgifile:
+            args.extend([
+                "--wsgi-file", Path(self.wsgifile),
+            ])
+
+        else:
+            args.extend([
+                #"--module", "endpoints.uwsgi:Application()",
+                "--module", "{}:Application()".format(".".join(__name__.split(".")[0:-1])),
+            ])
+
+        return args
 
 
 class WebsocketServer(UWSGIServer):
@@ -389,7 +393,7 @@ class WebsocketServer(UWSGIServer):
         args = super(WebsocketServer, self).get_start_cmd()
         args.extend([
             "--http-websockets",
-            "--gevent={}".format(self.gevent_process_count),
+            "--gevent", str(self.gevent_process_count),
         ])
         return args
 

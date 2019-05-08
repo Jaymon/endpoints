@@ -12,24 +12,7 @@ from ...compat.environ import *
 from ...utils import Path, String
 from ...http import Url
 from ... import environ
-
-
-def find_module_path():
-    """find where the master module is located"""
-    master_modname = __name__.split(".", 1)[0]
-    master_module = sys.modules[master_modname]
-    #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
-    path = os.path.dirname(inspect.getsourcefile(master_module))
-    return path
-
-
-def find_module_import_path():
-    """find and return the importable path for endpoints"""
-    module_path = find_module_path()
-    path = os.path.dirname(module_path)
-    return path
-    #path = os.path.dirname(os.path.realpath(os.path.join(module_path, "..")))
-    #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
+from ...reflection import ReflectModule
 
 
 class WSGIThread(threading.Thread):
@@ -52,11 +35,8 @@ class WSGIThread(threading.Thread):
         sys.stdout.flush()
 
     def run(self):
-        process = None
+        process = self.server.process
         try:
-            args, kwargs = self.server.get_subprocess_args_and_kwargs()
-            process = subprocess.Popen(*args, **kwargs)
-
             # Poll process for new output until finished
             for line in iter(process.stdout.readline, ""):
                 self.server.buf.append(line.rstrip())
@@ -110,7 +90,7 @@ class WSGIServer(object):
         server.start()
     """
 
-    bin_script = "wsgiserver.py"
+    #bin_script = "wsgiserver.py"
 
     bufsize = 1000
     """how many lines to buffer of output, set to 0 to suppress all output"""
@@ -125,7 +105,7 @@ class WSGIServer(object):
 
         env = dict(os.environ)
 
-        pwd = find_module_import_path()
+        pwd = ReflectModule(__name__).path
         pythonpath = pwd + os.pathsep + self.cwd
 
         if "PYTHONPATH" in env:
@@ -153,9 +133,9 @@ class WSGIServer(object):
     def environ(self):
         del self._environ
 
-    @property
-    def path(self):
-        return os.path.join(find_module_path(), "bin", self.bin_script)
+#     @property
+#     def path(self):
+#         return os.path.join(find_module_path(), "bin", self.bin_script)
 
     @property
     def output(self):
@@ -182,25 +162,31 @@ class WSGIServer(object):
         self.cwd = Path(kwargs.get("cwd", os.curdir))
         self.wsgifile = wsgifile
         self.environ = kwargs.get("environ", kwargs.get("env", {}))
+        self.process = None
 
     def kill(self):
         key = self.wsgifile
         if not key:
-            key = self.path
-        cmd = "pkill -9 -f {}".format(key)
+            key = self.host.netloc
+        cmd = "pkill -9 -f \"{}\"".format(key)
         subprocess.call("{} > /dev/null 2>&1".format(cmd), shell=True)
 
     def get_start_cmd(self):
         cmd = [
             "python",
-            self.path,
-            "--host={}".format(self.host.netloc),
-            "--prefix={}".format(self.controller_prefix),
+            "-m",
+            __name__.split(".")[0],
+            #"endpoints",
+            #self.path,
+            #"--host={}".format(self.host.netloc),
+            "--host", self.host.netloc,
+            #"--prefix={}".format(self.controller_prefix),
+            "--prefix", self.controller_prefix,
         ]
 
         wsgifile = self.wsgifile
         if wsgifile:
-            cmd.append('--file={}'.format(Path(wsgifile)))
+            cmd.extend(['--file', Path(wsgifile)])
 
         return cmd
 
@@ -216,8 +202,12 @@ class WSGIServer(object):
 
     def start(self, **kwargs):
         #import pdb; pdb.set_trace()
+        args, kwargs = self.get_subprocess_args_and_kwargs()
+        self.process = subprocess.Popen(*args, **kwargs)
+
         self.quiet = kwargs.pop("quiet", type(self).quiet)
         self.buf = deque(maxlen=self.bufsize)
+
         self.thread = WSGIThread(self)
         self.thread.start()
 
