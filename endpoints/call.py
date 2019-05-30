@@ -240,6 +240,7 @@ class Router(object):
                 ret.update(_module_name_cache[controller_prefix])
 
             else:
+                logger.debug("Populating module cache for controller_prefix {}".format(controller_prefix))
                 rm = ReflectModule(controller_prefix)
                 module_names = rm.module_names
 

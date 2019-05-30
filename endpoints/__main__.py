@@ -33,6 +33,7 @@ def console():
     parser.add_argument(
         '--prefix', "--controller-prefix", "-P",
         nargs="+",
+        default=environ.get_controller_prefixes(),
         help='The endpoints controller prefix(es)'
     )
     parser.add_argument(
@@ -110,5 +111,8 @@ def console():
 
 
 if __name__ == "__main__":
-    sys.exit(console())
+    try:
+        sys.exit(console())
+    except KeyboardInterrupt:
+        sys.exit(0)
 

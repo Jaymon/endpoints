@@ -19,9 +19,40 @@ HOST = get("HOST", "localhost:8383")
 classes and also the tests"""
 
 
-def get_controller_prefixes(env_name='ENDPOINTS_PREFIX'):
+def get_prefixes(env_name):
+    """this will look for env_name, and env_name_N (where
+    N is 1 to infinity) in the environment, if it finds them, it will assume they
+    are python module paths
+
+    The num checks (eg *_1, *_2) go in order, so you can't do *_1, *_3, because it
+    will fail on missing *_2 and move on, so make sure your num dsns are in order 
+    (eg, 1, 2, 3, ...)
+
+    :param env_name: string, the name of the environment variables
+    :returns: list, the found module paths
     """
-    this will look for ENDPOINTS_PREFIX, and ENDPOINTS_PREFIX_N (where
+    ret = []
+    prefixsep = os.pathsep
+
+    if env_name in os.environ:
+        ret.extend(os.environ[env_name].split(prefixsep))
+        #ret.append(os.environ[env_name])
+
+    # now try importing _1 -> _N prefixes
+    increment_name = lambda name, num: '{name}_{num}'.format(name=name, num=num)
+    num = 0 if increment_name(env_name, 0) in os.environ else 1
+    env_num_name = increment_name(env_name, num)
+    while env_num_name in os.environ:
+        #ret.append(os.environ[env_num_name])
+        ret.extend(os.environ[env_num_name].split(prefixsep))
+        num += 1
+        env_num_name = increment_name(env_name, num)
+
+    return ret
+
+
+def get_controller_prefixes(env_name='ENDPOINTS_PREFIX'):
+    """this will look for ENDPOINTS_PREFIX, and ENDPOINTS_PREFIX_N (where
     N is 1 to infinity) in the environment, if it finds them, it will assume they
     are python module paths where endpoints can find Controller subclasses
 
@@ -40,19 +71,5 @@ def get_controller_prefixes(env_name='ENDPOINTS_PREFIX'):
     :param env_name: string, the name of the environment variables
     :returns: list, the found module paths
     """
-    ret = []
-
-    if env_name in os.environ:
-        ret.append(os.environ[env_name])
-
-    # now try importing _1 -> _N prefixes
-    increment_name = lambda name, num: '{name}_{num}'.format(name=name, num=num)
-    num = 0 if increment_name(env_name, 0) in os.environ else 1
-    env_num_name = increment_name(env_name, num)
-    while env_num_name in os.environ:
-        ret.append(os.environ[env_num_name])
-        num += 1
-        env_num_name = increment_name(env_name, num)
-
-    return ret
+    return get_prefixes(env_name)
 

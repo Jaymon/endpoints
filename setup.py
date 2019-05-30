@@ -5,6 +5,7 @@
 from setuptools import setup, find_packages
 import re
 import os
+from codecs import open
 
 
 name = "endpoints"
@@ -32,6 +33,7 @@ kwargs["long_description"] = read('README.rst')
 setup(
     version=version,
     description='Get an api up and running quickly',
+    keywords="wsgi wsgi-server api api-server server framework web-framework REST rest-api",
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
     url='http://github.com/firstopinion/{}'.format(name),
