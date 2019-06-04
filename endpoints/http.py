@@ -1208,10 +1208,14 @@ class Response(Http):
             self._status = msg
 
         return self._status
+    @property
+    def status_code(self): return self.status
 
     @status.setter
     def status(self, v):
         self._status = v
+    @status_code.setter
+    def status_code(self, v): self.status = v
 
     @property
     def body(self):

@@ -169,10 +169,6 @@ class ReflectMethod(object):
 
         return ret
 
-#     @_property
-#     def args(self):
-#         """return information about args that can be passed to this method"""
-
     def __init__(self, method_name, method, controller):
         self.method_name = method_name
         self.method = method
@@ -190,25 +186,6 @@ class ReflectController(object):
     method_class = ReflectMethod
 
     decorator_class = ReflectDecorator
-
-    @_property
-    def regex(self):
-        """return the most liberal path regex that will satisfy calling this controller
-        and still capture all the needed information"""
-        info = self.get_info()
-        pout.v(self.uri)
-        positionals = False
-        required_args_count = 0
-        for rm in self.methods:
-            positionals |= rm.positionals
-            required_args_count = max(required_args_count, len(rm.required_path_args))
-
-
-        # the three questions we need answered:
-        # 1. does one of the http methods accept unlimited *args?
-        # 2. how many path args after uri are required?
-        # 3. how many path args after uri + required are optional?
-
 
     @_property
     def decorators(self):

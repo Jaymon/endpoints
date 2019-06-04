@@ -16,6 +16,33 @@ from ...utils import String, ByteString
 from ... import environ
 
 
+# class Delegate(tornado.httputil.HTTPMessageDelegate):
+#     def __init__(self, connection, call):
+#         #self.server = server
+#         self.connection = connection
+#         self.call = call
+# 
+#     def finish(self):
+#         self.call.handle()
+#         res = self.call.response
+#         pout.v(res)
+#         self.connection.finish()
+
+
+# class Router(tornado.routing.Router):
+#     def __init__(self, server):
+#         self.server = server
+#         super(Router, self).__init__()
+# 
+#     def find_handler(self, request, **kwargs):
+#         #wsgi_request = tornado.wsgi.WSGIContainer.environ(request)
+#         #pout.v(request, wsgi_request, kwargs)
+# 
+#         c = self.server.create_call(request)
+#         return self.server.tornado_delegate_class(request.connection, c)
+
+
+
 class Handler(tornado.web.RequestHandler):
 #     def __init__(self, call, router, request):
 #         self.call = call
@@ -27,9 +54,22 @@ class Handler(tornado.web.RequestHandler):
 #         self.write("hello world")
 
     def handle(self, *args, **kwargs):
-        c = self.request.call
+        #c = self.request.call
+        pout.v(self)
+
+        # !!! if I create the call before right here (like say in Application.find_handler
+        # then the request body won't be populated, I have no idea why
+        c = self.request.application.server.create_call(self.request)
+
+        # just in case the endpoints code needs the tornado code for some reason
+        c.application = self.request.application
+        c.tornado = self
+
         c.handle()
         res = c.response
+        #pout.v(self.request, self.request.body, self.request.body_arguments)
+
+        self.set_status(res.status)
 
         for h in res.headers.items():
             #pout.v(h, ByteString(h[0]), ByteString(h[1]))
@@ -37,42 +77,18 @@ class Handler(tornado.web.RequestHandler):
             self.set_header(h[0], h[1])
 
         for s in res:
-            #self.write(ByteString(s))
+            #self.write(String(s))
+            #pout.v(s)
             self.write(s)
 
     def head(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def get(self, *args, **kwargs): return self.handle(*args, **kwargs)
-    def post(self, *args, **kwargs): return self.handle(*args, **kwargs)
+    def post(self, *args, **kwargs):
+        return self.handle(*args, **kwargs)
     def delete(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def patch(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def put(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def options(self, *args, **kwargs): return self.handle(*args, **kwargs)
-
-
-class Delegate(tornado.httputil.HTTPMessageDelegate):
-    def __init__(self, connection, call):
-        #self.server = server
-        self.connection = connection
-        self.call = call
-
-    def finish(self):
-        self.call.handle()
-        res = self.call.response
-        pout.v(res)
-        self.connection.finish()
-
-
-class Router(tornado.routing.Router):
-    def __init__(self, server):
-        self.server = server
-        super(Router, self).__init__()
-
-    def find_handler(self, request, **kwargs):
-        #wsgi_request = tornado.wsgi.WSGIContainer.environ(request)
-        #pout.v(request, wsgi_request, kwargs)
-
-        c = self.server.create_call(request)
-        return self.server.tornado_delegate_class(request.connection, c)
 
 
 class Application(tornado.web.Application):
@@ -83,18 +99,19 @@ class Application(tornado.web.Application):
 
     def find_handler(self, request, **kwargs):
         #wsgi_request = tornado.wsgi.WSGIContainer.environ(request)
-        #pout.v(request, wsgi_request, kwargs)
-        c = self.server.create_call(request)
-        request.call = c
-        request.server = self
+        #pout.v(request, kwargs)
+        #c = self.server.create_call(request)
+        #request.call = c
+        request.application = self
         return super(Application, self).find_handler(request, **kwargs)
 
 
 class Server(BaseServer):
-    tornado_delegate_class = Delegate
+    #tornado_delegate_class = Delegate
     tornado_handler_class = Handler
-    tornado_router_class = Router
-    backend_class = tornado.httpserver.HTTPServer
+    tornado_application_class = Application
+    #tornado_router_class = Router
+    #backend_class = tornado.httpserver.HTTPServer
     """the supported server's interface, there is no common interface for this class.
     Basically it is the raw backend class that the BaseServer child is translating
     for endpoints compatibility"""
@@ -114,34 +131,34 @@ class Server(BaseServer):
         port = port if port else 0
         #server_address = (hostname, port if port else 0)
 
-        app = Application(self)
+        app = self.tornado_application_class(self)
         server = app.listen(port, hostname)
         server.start(0)
         return server
 
         #app = self.tornado_router_class(self)
-        app = Application(self)
-        server = self.backend_class(app)
-        server.bind(port, hostname)
-        server.start(0)  # Forks multiple sub-processes
-        #pout.v(server, server.conn_params)
-        #s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
-
-        return server
-
-
-        r = Reflect(self.controller_prefixes)
-        for c in r.controllers:
-            pout.v(c.decorators)
-            pout.x()
-            for ms in c.methods.values():
-                for m in ms:
-                    pout.v(m, m.params)
-            #pout.v(c.methods)
-            #for m in c.methods:
-            #    pout.v(m)
-            #pout.v(m.params)
-            #pout.v(c.decorators)
+#         app = Application(self)
+#         server = self.backend_class(app)
+#         server.bind(port, hostname)
+#         server.start(0)  # Forks multiple sub-processes
+#         #pout.v(server, server.conn_params)
+#         #s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
+# 
+#         return server
+# 
+# 
+#         r = Reflect(self.controller_prefixes)
+#         for c in r.controllers:
+#             pout.v(c.decorators)
+#             pout.x()
+#             for ms in c.methods.values():
+#                 for m in ms:
+#                     pout.v(m, m.params)
+#             #pout.v(c.methods)
+#             #for m in c.methods:
+#             #    pout.v(m)
+#             #pout.v(m.params)
+#             #pout.v(c.decorators)
 
     def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints understands"""
@@ -150,10 +167,16 @@ class Server(BaseServer):
         r.method = raw_request.method
         r.path = raw_request.path
         r.query = raw_request.query
+#         d = {}
+#         for k, v in raw_request.query_arguments.items():
+#             d[String(k)] = String(v)
+#         r.query_kwargs = d
+
         r.query_kwargs = raw_request.query_arguments
         r.body_kwargs = raw_request.body_arguments
         r.body = raw_request.body
         r.environ.update(tornado.wsgi.WSGIContainer.environ(raw_request))
+        #pout.v(raw_request, r, raw_request.body)
         return r
 
 #     def handle_request(self):

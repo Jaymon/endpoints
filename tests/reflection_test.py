@@ -430,17 +430,6 @@ class ReflectControllerTest(TestCase):
         r = rm.required_path_args
         self.assertEqual(1, len(r))
 
-    def test_regex(self):
-        mp = testdata.create_module(contents=[
-            "from endpoints import param, version, Controller",
-            "class Foo(Controller):",
-            "    def POST(self, one, two=2, three=3): pass",
-        ])
-        rc = ReflectController(mp, mp.module.Foo)
-        r = rc.regex
-        pout.v(r)
-        return
-
     def test__get_methods_info(self):
         mp = testdata.create_module(contents=[
             "from endpoints import param, version, Controller",
