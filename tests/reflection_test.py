@@ -354,6 +354,210 @@ class ReflectTest(TestCase):
 
 
 class ReflectControllerTest(TestCase):
+    def test_method_required_path_args(self):
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0)",
+            "    @param('one')",
+            "    def POST(self, *args, **kwargs): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual([0], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0)",
+            "    @param('one')",
+            "    def POST(self, zero, one): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual(["zero"], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0)",
+            "    @param(1, default=1)",
+            "    def POST(self, *args): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual([0], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0)",
+            "    @param(1, default=1)",
+            "    def POST(self, zero, *args): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual(["zero"], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0)",
+            "    @param(1, default=1)",
+            "    def POST(self, zero, one): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual(["zero"], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0, default=0)",
+            "    @param(1, default=1)",
+            "    def POST(self, zero, one): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual([], r)
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def POST(self, one, two=2, three=3): pass",
+        ])
+        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
+        r = rm.required_path_args
+        self.assertEqual(1, len(r))
+
+    def test_regex(self):
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def POST(self, one, two=2, three=3): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.regex
+        pout.v(r)
+        return
+
+    def test__get_methods_info(self):
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Bar(Controller):",
+            "    @version('v1')",
+            "    def GET_v1(self, **kwargs): pass",
+            "",
+            "    @version('v2')",
+            "    def GET_v2(self, *args): pass",
+            ""
+            "    def POST(self, *args, **kwargs): pass",
+        ])
+
+        rc = ReflectController(mp, mp.module.Bar)
+        r = rc._get_methods_info()
+        self.assertEqual(2, len(r["GET"]))
+        self.assertEqual(1, len(r["POST"]))
+
+    def test_get_info(self):
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def POST(self, one, two=2, three=3): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertFalse(r["POST"]["POST"]["positionals"])
+        self.assertFalse(r["POST"]["POST"]["keywords"])
+        self.assertEqual(3, len(r["POST"]["POST"]["params"]))
+        self.assertEqual(3, r["POST"]["POST"]["params"][2]["default"])
+        self.assertTrue(r["POST"]["POST"]["params"][0]["required"])
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    @param(0, default=1)",
+            "    @param(1)",
+            "    @param('che')",
+            "    def POST(self, zero, one, che): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertEqual(3, len(r["POST"]["POST"]["params"]))
+        self.assertEqual(3, len(r["POST"]["POST"]["decorators"]))
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def GET(self, *args, **kwargs): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertTrue(r["GET"]["GET"]["positionals"])
+        self.assertTrue(r["GET"]["GET"]["keywords"])
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def GET(self): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertFalse(r["GET"]["GET"]["positionals"])
+        self.assertFalse(r["GET"]["GET"]["keywords"])
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def GET(self, **kwargs): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertFalse(r["GET"]["GET"]["positionals"])
+        self.assertTrue(r["GET"]["GET"]["keywords"])
+
+        mp = testdata.create_module(contents=[
+            "from endpoints import param, version, Controller",
+            "class Foo(Controller):",
+            "    def GET(self, *args): pass",
+        ])
+        rc = ReflectController(mp, mp.module.Foo)
+        r = rc.get_info()
+        self.assertTrue(r["GET"]["GET"]["positionals"])
+        self.assertFalse(r["GET"]["GET"]["keywords"])
+
+        # TODO this is a valid py3 method declarations:
+        # def foo(*args, bar, che): pass
+
+#         mp = testdata.create_module(controller_prefix, [
+#             "import endpoints",
+#             "from endpoints.decorators import param, version",
+#             "class Bar(endpoints.Controller):",
+#             "    @param('foo', default=1, type=int)",
+#             "    @version('v1')",
+#             "    def GET_v1(self, **kwargs): pass",
+#             "",
+#             "    @version('v2')",
+#             "    def GET_v2(self, *args): pass",
+#             ""
+#             "    @version('v3')",
+#             "    def GET_v3(self): pass",
+#             ""
+#             "    @param(0, default=1)",
+#             "    @param('che')",
+#             "    @version('v1')",
+#             "    def POST_v1(self, *args, **kwargs): pass",
+#             "",
+#             "    @param(0, default=1)",
+#             "    @param(1)",
+#             "    @param('che')",
+#             "    @version('v2')",
+#             "    def POST_v2(self, zero, one, che): pass",
+#         ])
+# 
+#         rc = ReflectController(controller_prefix, mp.module.Bar)
+#         rc._get_info()
+
     def test_multi_methods(self):
         controller_prefix = "multi_methods"
         mp = testdata.create_module(controller_prefix, [

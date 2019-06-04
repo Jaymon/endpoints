@@ -51,6 +51,10 @@ class BaseServer(object):
     """the endpoints.call.Call compatible class that should be used to make a
     Call() instance"""
 
+    @property
+    def hostloc(self):
+        raise NotImplementedError()
+
     @_property
     def backend(self):
         return self.create_backend()
@@ -59,7 +63,10 @@ class BaseServer(object):
         if controller_prefixes:
             self.controller_prefixes = controller_prefixes
         else:
-            self.controller_prefixes = environ.get_controller_prefixes()
+            if "controller_prefix" in kwargs:
+                self.controller_prefixes = [kwargs["controller_prefix"]]
+            else:
+                self.controller_prefixes = environ.get_controller_prefixes()
 
         for k, v in kwargs.items():
             if k.endswith("_class"):

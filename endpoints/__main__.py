@@ -9,8 +9,20 @@ import runpy
 import uuid
 
 from endpoints import __version__
-from endpoints.interface.wsgi import Server
+#from endpoints.interface.wsgi import Server
 from endpoints import environ
+from endpoints.reflection import ReflectModule
+
+
+def get_interface(modpath):
+    """Returns the interface Server class
+
+    :param modpath: the module path of the interface (eg, endpoints.interface.wsgi)
+    :returns: Server class
+    """
+    rm = ReflectModule(modpath)
+    s = rm.module.Server
+    return s
 
 
 def console():
@@ -60,6 +72,13 @@ def console():
         default=os.getcwd(),
         help='directory to run the server in, usually contains the prefix module path',
     )
+    parser.add_argument(
+        '--interface', '-i',
+        dest="interface",
+        default="endpoints.interface.wsgi",
+        type=get_interface,
+        help='The server interface endpoints will use',
+    )
 #     parser.add_argument(
 #         '--config', "--config-script", "-S",
 #         dest="config_script",
@@ -94,7 +113,7 @@ def console():
 #         h = "wsgiserver_config_{}".format(uuid.uuid4())
 #         config_module = imp.load_source(h, args.config_script)
 
-    s = Server()
+    s = args.interface()
 
     if "application" in config:
         s.application = config["application"]
