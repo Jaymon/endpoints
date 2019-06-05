@@ -94,7 +94,7 @@ def console():
 
     if not args.quiet:
         # https://docs.python.org/2.7/library/logging.html#logging.basicConfig
-        logging.basicConfig(format="%(message)s", level=logging.DEBUG, stream=sys.stdout)
+        logging.basicConfig(format="%(message)s", level=logging.DEBUG, stream=sys.stderr)
 
     logger = logging.getLogger(__name__)
     os.environ["ENDPOINTS_HOST"] = args.host

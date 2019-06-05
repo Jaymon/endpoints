@@ -7,7 +7,7 @@ import testdata
 
 from endpoints.compat.environ import *
 from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
-from endpoints.http import Headers, Url, Response, Request, Environ
+from endpoints.http import Headers, Url, Response, Request, Environ, ResponseBody
 from endpoints.utils import String, ByteString
 
 
@@ -505,6 +505,11 @@ class ResponseTest(TestCase):
 
 
 class UrlTest(TestCase):
+    def test_normalize_query_kwargs(self):
+        d = {b'foo': [b'bar'], b'baz': [b'che']}
+        r = Url.normalize_query_kwargs(d)
+        self.assertEqual({'foo': b'bar', 'baz': b'che'}, r)
+
     def test_parent(self):
         u = Url("http://example.com/foo/bar/che")
 
@@ -762,4 +767,11 @@ class UrlTest(TestCase):
 
         h2 = h.subtract(query_kwargs={"arg1": 1})
         self.assertFalse("arg1" in h2)
+
+
+class ResponseBodyTest(TestCase):
+    def test_string(self):
+        r1 = json.dumps({'foo': b'bar'}, cls=ResponseBody)
+        r2 = json.dumps({'foo': 'bar'}, cls=ResponseBody)
+        self.assertEqual(r1, r2)
 

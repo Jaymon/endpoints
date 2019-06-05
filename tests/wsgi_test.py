@@ -97,7 +97,7 @@ class WSGITest(TestCase):
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
-            "        return kwargs['file'].filename",
+            "        return kwargs['file']['filename']",
             "",
         ])
 
@@ -115,7 +115,7 @@ class WSGITest(TestCase):
             "class Default(Controller):",
             "    @decorators.param('file')",
             "    def POST(self, *args, **kwargs):",
-            "        return kwargs['file'].filename",
+            "        return kwargs['file']['filename']",
             "",
         ])
 

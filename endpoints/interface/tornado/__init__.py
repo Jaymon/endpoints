@@ -16,46 +16,16 @@ from ...utils import String, ByteString
 from ... import environ
 
 
-# class Delegate(tornado.httputil.HTTPMessageDelegate):
-#     def __init__(self, connection, call):
-#         #self.server = server
-#         self.connection = connection
-#         self.call = call
-# 
-#     def finish(self):
-#         self.call.handle()
-#         res = self.call.response
-#         pout.v(res)
-#         self.connection.finish()
-
-
-# class Router(tornado.routing.Router):
-#     def __init__(self, server):
-#         self.server = server
-#         super(Router, self).__init__()
-# 
-#     def find_handler(self, request, **kwargs):
-#         #wsgi_request = tornado.wsgi.WSGIContainer.environ(request)
-#         #pout.v(request, wsgi_request, kwargs)
-# 
-#         c = self.server.create_call(request)
-#         return self.server.tornado_delegate_class(request.connection, c)
-
-
-
 class Handler(tornado.web.RequestHandler):
-#     def __init__(self, call, router, request):
-#         self.call = call
-#         super(Handler, self).__init__(router, request)
-
-#     def get(self, *args, **kwargs):
-#         pout.v(self)
-#         pout.v(args, kwargs)
-#         self.write("hello world")
-
+    """All requests will go through this handler, specifically the handle method"""
     def handle(self, *args, **kwargs):
-        #c = self.request.call
-        pout.v(self)
+        """all the magic happens here, this will take the tornado request, create
+        an endpoints request and then create the call instance and let endpoints
+        handle the request and then pass the result back to tornado
+
+        all the http method class basically just wrap this method, but you could
+        override any of the http methods individually if you wanted, or you can
+        override this method if you want to have common functionality"""
 
         # !!! if I create the call before right here (like say in Application.find_handler
         # then the request body won't be populated, I have no idea why
@@ -67,9 +37,8 @@ class Handler(tornado.web.RequestHandler):
 
         c.handle()
         res = c.response
-        #pout.v(self.request, self.request.body, self.request.body_arguments)
 
-        self.set_status(res.status)
+        self.set_status(res.code)
 
         for h in res.headers.items():
             #pout.v(h, ByteString(h[0]), ByteString(h[1]))
@@ -79,7 +48,8 @@ class Handler(tornado.web.RequestHandler):
         for s in res:
             #self.write(String(s))
             #pout.v(s)
-            self.write(s)
+            if s:
+                self.write(s)
 
     def head(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def get(self, *args, **kwargs): return self.handle(*args, **kwargs)
@@ -92,29 +62,29 @@ class Handler(tornado.web.RequestHandler):
 
 
 class Application(tornado.web.Application):
+    """The tornado application instance handles the routing, we override it so we
+    can use endpoints's routing stuff and so tornado's handler can get access to
+    the endpoints's Server instance so endpoints can do its thing"""
     def __init__(self, server, *args, **kwargs):
         self.server = server
         kwargs.setdefault("default_handler_class", self.server.tornado_handler_class)
         super(Application, self).__init__(*args, **kwargs)
 
     def find_handler(self, request, **kwargs):
-        #wsgi_request = tornado.wsgi.WSGIContainer.environ(request)
-        #pout.v(request, kwargs)
-        #c = self.server.create_call(request)
-        #request.call = c
+        """This injects self into the request instance so the actual handler instance
+        can get access to the Server instance to create endpoints compatible things
+        and handle the request"""
         request.application = self
         return super(Application, self).find_handler(request, **kwargs)
 
 
 class Server(BaseServer):
-    #tornado_delegate_class = Delegate
+    """This is the bridge class between tornado and endpoints, this makes tornado
+    compatible with all of endpoints's stuff"""
+
     tornado_handler_class = Handler
+
     tornado_application_class = Application
-    #tornado_router_class = Router
-    #backend_class = tornado.httpserver.HTTPServer
-    """the supported server's interface, there is no common interface for this class.
-    Basically it is the raw backend class that the BaseServer child is translating
-    for endpoints compatibility"""
 
     @property
     def hostloc(self):
@@ -125,67 +95,67 @@ class Server(BaseServer):
         return ":".join(map(String, server_address))
 
     def create_backend(self, **kwargs):
-        #return self.backend_class(**kwargs)
-
         hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
         port = port if port else 0
-        #server_address = (hostname, port if port else 0)
 
         app = self.tornado_application_class(self)
         server = app.listen(port, hostname)
         server.start(0)
         return server
 
-        #app = self.tornado_router_class(self)
-#         app = Application(self)
-#         server = self.backend_class(app)
-#         server.bind(port, hostname)
-#         server.start(0)  # Forks multiple sub-processes
-#         #pout.v(server, server.conn_params)
-#         #s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
-# 
-#         return server
-# 
-# 
-#         r = Reflect(self.controller_prefixes)
-#         for c in r.controllers:
-#             pout.v(c.decorators)
-#             pout.x()
-#             for ms in c.methods.values():
-#                 for m in ms:
-#                     pout.v(m, m.params)
-#             #pout.v(c.methods)
-#             #for m in c.methods:
-#             #    pout.v(m)
-#             #pout.v(m.params)
-#             #pout.v(c.decorators)
-
     def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints understands"""
+        #pout.v(raw_request)
         r = self.request_class()
         r.set_headers(raw_request.headers)
+
+        # this call actually modifies the raw request by popping headers
+        environ = tornado.wsgi.WSGIContainer.environ(raw_request)
+        r.environ.update(environ)
+
         r.method = raw_request.method
         r.path = raw_request.path
-        r.query = raw_request.query
-#         d = {}
-#         for k, v in raw_request.query_arguments.items():
-#             d[String(k)] = String(v)
-#         r.query_kwargs = d
+        #r.query = raw_request.query
+        r.query_kwargs = Url.normalize_query_kwargs(raw_request.query_arguments)
 
-        r.query_kwargs = raw_request.query_arguments
-        r.body_kwargs = raw_request.body_arguments
-        r.body = raw_request.body
-        r.environ.update(tornado.wsgi.WSGIContainer.environ(raw_request))
-        #pout.v(raw_request, r, raw_request.body)
+        if raw_request.body_arguments:
+            body_kwargs = Url.normalize_query_kwargs(raw_request.body_arguments)
+            if raw_request.files:
+                for k, vs in Url.normalize_query_kwargs(raw_request.files).items():
+                    body_kwargs[k] = vs
+
+            r.body_kwargs = body_kwargs
+
+        else:
+            # tornado won't un-jsonify stuff automatically, so if there aren't
+            # any body arguments there might still be something in body
+            r.body = raw_request.body
+
+        #r.body_input = environ['wsgi.input']
+        #r.body = raw_request.body
+
+        #pout.v(r.body, r.body_kwargs)
+        #pout.v(r)
         return r
 
 #     def handle_request(self):
 #         raise NotImplementedError()
+
+#     def normalize_kwargs(self, d):
+#         for k, v in d.items():
+#             if isinstance(k, bytes):
+#                 k = String(k)
+# 
+#             if
 
     def serve_forever(self):
         server = self.backend
         tornado.ioloop.IOLoop.current().start()
 
     def serve_count(self, count):
+        """TODO there might be a way to make this work buy using IOLoop.run_sync
+        but it's not worth figuring out right now
+        https://github.com/tornadoweb/tornado/blob/master/tornado/ioloop.py#L460
+        """
         raise NotImplementedError()
 

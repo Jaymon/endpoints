@@ -204,6 +204,12 @@ class ResponseBody(json.JSONEncoder):
                 "errmsg": str(obj)
             }
 
+        elif isinstance(obj, bytes):
+            # this seems like a py3 bug, for some reason bytes can get in here
+            # https://bugs.python.org/issue30343
+            # https://stackoverflow.com/questions/43913256/understanding-subclassing-of-jsonencoder
+            return String(obj)
+
         else:
             return json.JSONEncoder.default(self, obj)
 
@@ -438,12 +444,25 @@ class Url(String):
         """return name=val&name2=val2 strings into {name: val} dict"""
         if not query: return {}
 
+        if isinstance(query, bytes):
+            query = String(query)
+
+        # https://docs.python.org/2/library/urlparse.html
+        query_kwargs = urlparse.parse_qs(query, True, strict_parsing=True)
+        return cls.normalize_query_kwargs(query_kwargs)
+
+    @classmethod
+    def normalize_query_kwargs(cls, query):
         d = {}
         # https://docs.python.org/2/library/urlparse.html
-        for k, kv in urlparse.parse_qs(query, True, strict_parsing=True).items():
+        for k, kv in query.items():
             #k = k.rstrip("[]") # strip out php type array designated variables
+            if isinstance(k, bytes):
+                k = String(k)
+
             if len(kv) > 1:
                 d[k] = kv
+
             else:
                 d[k] = kv[0]
 
@@ -1193,13 +1212,19 @@ class Response(Http):
                 code = 204
 
         return code
-
     @code.setter
     def code(self, v):
         self._code = v
 
     @property
+    def status_code(self): return self.code
+
+    @status_code.setter
+    def status_code(self, v): self.code = v
+
+    @property
     def status(self):
+        """The full http status (the first line of the headers in a server response"""
         if not getattr(self, '_status', None):
             c = self.code
             status_tuple = BaseHTTPRequestHandler.responses.get(self.code)
@@ -1208,14 +1233,10 @@ class Response(Http):
             self._status = msg
 
         return self._status
-    @property
-    def status_code(self): return self.status
 
     @status.setter
     def status(self, v):
         self._status = v
-    @status_code.setter
-    def status_code(self, v): self.status = v
 
     @property
     def body(self):

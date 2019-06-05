@@ -437,7 +437,7 @@ class param(FuncDecorator):
                 vs = []
                 for v in val:
                     if isinstance(v, basestring):
-                        vs.extend(v.split(','))
+                        vs.extend(String(v).split(','))
                     else:
                         vs.append(v)
 
