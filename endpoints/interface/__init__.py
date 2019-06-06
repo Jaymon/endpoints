@@ -2,15 +2,16 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 import logging
-import cgi
 import json
 import sys
+from functools import partial
 
 from ..http import Request, Response
 from .. import environ
 from ..call import Router, Call
 from ..decorators import _property
 from ..exception import CallError, Redirect, CallStop, AccessDenied
+from ..utils import ByteString, JSONEncoder
 
 
 logger = logging.getLogger(__name__)
@@ -79,10 +80,50 @@ class BaseServer(object):
         """convert the raw interface raw_request to a request that endpoints understands"""
         raise NotImplementedError()
 
+    def create_request_body(self, request, raw_request, **kwargs):
+        raise NotImplementedError()
+
     def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used to
         return output to the client"""
         return self.response_class()
+
+    def create_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
+        """usually when iterating this object it means we are returning the response
+        of a wsgi request, so this will iterate the body and make sure it is a bytes
+        string because wsgiref requires an actual bytes instance, a child class won't work
+
+        :returns: a generator that yields bytes strings
+        """
+        if not response.has_body(): return
+
+        body = response.body
+
+        if response.is_file():
+            if body.closed:
+                raise IOError("cannot read streaming body because pointer is closed")
+
+            # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
+            for chunk in iter(partial(body.read, 8192), ''):
+                yield ByteString(chunk, response.encoding).raw()
+
+            # close the pointer since we've consumed it
+            body.close()
+
+        elif response.is_json():
+            # TODO ???
+            # I don't like this, if we have a content type but it isn't one
+            # of the supported ones we were returning the exception, which threw
+            # Jarid off, but now it just returns a string, which is not best either
+            # my thought is we could have a body_type_subtype method that would 
+            # make it possible to easily handle custom types
+            # eg, "application/json" would become: self.body_application_json(b, is_error)
+            body = json.dumps(body, cls=json_encoder)
+            yield ByteString(body, response.encoding).raw()
+
+        else:
+            # just return a string representation of body if no content type
+            yield ByteString(body, response.encoding).raw()
 
     def create_call(self, raw_request, **kwargs):
         """create a call object that has endpoints understandable request and response

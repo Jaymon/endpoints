@@ -20,13 +20,6 @@ from .wsgi_test import TestCase, WSGITest
 
 class WebTest(WSGITest):
     server_class = WebServer
-    def test_post_ioerror(self):
-        # !!! this test did cause tornado to zombie though and so it wasn't
-        # killed after the test was ran
-        raise self.skip_test("This test is very wsgi specific")
-
-
-
 
 
 # class UWSGITest(WSGITest):

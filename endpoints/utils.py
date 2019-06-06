@@ -4,6 +4,8 @@ import os
 import mimetypes
 import sys
 import base64
+import json
+import types
 
 from .compat.environ import *
 from . import environ
@@ -298,4 +300,24 @@ class AcceptHeader(object):
 
                     elif x[0][1] == msubtype:
                         yield x
+
+
+class JSONEncoder(json.JSONEncoder):
+    def default(self, obj):
+        if isinstance(obj, types.GeneratorType):
+            return [x for x in obj]
+
+        elif isinstance(obj, Exception):
+            return {
+                "errmsg": String(obj)
+            }
+
+        elif isinstance(obj, bytes):
+            # this seems like a py3 bug, for some reason bytes can get in here
+            # https://bugs.python.org/issue30343
+            # https://stackoverflow.com/questions/43913256/understanding-subclassing-of-jsonencoder
+            return String(obj)
+
+        else:
+            return json.JSONEncoder.default(self, obj)
 

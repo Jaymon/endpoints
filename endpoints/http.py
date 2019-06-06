@@ -3,7 +3,6 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 import os
 import json
 import types
-import cgi
 import re
 from functools import partial
 from wsgiref.headers import Headers as BaseHeaders
@@ -157,61 +156,6 @@ class Environ(Headers):
     string)"""
     def _convert_string_type(self, v):
         return v
-
-
-class RequestBody(object):
-    """this is the normalized request environment that every interface needs to
-    conform to, it primarily acts like a wsgi environment, which is compatible with
-    python's internal cgi.FieldStorage stuff"""
-
-    # https://hg.python.org/cpython/file/2.7/Lib/cgi.py#l325
-
-    def __init__(self, fp, headers, environ):
-        self.headers = headers
-        self.environ = environ
-        self.fp = fp
-
-        # make sure environ has the bare minimum to work
-        for k in ["REQUEST_METHOD", "QUERY_STRING"]:
-            if k not in self.environ:
-                raise ValueError("environ dict does not contain {}".format(k))
-
-    def __iter__(self):
-        body_fields = cgi.FieldStorage(
-            fp=self.fp,
-            headers=self.headers,
-            environ=self.environ,
-            keep_blank_values=True
-        )
-
-        for field_name in body_fields.keys():
-            body_field = body_fields[field_name]
-            #pout.v(field_name, body_field)
-            if body_field.filename:
-                yield field_name, body_field
-
-            else:
-                yield field_name, body_field.value
-
-
-class ResponseBody(json.JSONEncoder):
-    def default(self, obj):
-        if isinstance(obj, types.GeneratorType):
-            return [x for x in obj]
-
-        elif isinstance(obj, Exception):
-            return {
-                "errmsg": str(obj)
-            }
-
-        elif isinstance(obj, bytes):
-            # this seems like a py3 bug, for some reason bytes can get in here
-            # https://bugs.python.org/issue30343
-            # https://stackoverflow.com/questions/43913256/understanding-subclassing-of-jsonencoder
-            return String(obj)
-
-        else:
-            return json.JSONEncoder.default(self, obj)
 
 
 class Url(String):
@@ -823,9 +767,6 @@ class Http(object):
 
                         setattr(instance, key, d)
 
-                    elif key == "body_input":
-                        setattr(instance, key, val)
-
                     else:
                         #setattr(instance, key, copy.deepcopy(val, memodict))
                         try:
@@ -835,6 +776,10 @@ class Http(object):
                             setattr(instance, key, copy.copy(val))
 
         return instance
+
+    def is_json(self):
+        ct = self.get_header('Content-Type')
+        return ct.lower().rfind("json") >= 0 if ct else False
 
 
 class Request(Http):
@@ -863,9 +808,6 @@ class Request(Http):
 
     method = None
     """the http method (GET, POST)"""
-
-    body_input = None
-    """the request body input, if this is a POST request"""
 
     controller_info = None
     """will hold the controller information for the request, populated from the Call"""
@@ -1061,70 +1003,6 @@ class Request(Http):
         if query: query_kwargs = self._parse_query_str(query)
         return query_kwargs
 
-    @_property
-    def body(self):
-        """return the raw version of the body"""
-        body = None
-        if self.body_input:
-            body = self.body_input.read(int(self.get_header('content-length', -1)))
-
-        return body
-
-    @body.setter
-    def body(self, body):
-        if hasattr(self, "_body_kwargs"):
-            del(self._body_kwargs)
-
-        self.body_input = None
-        self._body = body
-
-    @_property
-    def body_kwargs(self):
-        """
-        the request body, if this is a POST request
-
-        this tries to do the right thing with the body, so if you have set the body and
-        the content type is json, then it will return the body json decoded, if you need
-        the original string body, use body
-
-        example --
-
-            self.body = '{"foo":{"name":"bar"}}'
-            b = self.body_kwargs # dict with: {"foo": { "name": "bar"}}
-            print self.body # string with: '{"foo":{"name":"bar"}}'
-        """
-        body_kwargs = {}
-        ct = self.get_header("content-type")
-        if ct:
-            ct = ct.lower()
-            if ct.rfind("json") >= 0:
-                body = self.body
-                if body:
-                    body_kwargs = json.loads(body)
-
-            else:
-                if self.body_input:
-                    body = RequestBody(
-                        fp=self.body_input,
-                        headers=self.headers,
-                        environ=self.environ
-                        #environ=self.raw_request
-                    )
-                    body_kwargs = dict(body)
-
-                else:
-                    body = self.body
-                    if body:
-                        body_kwargs = self._parse_query_str(body)
-
-        return body_kwargs
-
-    @body_kwargs.setter
-    def body_kwargs(self, body_kwargs):
-        self.body_input = None
-        self._body_kwargs = body_kwargs
-        self._body = self._build_body_str(body_kwargs)
-
     @property
     def kwargs(self):
         """combine GET and POST params to be passed to the controller"""
@@ -1135,6 +1013,8 @@ class Request(Http):
 
     def __init__(self):
         self.environ = Environ()
+        self.body = None
+        self.body_kwargs = {}
         super(Request, self).__init__()
 
     def version(self, content_type="*/*"):
@@ -1212,6 +1092,7 @@ class Response(Http):
                 code = 204
 
         return code
+
     @code.setter
     def code(self, v):
         self._code = v
@@ -1224,13 +1105,14 @@ class Response(Http):
 
     @property
     def status(self):
-        """The full http status (the first line of the headers in a server response"""
+        """The full http status (the first line of the headers in a server response)"""
         if not getattr(self, '_status', None):
             c = self.code
             status_tuple = BaseHTTPRequestHandler.responses.get(self.code)
             msg = "UNKNOWN"
             if status_tuple: msg = status_tuple[0]
             self._status = msg
+
 
         return self._status
 
@@ -1241,16 +1123,12 @@ class Response(Http):
     @property
     def body(self):
         """return the body, formatted to the appropriate content type"""
-        b = getattr(self, "_body", None)
-#         b = None
-#         if hasattr(self, '_body'):
-#             b = self._body
-        return self.normalize_body(b)
+        return getattr(self, "_body", None)
 
     @body.setter
     def body(self, v):
         self._body = v
-        if self.has_streaming_body():
+        if self.is_file():
             filepath = getattr(v, "name", "")
             if filepath:
                 mt = MimeType.find_type(filepath)
@@ -1269,71 +1147,15 @@ class Response(Http):
                 logger.warn("Response body is a filestream that has no .filepath property")
 
     def has_body(self):
+        """return True if there is an actual response body"""
         return getattr(self, "_body", None) is not None
-#         ret = False
-#         if hasattr(self, '_body'):
-#             r = getattr(self, '_body', None)
-#             if r is not None: ret = True
-# 
-#         return ret
 
-    def has_streaming_body(self):
+    def is_file(self):
         """return True if the response body is a file pointer"""
         # http://stackoverflow.com/questions/1661262/check-if-object-is-file-like-in-python
         return hasattr(self._body, "read") if self.has_body() else False
 
-    def normalize_body(self, b):
-        """return the body as a string, formatted to the appropriate content type
-
-        :param b: mixed, the current raw body
-        :returns: unicode string
-        """
-        if b is None: return ''
-
-        if self.is_json():
-            # TODO ???
-            # I don't like this, if we have a content type but it isn't one
-            # of the supported ones we were returning the exception, which threw
-            # Jarid off, but now it just returns a string, which is not best either
-            # my thought is we could have a body_type_subtype method that would 
-            # make it possible to easily handle custom types
-            # eg, "application/json" would become: self.body_application_json(b, is_error)
-            b = json.dumps(b, cls=ResponseBody)
-
-        else:
-            # just return a string representation of body if no content type
-            b = String(b, self.encoding)
-
-        return b
-
-    def is_json(self):
-        ct = self.get_header('Content-Type')
-        return ct.lower().rfind("json") >= 0 if ct else False
-
-    def __iter__(self):
-        """usually when iterating this object it means we are returning the response
-        of a wsgi request, so this will iterate the body and make sure it is a bytes
-        string because wsgiref requires an actual bytes instance, a child class won't work
-
-        :returns: a generator that yields bytes strings
-        """
-        if self.has_streaming_body():
-            fp = self._body
-            if fp.closed:
-                raise IOError("cannot read streaming body because pointer is closed")
-
-            # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
-            for chunk in iter(partial(fp.read, 8192), ''):
-                yield ByteString(chunk, self.encoding).raw()
-
-            # close the pointer since we've consumed it
-            fp.close()
-
-        else:
-            yield ByteString(self.body, self.encoding).raw()
-
     def set_cors_headers(self, request_headers, custom_response_headers=None):
-
         allow_headers = request_headers['Access-Control-Request-Headers']
         allow_method = request_headers['Access-Control-Request-Method']
         origin = request_headers['origin']

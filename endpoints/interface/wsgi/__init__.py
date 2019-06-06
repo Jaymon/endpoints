@@ -2,6 +2,8 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import os
 from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
+import cgi
+import json
 
 from ...compat.environ import *
 from ...compat.imports import socketserver
@@ -44,6 +46,8 @@ class Application(BaseServer):
                 list(res.headers.items())
             )
 
+        return self.create_response_body(res)
+
         # returning the Response, it needs to have an __iter__ for internal wsgi 
         # methods to know how to handle the Response
         return res
@@ -71,22 +75,51 @@ class Application(BaseServer):
             if v:
                 r.set_header(k, v)
 
+        self.create_request_body(r, raw_request, **kwargs)
+        r.raw_request = raw_request
+        return r
+
+    def create_request_body(self, request, raw_request, **kwargs):
+        body_kwargs = {}
+        body = None
         if 'wsgi.input' in raw_request:
+            body = raw_request['wsgi.input']
 
-            if int(r.get_header("CONTENT_LENGTH", 0)) <= 0:
-                r.body_kwargs = {}
+            content_length = int(request.get_header("CONTENT_LENGTH", -1))
 
-            else:
-                if r.get_header('transfer-encoding', "").lower().startswith('chunked'):
+            if content_length > 0:
+                if request.get_header('transfer-encoding', "").lower().startswith('chunked'):
                     raise IOError("Server does not support chunked requests")
 
                 else:
-                    r.body_input = raw_request['wsgi.input']
+                    if request.is_json():
+                        body = body.read(content_length)
+                        if body:
+                            body_kwargs = json.loads(body)
 
-        else:
-            r.body_kwargs = {}
+                    else:
+                        body_fields = cgi.FieldStorage(
+                            fp=body,
+                            headers=request.headers,
+                            environ=request.environ,
+                            keep_blank_values=True
+                        )
 
-        return r
+                        for field_name in body_fields.keys():
+                            body_field = body_fields[field_name]
+                            if body_field.filename:
+                                body_kwargs[field_name] = {
+                                    "filename": body_field.filename,
+                                    "body": body_field.file.read(),
+                                    "content_type": body_field.type
+                                }
+
+                            else:
+                                body_kwargs[field_name] = body_field.value
+
+        request.body_kwargs = body_kwargs
+        request.body = body
+        return request
 
     def create_backend(self, **kwargs):
         raise NotImplementedError()
@@ -138,10 +171,7 @@ class Server(BaseServer):
 
     def create_backend(self, **kwargs):
         hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
-#         if not port:
-#             raise RuntimeError("Please specify a port using the format host:PORT")
         server_address = (hostname, port if port else 0)
-
         s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)
         return s
@@ -153,5 +183,4 @@ class Server(BaseServer):
     def serve_forever(self):
         #self.prepare()
         return self.backend.serve_forever()
-
 

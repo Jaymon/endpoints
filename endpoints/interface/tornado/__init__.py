@@ -1,6 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-
+import json
 
 import tornado.web
 import tornado.routing
@@ -45,11 +45,8 @@ class Handler(tornado.web.RequestHandler):
             #self.set_header(ByteString(h[0]), ByteString(h[1]))
             self.set_header(h[0], h[1])
 
-        for s in res:
-            #self.write(String(s))
-            #pout.v(s)
-            if s:
-                self.write(s)
+        for s in self.request.application.server.create_response_body(res):
+            self.write(s)
 
     def head(self, *args, **kwargs): return self.handle(*args, **kwargs)
     def get(self, *args, **kwargs): return self.handle(*args, **kwargs)
@@ -118,25 +115,33 @@ class Server(BaseServer):
         #r.query = raw_request.query
         r.query_kwargs = Url.normalize_query_kwargs(raw_request.query_arguments)
 
+        self.create_request_body(r, raw_request, **kwargs)
+        r.raw_request = raw_request
+        return r
+
+    def create_request_body(self, request, raw_request, **kwargs):
+        body_kwargs = {}
+        body = None
         if raw_request.body_arguments:
             body_kwargs = Url.normalize_query_kwargs(raw_request.body_arguments)
-            if raw_request.files:
-                for k, vs in Url.normalize_query_kwargs(raw_request.files).items():
-                    body_kwargs[k] = vs
 
-            r.body_kwargs = body_kwargs
+        if raw_request.files:
+            for k, vs in Url.normalize_query_kwargs(raw_request.files).items():
+                body_kwargs[k] = vs
 
-        else:
+        if raw_request.body:
             # tornado won't un-jsonify stuff automatically, so if there aren't
             # any body arguments there might still be something in body
-            r.body = raw_request.body
+            if request.is_json():
+                body_kwargs = json.loads(raw_request.body)
 
-        #r.body_input = environ['wsgi.input']
-        #r.body = raw_request.body
+            body = raw_request.body
 
-        #pout.v(r.body, r.body_kwargs)
+        #pout.v(r.body_kwargs)
         #pout.v(r)
-        return r
+        request.body_kwargs = body_kwargs
+        request.body = body
+        return request
 
 #     def handle_request(self):
 #         raise NotImplementedError()

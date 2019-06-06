@@ -20,8 +20,15 @@ def get_interface(modpath):
     :param modpath: the module path of the interface (eg, endpoints.interface.wsgi)
     :returns: Server class
     """
-    rm = ReflectModule(modpath)
-    s = rm.module.Server
+
+    try:
+        rm = ReflectModule(modpath)
+        s = rm.module.Server
+
+    except (ImportError, AttributeError):
+        rm = ReflectModule("endpoints.interface.{}".format(modpath))
+        s = rm.module.Server
+
     return s
 
 
@@ -46,7 +53,7 @@ def console():
         '--prefix', "--controller-prefix", "-P",
         nargs="+",
         default=environ.get_controller_prefixes(),
-        help='The endpoints controller prefix(es)'
+        help='The controller prefix(es) (python modpaths where Controller subclasses are found)'
     )
     parser.add_argument(
         '--file', "-F", "--wsgi-file", "--wsgifile",

@@ -166,47 +166,6 @@ class WSGITest(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
 
-    def test_post_ioerror(self):
-        """turns out this is pretty common, a client will make a request and disappear, 
-        but now that we lazy load the body these errors are showing up in our logs where
-        before they were silent because they failed, causing the process to be restarted,
-        before they ever made it really into our logging system"""
-
-        controller_prefix = 'wsgi.post_ioerror'
-        server = self.create_server(
-            controller_prefix,
-            [
-                "from endpoints import Controller",
-                "",
-                "class Default(Controller):",
-                "    def POST(*args, **kwargs):",
-                "        pass",
-                "",
-            ],
-            config_contents=[
-                "from endpoints.interface.wsgi import Application",
-                "from endpoints import Request as EReq",
-                "",
-                "class Request(EReq):",
-                "    @property",
-                "    def body_kwargs(self):",
-                "        raise IOError('timeout during read(0) on wsgi.input')",
-                "",
-                "Application.request_class = Request",
-                "",
-            ],
-        )
-
-        c = self.create_client()
-        r = c.post(
-            '/',
-            {"foo": "bar"},
-            headers={
-                "content-type": "application/json",
-            }
-        )
-        self.assertEqual(408, r.code)
-
     def test_405_request(self):
         controller_prefix = 'request_405'
         server = self.create_server(controller_prefix, [
