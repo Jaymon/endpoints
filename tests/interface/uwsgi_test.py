@@ -15,7 +15,7 @@ from endpoints.interface import uwsgi
 from .wsgi_test import TestCase, WSGITest, WSGIServerTest
 
 
-class UWSGITest(WSGITest):
+class WebTest(WSGITest):
 
     server_class = UWSGIServer
 
@@ -45,7 +45,7 @@ class UWSGITest(WSGITest):
             ""
         ])
 
-        return super(UWSGITest, self).create_server(
+        return super(WebTest, self).create_server(
             controller_prefix,
             contents,
             wsgifile=wsgifile,

@@ -13,10 +13,10 @@ from ...utils import Path, String
 from ...http import Url
 from ... import environ
 from ...reflection import ReflectModule
-from ..wsgi.client import WSGIServer
+from ..client import WebServer
 
 
-class WebServer(WSGIServer):
+class WebServer(WebServer):
     """This "client" is handy to get a simple wsgi server up and running
 
     it is mainly handy for testing purposes, we found that we were copy/pasting
@@ -28,18 +28,12 @@ class WebServer(WSGIServer):
         server = WSGIServer("foo.bar")
         server.start()
     """
-    def get_start_cmd(self):
-        interface = ".".join(__name__.split(".")[:-1])
-        cmd = [
-            "python",
-            "-m",
-            __name__.split(".")[0],
-            "--host", self.host.netloc,
-            "--prefix", self.controller_prefix,
-            "--interface", interface
-        ]
+    def get_server_classpath(self):
+        return ".".join(__name__.split(".")[:-1]) + ".Server"
 
-        return cmd
 
+class WebsocketServer(WebServer):
+    def get_server_classpath(self):
+        return ".".join(__name__.split(".")[:-1]) + ".WebsocketServer"
 
 

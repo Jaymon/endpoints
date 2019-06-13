@@ -46,12 +46,25 @@ class Headers(BaseHeaders, Mapping):
         super(Headers, self).__init__([])
         self.update(headers, **kwargs)
 
+    def _convert_string_part(self, bit):
+        """each part of a header will go through this method, this allows further
+        normalization of each part, so a header like FOO_BAR would call this method
+        twice, once with foo and again with bar
+
+        :param bit: string, a part of a header all lowercase
+        :returns: string, the normalized bit
+        """
+        if bit == "websocket":
+            bit = "WebSocket"
+        else:
+            bit = bit.title()
+        return bit
+
     def _convert_string_name(self, k):
         """converts things like FOO_BAR to Foo-Bar which is the normal form"""
         k = String(k, "iso-8859-1")
-        klower = k.lower().replace('_', '-')
-        bits = klower.split('-')
-        return "-".join((bit.title() for bit in bits))
+        bits = k.lower().replace('_', '-').split('-')
+        return "-".join((self._convert_string_part(bit) for bit in bits))
 
     def _convert_string_type(self, v):
         """Override the internal method wsgiref.headers.Headers uses to check values
@@ -96,11 +109,11 @@ class Headers(BaseHeaders, Mapping):
         return super(Headers, self).add_header(name, val, **params)
 
     def keys(self):
-        return [self._convert_string_name(k) for k, v in self._headers]
+        return [k for k, v in self._headers]
 
     def items(self):
         for k, v in self._headers:
-            yield self._convert_string_name(k), v
+            yield k, v
 
     def iteritems(self):
         return self.items()
@@ -111,9 +124,21 @@ class Headers(BaseHeaders, Mapping):
 
     def __iter__(self):
         for k, v in self._headers:
-            yield self._convert_string_name(k)
+            yield k
 
     def pop(self, name, *args, **kwargs):
+        """remove and return the value at name if it is in the dict
+
+        This uses *args and **kwargs instead of default because this will raise
+        a KeyError if default is not supplied, and if it had a definition like
+        (name, default=None) you wouldn't be able to know if default was provided
+        or not
+
+        :param name: string, the key we're looking for
+        :param default: mixed, the value that would be returned if name is not in
+            dict
+        :returns: the value at name if it's there
+        """
         val = self.get(name)
         if val is None:
             if args:
@@ -149,6 +174,10 @@ class Headers(BaseHeaders, Mapping):
 
     def __deepcopy__(self):
         return type(self)(self._headers)
+
+    def list(self):
+        """Return all the headers as a list of headers instead of a dict"""
+        return [": ".join(h) for h in self.items() if h[1]]
 
 
 class Environ(Headers):
@@ -721,6 +750,21 @@ class Http(object):
         """try as hard as possible to get a a response header of header_name,
         rreturn default_val if it can't be found"""
         return self.headers.get(header_name, default_val)
+
+    def find_header(self, header_names, default_val=None):
+        """given a list of headers return the first one you can, default_val if you
+        don't find any
+
+        :param header_names: list, a list of headers, first one found is returned
+        :param default_val: mixed, returned if no matching header is found
+        :returns: mixed, the value of the header or default_val
+        """
+        ret = default_val
+        for header_name in header_names:
+            if self.has_header(header_name):
+                ret = self.get_header(header_name, default_val)
+                break
+        return ret
 
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""

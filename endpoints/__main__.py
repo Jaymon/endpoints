@@ -14,22 +14,43 @@ from endpoints import environ
 from endpoints.reflection import ReflectModule
 
 
-def get_interface(modpath):
+def get_server(classpath):
     """Returns the interface Server class
 
     :param modpath: the module path of the interface (eg, endpoints.interface.wsgi)
     :returns: Server class
     """
+    parts = classpath.rsplit(".", 1)
+    modpath = parts[0]
+    classname = parts[1] if len(parts) > 1 else "Server"
 
     try:
         rm = ReflectModule(modpath)
-        s = rm.module.Server
+        s = getattr(rm.module, classname)
 
     except (ImportError, AttributeError):
         rm = ReflectModule("endpoints.interface.{}".format(modpath))
-        s = rm.module.Server
+        s = getattr(rm.module, classname)
 
     return s
+
+
+# def get_interface(modpath):
+#     """Returns the interface Server class
+# 
+#     :param modpath: the module path of the interface (eg, endpoints.interface.wsgi)
+#     :returns: Server class
+#     """
+# 
+#     try:
+#         rm = ReflectModule(modpath)
+#         s = rm.module.Server
+# 
+#     except (ImportError, AttributeError):
+#         rm = ReflectModule("endpoints.interface.{}".format(modpath))
+#         s = rm.module.Server
+# 
+#     return s
 
 
 def console():
@@ -56,10 +77,10 @@ def console():
         help='The controller prefix(es) (python modpaths where Controller subclasses are found)'
     )
     parser.add_argument(
-        '--file', "-F", "--wsgi-file", "--wsgifile",
+        '--file', "-F", "--config", "--wsgi-file", "--wsgifile",
         dest="file",
         default="",
-        help='The wsgi file, the file that has an application callable'
+        help='A config file, a .py file containing configuration to run before starting the server'
     )
     parser.add_argument(
         '--host', "-H",
@@ -79,13 +100,21 @@ def console():
         default=os.getcwd(),
         help='directory to run the server in, usually contains the prefix module path',
     )
+#     parser.add_argument(
+#         '--interface', '-i',
+#         dest="interface",
+#         default="endpoints.interface.wsgi",
+#         type=get_interface,
+#         help='The server interface endpoints will use',
+#     )
     parser.add_argument(
-        '--interface', '-i',
-        dest="interface",
-        default="endpoints.interface.wsgi",
-        type=get_interface,
+        '--server', '-s',
+        dest="server",
+        default="endpoints.interface.wsgi.Server",
+        type=get_server,
         help='The server interface endpoints will use',
     )
+
 #     parser.add_argument(
 #         '--config', "--config-script", "-S",
 #         dest="config_script",
@@ -104,11 +133,9 @@ def console():
         logging.basicConfig(format="%(message)s", level=logging.DEBUG, stream=sys.stderr)
 
     logger = logging.getLogger(__name__)
-    os.environ["ENDPOINTS_HOST"] = args.host
-    environ.HOST = args.host
-    for i, prefix in enumerate(args.prefix, 1):
-        os.environ["ENDPOINTS_PREFIX_{}".format(i)] = prefix
-    #environ.PREFIXES = args.prefix
+
+    environ.set_host(args.host)
+    environ.set_controller_prefixes(args.prefix)
 
     config = {}
     if args.file:
@@ -120,7 +147,8 @@ def console():
 #         h = "wsgiserver_config_{}".format(uuid.uuid4())
 #         config_module = imp.load_source(h, args.config_script)
 
-    s = args.interface()
+    s = args.server()
+    environ.set_host(s.hostloc)
 
     if "application" in config:
         s.application = config["application"]

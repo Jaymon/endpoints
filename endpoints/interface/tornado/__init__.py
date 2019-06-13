@@ -1,19 +1,56 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 import json
+import logging
 
 import tornado.web
+import tornado.websocket
 import tornado.routing
 import tornado.ioloop
 import tornado.httpserver
 import tornado.wsgi
 import tornado.httputil
 
-from .. import BaseServer
+from .. import BaseServer, BaseWebsocketServer, Payload
 from ...reflection import Reflect
 from ...http import Url
-from ...utils import String, ByteString
+from ...utils import String, ByteString, JSONEncoder
 from ... import environ
+
+
+logger = logging.getLogger(__name__)
+
+
+class WebsocketHandler(tornado.websocket.WebSocketHandler):
+    def check_origin(self, origin):
+        return True
+
+    def open(self):
+        self.set_nodelay(True)
+
+        self.call = self.request.application.server.connect_websocket_call(self.request)
+        req = self.call.request
+        logger.info("Websocket {} Connecting".format(req.uuid))
+        res = self.call.handle()
+        self.send(req, res)
+
+    def on_message(self, message):
+
+        c = self.request.application.server.create_websocket_call(self.call.request, message)
+        req = self.call.request
+        logger.debug("Websocket {} message".format(req.uuid))
+        res = c.handle()
+        self.send(req, res)
+
+    def on_close(self):
+        c = self.request.application.server.disconnect_websocket_call(self.call.request)
+        req = self.call.request
+        logger.info("Websocket {} Disconnecting".format(req.uuid))
+        res = self.call.handle()
+
+    def send(self, req, res):
+        for s in self.request.application.server.create_websocket_response_body(req, res):
+            self.write_message(s)
 
 
 class Handler(tornado.web.RequestHandler):
@@ -143,24 +180,97 @@ class Server(BaseServer):
         request.body = body
         return request
 
-#     def handle_request(self):
-#         raise NotImplementedError()
-
-#     def normalize_kwargs(self, d):
-#         for k, v in d.items():
-#             if isinstance(k, bytes):
-#                 k = String(k)
-# 
-#             if
-
     def serve_forever(self):
         server = self.backend
         tornado.ioloop.IOLoop.current().start()
 
     def serve_count(self, count):
-        """TODO there might be a way to make this work buy using IOLoop.run_sync
+        """TODO there might be a way to make this work by using IOLoop.run_sync
         but it's not worth figuring out right now
         https://github.com/tornadoweb/tornado/blob/master/tornado/ioloop.py#L460
         """
         raise NotImplementedError()
+
+
+class WebsocketServer(BaseWebsocketServer, Server):
+    """
+    https://www.tornadoweb.org/en/stable/websocket.html
+    """
+    tornado_handler_class = WebsocketHandler
+
+    payload_class = Payload
+
+    def create_backend(self, **kwargs):
+        kwargs.setdefault("websocket_ping_interval", 60)
+        kwargs.setdefault("websocket_ping_timeout", 60)
+        return super(WebsocketServer, self).create_backend(**kwargs)
+
+    def create_websocket_request(self, request, raw_request=None):
+
+        ws_req = request.copy()
+        del ws_req.controller_info
+        # just in case we need access to the 
+        ws_req.parent = request
+
+        if raw_request:
+            # path, body, method, uuid
+            kwargs = self.payload_class.loads(raw_request)
+            kwargs.setdefault("body", None)
+            kwargs.setdefault("path", request.path)
+
+
+            ws_req.environ["REQUEST_METHOD"] = kwargs["method"]
+            ws_req.method = kwargs["method"]
+
+            ws_req.environ["PATH_INFO"] = kwargs["path"]
+            ws_req.path = kwargs["path"]
+
+            ws_req.environ.pop("wsgi.input", None)
+
+            ws_req.body = kwargs["body"]
+            ws_req.body_kwargs = kwargs["body"]
+
+            ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
+
+        return ws_req
+
+    def create_websocket_response_body(self, request, response, json_encoder=JSONEncoder, **kwargs):
+
+        raw_response = {}
+
+        raw_response["path"] = request.path
+        if request.uuid:
+            raw_response["uuid"] = request.uuid
+
+        raw_response["code"] = response.code
+        raw_response["body"] = response.body
+
+        body = self.payload_class.dumps(**raw_response)
+        yield ByteString(body, response.encoding).raw()
+
+    def connect_websocket_call(self, raw_request):
+        c = self.create_call(raw_request)
+        req = c.request
+
+        # if there is an X-uuid header then set uuid and send it down
+        # with every request using that header
+        uuid = req.find_header(["X-UUID", "Sec-Websocket-Key"])
+        if not uuid:
+            kwargs = req.kwargs
+            if "uuid" in kwargs:
+                uuid = kwargs["uuid"]
+        req.uuid = uuid
+        req.method = "CONNECT"
+        return c
+
+    def create_websocket_call(self, request, raw_request):
+        req = self.create_websocket_request(request, raw_request)
+        c = self.create_call(raw_request, request=req)
+        return c
+
+    def disconnect_websocket_call(self, request):
+        req = self.create_websocket_request(request)
+        req.method = "DISCONNECT"
+        c = self.create_call(None, request=req)
+        return c
 

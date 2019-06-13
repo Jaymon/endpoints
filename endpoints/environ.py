@@ -14,9 +14,48 @@ def get(key, default=None, namespace="ENDPOINTS_"):
 ENCODING = get("ENCODING", "UTF-8")
 """Default encoding"""
 
-HOST = get("HOST", "localhost:8383")
+#HOST = get("HOST", "localhost:8383")
+HOST = get("HOST", "")
 """The host string, usually just domain or domain:port, this is used by the server
 classes and also the tests"""
+
+def set_host(host, environ=None):
+    global HOST
+    os.environ["ENDPOINTS_HOST"] = host
+    HOST = host
+
+
+def set_controller_prefixes(prefixes, env_name='ENDPOINTS_PREFIX'):
+    """set the controller_prefixes found in env_name to prefixes, this will remove
+    any existing found controller prefixes 
+
+    :param prefixes: list, the new prefixes that will replace any old prefixes
+    :param env_name: string, the name of the environment variables
+    """
+    for env_name in get_prefix_names(env_name):
+        os.environ.pop(env_name)
+
+    for i, prefix in enumerate(prefixes, 1):
+        os.environ["{}_{}".format(env_name, i)] = prefix
+
+
+def get_prefix_names(env_name):
+    """This returns the actual environment variable names from * -> *_N
+
+    :param env_name: string, the name of the environment variables
+    :returns: generator, the found environment names
+    """
+    if env_name in os.environ:
+        yield env_name
+
+    # now try importing _1 -> _N prefixes
+    increment_name = lambda name, num: '{name}_{num}'.format(name=name, num=num)
+    num = 0 if increment_name(env_name, 0) in os.environ else 1
+    env_num_name = increment_name(env_name, num)
+    while env_num_name in os.environ:
+        yield env_num_name
+        num += 1
+        env_num_name = increment_name(env_name, num)
 
 
 def get_prefixes(env_name):
@@ -33,20 +72,8 @@ def get_prefixes(env_name):
     """
     ret = []
     prefixsep = os.pathsep
-
-    if env_name in os.environ:
-        ret.extend(os.environ[env_name].split(prefixsep))
-        #ret.append(os.environ[env_name])
-
-    # now try importing _1 -> _N prefixes
-    increment_name = lambda name, num: '{name}_{num}'.format(name=name, num=num)
-    num = 0 if increment_name(env_name, 0) in os.environ else 1
-    env_num_name = increment_name(env_name, num)
-    while env_num_name in os.environ:
-        #ret.append(os.environ[env_num_name])
+    for env_num_name in get_prefix_names(env_name):
         ret.extend(os.environ[env_num_name].split(prefixsep))
-        num += 1
-        env_num_name = increment_name(env_name, num)
 
     return ret
 

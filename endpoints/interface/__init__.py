@@ -17,6 +17,74 @@ from ..utils import ByteString, JSONEncoder
 logger = logging.getLogger(__name__)
 
 
+class Payload(object):
+    """We have a problem with generic websocket support, websockets don't have an
+    easy way to decide how they will send stuff back and forth like http (where you
+    can set a content type header and things like that) so Payload solves that problem,
+    the websocket client and the default interface of the servers will use Payload but
+    it could be overridden and completely changed and then you would just need to set
+    the class in the client and server interfaces and you could completely change the
+    way the websockets interact with each other
+
+    I thought about doing something with the accept header or content-type on a Request
+    object, which maybe would work but you can also override the Request and Response
+    objects and that would mean you would need to put the loads/dumps code in possibly
+    two different places, which I don't love because I like DRY solutions so it would
+    still be great to have a class like this that all the other interfaces wrap
+    in order to send/receive data via websockets
+    """
+    @classmethod
+    def loads(self, raw):
+        return json.loads(raw)
+
+    @classmethod
+    def dumps(self, **kwargs):
+        return json.dumps(kwargs, cls=JSONEncoder)
+
+
+# TODO -- I don't think this is needed
+class BaseConnection(object):
+    """Handle the full websocket connection lifecycle
+    When a websocket connection is fully established, this class is created and
+    ties the user to the file descriptors for the websocket and Redis pubsub
+    connections. It handles receiving and routing the messages that come in from
+    and to the user.
+    It's created in Application.application_websocket and is only used there, so look
+    at that method to see how this object is used
+
+    https://github.com/unbit/uwsgi/blob/master/tests/websockets_chat.py
+    """
+    def __init__(self, server, **kwargs):
+        self.server = server
+        self.pid = os.getpid()
+
+    def recv_payload(self, fd):
+        """receive a message from the user that will be routed to other users, 
+        in other words, the user sent a message from their client that the server
+        is receiving on the internets"""
+        raise NotImplementedError()
+
+    def send_payload(self, payload):
+        """take all the messages received from a redis pubsub channel_name and send it
+        down the websocket to the user"""
+        raise NotImplementedError()
+
+    def close(self):
+        pass
+
+    def handle_connected(self, call):
+        """called right after a successful websocket connection"""
+        pass
+
+    def handle_disconnected(self, call):
+        """called right after a successful websocket disconnection"""
+        pass
+
+    def handle_called(self, call):
+        """called each time after a controller has handled the request"""
+        pass
+
+
 class BaseServer(object):
     """all servers should extend this and implemented the NotImplemented methods,
     this ensures a similar interface among all the different servers
@@ -27,9 +95,6 @@ class BaseServer(object):
     """
     controller_prefixes = None
     """the controller prefixes (python module paths) you want to use to find your Controller subclasses"""
-
-    #interface_class = None
-    """the interface that should be used to translate between the supported server"""
 
     backend_class = None
     """the supported server's interface, there is no common interface for this class.
@@ -52,13 +117,18 @@ class BaseServer(object):
     """the endpoints.call.Call compatible class that should be used to make a
     Call() instance"""
 
+    connection_class = None
+    """the endpoints.interface.BaseConnection compatible class that is used for long
+    running connections like websockets"""
+
     @property
     def hostloc(self):
         raise NotImplementedError()
 
     @_property
     def backend(self):
-        return self.create_backend()
+        ret = self.create_backend()
+        return ret
 
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
@@ -72,6 +142,9 @@ class BaseServer(object):
         for k, v in kwargs.items():
             if k.endswith("_class"):
                 setattr(self, k, v)
+
+    def create_connection(self, **kwargs):
+        return self.connection_class(self, **kwargs)
 
     def create_backend(self, **kwargs):
         return self.backend_class(**kwargs)
@@ -125,12 +198,12 @@ class BaseServer(object):
             # just return a string representation of body if no content type
             yield ByteString(body, response.encoding).raw()
 
-    def create_call(self, raw_request, **kwargs):
+    def create_call(self, raw_request, request=None, response=None, router=None, **kwargs):
         """create a call object that has endpoints understandable request and response
         instances"""
-        req = self.create_request(raw_request, **kwargs)
-        res = self.create_response(**kwargs)
-        rou = self.create_router(**kwargs)
+        req = request if request else self.create_request(raw_request, **kwargs)
+        res = response if response else self.create_response(**kwargs)
+        rou = router if router else self.create_router(**kwargs)
         c = self.call_class(req, res, rou)
         return c
 
@@ -158,4 +231,9 @@ class BaseServer(object):
         except Exception as e:
             logger.exception(e)
             raise
+
+
+class BaseWebsocketServer(BaseServer):
+
+    payload_class = Payload
 

@@ -7,7 +7,7 @@ import testdata
 
 from endpoints.compat.environ import *
 from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
-from endpoints.http import Headers, Url, Response, Request, Environ, ResponseBody
+from endpoints.http import Headers, Url, Response, Request, Environ
 from endpoints.utils import String, ByteString
 
 
@@ -23,6 +23,14 @@ class EnvironTest(TestCase):
 
 
 class HeadersTest(TestCase):
+    def test_midbody_capital(self):
+        d = Headers()
+        d["Sec-WebSocket-Key"] = "foobar"
+        self.assertTrue("Sec-Websocket-Key" in d)
+        d2 = dict(d)
+        self.assertFalse("Sec-Websocket-Key" in d2)
+        self.assertTrue("Sec-WebSocket-Key" in d2)
+
     def test_bytes(self):
         d = Headers()
         name = testdata.get_unicode()
@@ -768,10 +776,4 @@ class UrlTest(TestCase):
         h2 = h.subtract(query_kwargs={"arg1": 1})
         self.assertFalse("arg1" in h2)
 
-
-class ResponseBodyTest(TestCase):
-    def test_string(self):
-        r1 = json.dumps({'foo': b'bar'}, cls=ResponseBody)
-        r2 = json.dumps({'foo': 'bar'}, cls=ResponseBody)
-        self.assertEqual(r1, r2)
 

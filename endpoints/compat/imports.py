@@ -20,7 +20,7 @@ if is_py2:
 
     from urllib import urlencode
     import SocketServer as socketserver
-
+    #from base64 import encodestring as encodebytes
 
 #     import Queue as queue
 #     import thread as _thread
@@ -44,6 +44,7 @@ elif is_py3:
     from io import StringIO
     from urllib.parse import urlencode
     import socketserver
+    #from base64 import encodebytes
 
 
 #     import queue

@@ -4,7 +4,7 @@ from unittest import TestCase
 
 import testdata
 
-from endpoints.utils import MimeType, AcceptHeader, String, ByteString, Base64
+from endpoints.utils import MimeType, AcceptHeader, String, ByteString, Base64, JSONEncoder
 from endpoints.compat.environ import *
 
 
@@ -186,4 +186,10 @@ class AcceptHeaderTest(TestCase):
 
             self.assertEqual(t[2], count)
 
+
+class JSONEncoderTest(TestCase):
+    def test_string(self):
+        r1 = json.dumps({'foo': b'bar'}, cls=JSONEncoder)
+        r2 = json.dumps({'foo': 'bar'}, cls=JSONEncoder)
+        self.assertEqual(r1, r2)
 
