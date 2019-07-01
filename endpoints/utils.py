@@ -6,6 +6,10 @@ import sys
 import base64
 import json
 import types
+import copy
+from collections import Mapping
+from io import IOBase
+
 
 from .compat.environ import *
 from . import environ
@@ -321,4 +325,60 @@ class JSONEncoder(json.JSONEncoder):
 
         else:
             return json.JSONEncoder.default(self, obj)
+
+
+class Deepcopy(object):
+    """deep copy an object trying to anticipate and handle any errors"""
+    @classmethod
+    def copy(cls, val, memodict=None, shell_instance=None):
+        ret = val
+        if not memodict:
+            memodict = {}
+
+        if isinstance(val, Mapping):
+            ret = shell_instance if shell_instance else type(val)()
+            for k, v in val.items():
+                ret[k] = cls.copy(v, memodict)
+
+        elif isinstance(val, IOBase):
+            # file/stream objects should just be passed through
+            pass
+
+        elif hasattr(val, "__dict__"):
+            if shell_instance:
+                ret = shell_instance
+                for k, v in val.__dict__.items():
+                    if not k.startswith("_"):
+                        if v is None:
+                            setattr(ret, k, v)
+
+                        else:
+                            if k in memodict and v is memodict[k]:
+                                continue
+
+                            else:
+                                setattr(ret, k, cls.copy(v, memodict))
+
+            else:
+                ret = cls._copy(val, memodict)
+
+        else:
+            ret = cls._copy(val, memodict)
+
+        return ret
+
+    @classmethod
+    def _copy(cls, val, memodict):
+        ret = val
+        try:
+            ret = copy.deepcopy(val, memodict)
+
+        except (AttributeError, TypeError):
+            try:
+                ret = copy.copy(val)
+
+            except TypeError:
+                pass
+
+        return ret
 

@@ -18,9 +18,10 @@ else:
         gevent.monkey.patch_all()
 
 from ...compat.environ import *
-from . import Application, uwsgi, Payload
 from ...http import Request as BaseRequest
 from ...utils import ByteString
+from .. import Payload, BaseWebsocketServer
+from . import Application, uwsgi
 
 
 logger = logging.getLogger(__name__)
@@ -113,170 +114,80 @@ class Connection(object):
         pass
 
 
-class WebsocketApplication(Application):
+class WebsocketApplication(BaseWebsocketServer, Application):
 
     connection_class = Connection
 
-    payload_class = Payload
-
-    def is_http(self, req):
-        upgrade_header = req.get_header('upgrade')
-        return not upgrade_header or (upgrade_header.lower() != 'websocket')
-
-    def create_environ(self, req, payload):
-        """This will take the original request and the new websocket payload and
-        merge them into a new request instance"""
-        ws_req = req.copy()
-
-        del ws_req.controller_info
-
-        ws_req.environ.pop("wsgi.input", None)
-        ws_req.body_kwargs = payload.body
-
-        ws_req.environ["REQUEST_METHOD"] = payload.method
-        ws_req.method = payload.method
-
-        ws_req.environ["PATH_INFO"] = payload.path
-        ws_req.path = payload.path
-
-        ws_req.environ["WS_PAYLOAD"] = payload
-        ws_req.environ["WS_ORIGINAL"] = req
-
-        ws_req.payload = payload
-        ws_req.parent = req
-        return {"WS_REQUEST": ws_req}
-
-    def create_request(self, environ):
-        if "WS_REQUEST" in environ:
-            req = environ["WS_REQUEST"]
-        else:
-            req = super(WebsocketApplication, self).create_request(environ)
-        return req
-
-    def create_request_payload(self, raw):
-        return self.payload_class(raw)
-
-    def create_response_payload(self, req, res, count):
-        kwargs = {
-            "path": req.path,
-            "body": res._body,
-            "code": res.code,
-            "count": count,
-        }
-
-        payload = getattr(req, "payload", None)
-        if payload:
-            uuid = payload.uuid
-            if uuid:
-                kwargs["uuid"] = uuid
-
-        return self.payload_class(**kwargs)
+    def is_http(self, environ):
+        upgrade_header = environ.get("HTTP_UPGRADE", "")
+        return not upgrade_header or (upgrade_header.lower() != "websocket")
 
     def create_connection(self):
         return self.connection_class(self)
 
-    def handle_websocket_response(self, call):
-        req = call.request
-        res = call.response
-        conn = self.create_connection()
+    def send(self, req, res, conn):
+        for s in self.create_websocket_response_body(req, res):
+            conn.send_payload(s)
 
-        logger.info("Websocket {} Connected".format(hash(conn)))
+    def handle_websocket_response(self, environ):
+        conn = self.create_connection()
+        req = None
 
         try:
-            req.connection = conn
-            req.method = "CONNECT"
-            res = call.handle()
+            c = self.connect_websocket_call(raw_request=environ)
+            req = c.request
+            res = c.handle()
             if res.code < 400:
 
+                logger.info("Websocket {} Connected".format(req.uuid))
                 conn.handle_connected(req, res)
 
                 # send down connect success so js clients can know both success or
                 # failure, turns out only sending down failure causes client code
                 # to be more complex
-                res_payload = self.create_response_payload(req, res, 1)
-                res_payload.uuid = "CONNECT"
-                conn.send_payload(res_payload.payload)
+                self.send(req, res, conn)
 
-                for count, raw in enumerate(conn, 2):
-                    req_payload = self.create_request_payload(raw)
-                    environ = self.create_environ(req, req_payload)
-                    c = self.create_call(environ)
+                for raw_request in conn:
+                    c = self.create_websocket_call(req, raw_request)
+                    logger.debug("Websocket {} message".format(c.request.uuid))
                     res = c.handle()
-
                     conn.handle_called(c.request, res)
-                    res_payload = self.create_response_payload(c.request, res, count)
-                    conn.send_payload(res_payload.payload)
+                    self.send(c.request, res, conn)
 
             else:
                 # send down the connect results so javascript webclients can know
                 # why we are about to disconnect
-                res_payload = self.create_response_payload(req, res, 1)
-                res_payload.uuid = "CONNECT"
-                conn.send_payload(res_payload.payload)
+                self.send(req, res, conn)
 
         except IOError as e:
             # user disconnected
             # a user disconnecting is usually manifested by "IOError: unable to
             # receive websocket message", this is entirely normal and nothing to
             # be concerned about, it basically means the client closed the connection
-            logger.info("Websocket {} Disconnected".format(hash(conn)))
             #logger.exception(e)
+            pass
 
         except Exception as e:
             logger.exception(e)
 
         finally:
-            req.method = "DISCONNECT"
-            call.quiet = True
-            res = call.handle()
+            if req:
+                logger.info("Websocket {} Disconnected".format(req.uuid))
+                c = self.disconnect_websocket_call(req)
+                c.quiet = True
+                c.handle()
+
             conn.close()
             conn.handle_disconnected(req, res)
 
         return ''
 
-
     def __call__(self, environ, start_response):
-        c = self.create_call(environ)
-        req = c.request
-
-        if self.is_http(req):
-            res = c.handle()
-            res = self.handle_http_response(c, start_response)
+        if self.is_http(environ):
+            res = self.handle_http_response(environ, start_response)
 
         else:
-            res = self.handle_websocket_response(c)
+            res = self.handle_websocket_response(environ)
 
         return res
-
-
-
-
-
-#     def __call__(self, environ, start_response):
-#         c = self.create_call(environ)
-#         req = c.request
-# 
-#         body = ''
-#         if self.is_http(req):
-#             res = c.handle()
-#             res = self.handle_http_response(c, start_response)
-# 
-#         else:
-#             req.method = "CONNECT"
-#             res = c.handle()
-#             if res.code in [200, 204]:
-#                 try:
-#                     self.handle_websocket_response(c)
-# 
-#                     req.method = "DISCONNECT"
-#                     res = c.handle()
-# 
-#                 except Exception as e:
-#                     c.handle_error(e)
-#                     res = self.handle_http_response(c, start_response)
-# 
-#             else:
-#                 res = self.handle_http_response(c, start_response)
-# 
-#         return res
 

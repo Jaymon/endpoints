@@ -13,6 +13,7 @@ from .. import environ
 from ..compat.environ import *
 from ..utils import String, ByteString, Path
 from ..http import Url
+from ..reflection import ReflectModule
 
 
 logger = logging.getLogger(__name__)
@@ -80,8 +81,7 @@ class WebServer(object):
     basically the same code to test random services and so it seemed like a good
     idea to move the base code into endpoints so all our projects could share it.
 
-    example --
-
+    :example:
         server = WebServer("foo.bar")
         server.start()
     """
@@ -91,6 +91,9 @@ class WebServer(object):
 
     quiet = False
     """this is the default quiet setting for running a script, if False output is printed to stdout"""
+
+    host_regex = r"^Listening\s+on\s+(([^:]+):(\d+))$"
+    """This regex is used to find the correct host from the output from the server in find_host"""
 
     @property
     def logger(self):
@@ -110,9 +113,10 @@ class WebServer(object):
 
         env = dict(os.environ)
 
-        #pwd = ReflectModule(__name__).path
-        #pythonpath = pwd + os.pathsep + self.cwd
-        pythonpath = self.cwd
+        # pwd needed when running endpoints as a local module (eg, python -m endpoints)
+        pwd = ReflectModule(__name__.split(".")[0]).path
+        pythonpath = pwd + os.pathsep + self.cwd
+        #pythonpath = self.cwd
 
         if "PYTHONPATH" in env:
             env["PYTHONPATH"] += os.pathsep + pythonpath
@@ -155,7 +159,7 @@ class WebServer(object):
             host = environ.HOST
         self.host = Url(host).netloc if host else None
 
-        self.cwd = Path(kwargs.get("cwd", os.curdir))
+        self.cwd = Path(kwargs.get("cwd", os.getcwd()))
         self.config_path = config_path
         self.environ = kwargs.get("environ", kwargs.get("env", {}))
         self.process = None
@@ -208,33 +212,24 @@ class WebServer(object):
         self.thread = ServerThread(self)
         self.thread.start()
 
-        # if the buffer doesn't increase for 3 iterations then we assume the server
-        # is fully started up, after 5 second we assume it's ready no matter what
-#         count = 0
-#         size = 0
-#         for x in range(50):
-#             time.sleep(0.1)
-#             if len(self.buf) > size:
-#                 count = 0
-#                 size = len(self.buf)
-#             else:
-#                 count += 1
-#                 if count > 3:
-#                     break
+        self.host = Url(self.find_host()).client_netloc
 
-        i = 0
+    def find_host(self):
         host = ""
+        i = 0
         while not host:
             try:
-                m = re.match(r"^Listening\s+on\s+(([^:]+):(\d+))$", self.buf[i], flags=re.I)
+                m = re.search(self.host_regex, self.buf[i], flags=re.I)
                 if m:
                     host = m.group(1)
-                    self.host = Url(host).netloc
                 else:
                     i += 1
 
             except IndexError:
                 pass
+
+        return host
+
 
     def stop(self):
         process = None

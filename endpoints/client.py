@@ -16,6 +16,7 @@ import logging
 import requests
 #from requests.auth import HTTPBasicAuth
 from requests.auth import _basic_auth_str
+
 try:
     # https://github.com/websocket-client/websocket-client
     import websocket
@@ -435,7 +436,6 @@ class WebsocketClient(WebClient):
 
             except (IOError, TypeError) as e:
                 logger.debug('{} error on send attempt {}: {}'.format(self.client_id, attempts, e))
-                pout.v(e, isinstance(e, IOError), isinstance(e, TypeError))
                 success = False
 
             finally:

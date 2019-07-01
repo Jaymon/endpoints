@@ -134,7 +134,7 @@ class RouterTest(TestCase):
             "        return args[0]"
         ]})
         res = c.handle('/nmcon/8')
-        self.assertEqual('"8"', res.body)
+        self.assertEqual("8", res.body)
 
     def test_no_match(self):
         """make sure a controller module that imports a class with the same as
@@ -459,12 +459,12 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/testcallstop")
-        self.assertEqual('', res.body)
+        self.assertEqual(None, res.body)
         self.assertEqual(None, res._body)
         self.assertEqual(205, res.code)
 
         res = c.handle("/testcallstop2")
-        self.assertEqual('"this is the body"', res.body)
+        self.assertEqual("this is the body", res.body)
         self.assertEqual(200, res.code)
 
         res = c.handle("/testcallstop3")

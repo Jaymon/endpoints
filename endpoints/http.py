@@ -11,11 +11,12 @@ import itertools
 import logging
 import inspect
 import copy
+from socket import gethostname
 
 from .compat.environ import *
 from .compat.imports import BaseHTTPRequestHandler, parse as urlparse, urlencode
 from .decorators import _property
-from .utils import AcceptHeader, ByteString, MimeType, String, Base64
+from .utils import AcceptHeader, ByteString, MimeType, String, Base64, Deepcopy
 
 
 logger = logging.getLogger(__name__)
@@ -259,6 +260,20 @@ class Url(String):
 
         return uristring
 
+    @property
+    def client_netloc(self):
+        """Url can technically hold a hostname like 0.0.0.0, this will compensate
+        for that, useful for test clients
+
+        :returns: a netloc that a client can use to make a request
+        """
+        netloc = ""
+        domain, port = self.split_hostname_from_port(self.netloc)
+        netloc = gethostname() if domain == "0.0.0.0" else domain
+        if port:
+            netloc += ":{}".format(port)
+        return netloc
+
     def __new__(cls, urlstring=None, **kwargs):
         parts = cls.merge(urlstring, **kwargs)
         urlstring = parts.pop("urlstring")
@@ -269,9 +284,12 @@ class Url(String):
 
     @classmethod
     def keys(cls):
-        keys = set(k for k, v in inspect.getmembers(cls) if not k.startswith("__") and not callable(v))
-        for dk in ["root", "anchor", "uri"]:
-            keys.discard(dk)
+        # we need to ignore property objects also
+        is_valid = lambda k, v: not k.startswith("__") and not callable(v) and not isinstance(v, property)
+        keys = set(k for k, v in inspect.getmembers(cls) if is_valid(k, v))
+        # we need to strip out properties
+#         for dk in ["root", "anchor", "uri", "client_netloc"]:
+#             keys.discard(dk)
         return keys
 
     @classmethod
@@ -791,35 +809,15 @@ class Http(object):
         """nice handy wrapper around the deepcopy"""
         return copy.deepcopy(self)
 
-    def __deepcopy__(self, memodict={}):
+    def __deepcopy__(self, memodict=None):
+        if not memodict:
+            memodict = {}
+
+        if self.controller_info:
+            memodict.setdefault("controller_info", self.controller_info)
+
         instance = type(self)()
-        for key, val in self.__dict__.items():
-            #pout.v(key, val)
-            if not key.startswith("_"):
-                if val is None:
-                    setattr(instance, key, val)
-
-                else:
-                    if key == "environ":
-                        shallow = set(["wsgi.input", "wsgi.errors"])
-                        d = type(val)()
-                        for k, v in val.items():
-                            if k.lower() in shallow:
-                                d[k] = v
-                            else:
-                                d[k] = copy.deepcopy(v, memodict)
-
-                        setattr(instance, key, d)
-
-                    else:
-                        #setattr(instance, key, copy.deepcopy(val, memodict))
-                        try:
-                            setattr(instance, key, copy.deepcopy(val, memodict))
-                        except (AttributeError, TypeError):
-                        #except AttributeError:
-                            setattr(instance, key, copy.copy(val))
-
-        return instance
+        return Deepcopy.copy(self, memodict, instance)
 
     def is_json(self):
         ct = self.get_header('Content-Type')

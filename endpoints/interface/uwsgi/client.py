@@ -1,28 +1,21 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 
-import logging
-
 from ...compat.environ import *
-from ...utils import Path
-from ..wsgi.client import WSGIServer
+from ...utils import String, Path
+from ..client import WebServer as BaseWebServer
 
 
-logger = logging.getLogger(__name__)
-
-
-class UWSGIServer(WSGIServer):
+class WebServer(BaseWebServer):
 
     process_count = 1
 
-    def __init__(self, *args, **kwargs):
-        super(UWSGIServer, self).__init__(*args, **kwargs)
+    host_regex = r"bound\s+to\s+TCP\s+address\s+(([^:]+):(\d+))"
 
     def get_start_cmd(self):
-        args = [
+        cmd = [
             "uwsgi",
             "--need-app",
-            "--http", self.host.netloc,
             "--show-config",
             "--master",
             "--processes", str(self.process_count),
@@ -32,27 +25,36 @@ class UWSGIServer(WSGIServer):
             "--chdir", self.cwd,
         ]
 
-        if self.wsgifile:
-            args.extend([
-                "--wsgi-file", Path(self.wsgifile),
-            ])
+        if self.host:
+            cmd.extend(["--http", self.host])
+        else:
+            cmd.extend(["--http-socket", "0.0.0.0:0"])
+
+        if self.config_path:
+            cmd.extend(['--wsgi-file', Path(self.config_path)])
 
         else:
-            args.extend([
-                #"--module", "endpoints.uwsgi:Application()",
+            cmd.extend([
                 "--module", "{}:Application()".format(".".join(__name__.split(".")[0:-1])),
             ])
 
-        return args
+        return cmd
+
+#     def find_host(self):
+#         host = super(WebServer, self).find_host()
+#         pout.v(host)
+#         return host
 
 
-class WebsocketServer(UWSGIServer):
-    gevent_process_count = 50
+class WebsocketServer(WebServer):
+
+    async_process_count = 50
+
     def get_start_cmd(self):
-        args = super(WebsocketServer, self).get_start_cmd()
-        args.extend([
+        cmd = super(WebsocketServer, self).get_start_cmd()
+        cmd.extend([
             "--http-websockets",
-            "--gevent", str(self.gevent_process_count),
+            "--gevent", String(self.async_process_count),
         ])
-        return args
+        return cmd
 

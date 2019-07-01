@@ -10,6 +10,7 @@ import ast
 import collections
 #import keyword
 from .compat.imports import builtins
+from .compat.environ import *
 import pkgutil
 
 from .decorators import _property, version, param
@@ -405,7 +406,7 @@ class ReflectController(object):
         node_iter.visit_FunctionDef = visit_FunctionDef
         for target_cls in inspect.getmro(self.controller_class):
             if target_cls == object: break
-            node_iter.visit(ast.parse(inspect.getsource(target_cls)))
+            node_iter.visit(ast.parse(inspect.getsource(target_cls).strip()))
 
         http_methods = self._get_methods_info()
         for http_method, method_names in http_methods.items():
@@ -438,7 +439,7 @@ class ReflectController(object):
                 for i in range(1, len(m.args.args)):
                     an = m.args.args[i]
                     dp = {
-                        "name": an.arg,
+                        "name": an.id if is_py2 else an.arg,
                         "required": True,
                     }
 

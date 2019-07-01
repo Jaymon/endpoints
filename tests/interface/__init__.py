@@ -1,8 +1,10 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 import random
+import os
 
 import testdata
+from unittest import TestSuite
 
 from endpoints.client import WebClient, WebsocketClient
 from .. import TestCase as BaseTestCase
@@ -26,14 +28,14 @@ class TestCase(BaseTestCase):
 
         kwargs["controller_prefix"] = tdm
         kwargs["host"] = self.get_host()
+        kwargs["cwd"] = tdm.basedir
 
         if config_contents:
             config_path = testdata.create_file("{}.py".format(testdata.get_module_name()), config_contents)
             kwargs["config_path"] = config_path
 
         server = self.server_class(**kwargs)
-        server.cwd = tdm.basedir
-        #server.stop()
+        server.stop()
         server.start()
         self.server = server
         return server
@@ -91,7 +93,7 @@ class WebTestCase(TestCase):
     def test_post_file_with_param(self):
         """make sure specifying a param for the file upload works as expected"""
         filepath = testdata.create_file("post_file_with_param.txt", "post_file_with_param")
-        server = self.create_server(contentes=[
+        server = self.create_server(contents=[
             "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    @decorators.param('file')",
@@ -205,6 +207,78 @@ class WebTestCase(TestCase):
         content = list(range(100))
         self.assertEqual(200, r.code)
         self.assertEqual(content, r._body)
+
+    def test_request_body_kwargs_bad_content_type(self):
+        self.skip_test("moved from http.RequestTest, make this work at some point")
+        """make sure a form upload content type with json body fails correctly"""
+        r = Request()
+        r.body = "foo=bar&che=baz&foo=che"
+        r.headers = {'content-type': 'application/json'}
+        with self.assertRaises(ValueError):
+            br = r.body_kwargs
+
+        r.body = '{"foo": ["bar", "che"], "che": "baz"}'
+        r.headers = {'content-type': "application/x-www-form-urlencoded"}
+
+        with self.assertRaises(ValueError):
+            br = r.body_kwargs
+
+    def test_response_body(self):
+        self.skip_test("moved from http.ResponseTest, make this work at some point")
+        b = {'foo': 'bar'}
+
+        r = Response()
+        r.headers['Content-Type'] = 'plain/text'
+        self.assertEqual(None, r.body)
+        r.body = b
+        self.assertEqual(String(b), r.body)
+
+        r = Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = b
+        self.assertEqual(json.dumps(b), r.body)
+
+        r = Response()
+        r.headers['Content-Type'] = 'plain/text'
+        self.assertEqual('', r.body)
+        self.assertEqual('', r.body) # Make sure it doesn't change
+        r.body = b
+        self.assertEqual(String(b), r.body)
+
+        r = Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = {}
+        self.assertEqual(r.body, "{}")
+
+        r = Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = ValueError("this is the message")
+        r.code = 500
+        #self.assertEqual(r.body, '{"errno": 500, "errmsg": "this is the message"}')
+        self.assertEqual(r.body, '{"errmsg": "this is the message"}')
+        r.headers['Content-Type'] = ''
+        self.assertEqual("this is the message", r.body)
+
+        r = Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = None
+        self.assertEqual('', r.body) # was getting "null" when content-type was set to json
+
+        # TODO: this really needs to be better tested with unicode data
+
+    def test_response_body_json_error(self):
+        """I was originally going to have the body method smother the error, but
+        after thinking about it a little more, I think it is better to bubble up
+        the error and rely on the user to handle it in their code"""
+        self.skip_test("moved from http.ResponseTest, make this work at some point")
+        class Foo(object): pass
+        b = {'foo': Foo()}
+
+        r = Response()
+        r.headers['Content-Type'] = 'application/json'
+        r.body = b
+        with self.assertRaises(TypeError):
+            rb = r.body
 
 
 class WebsocketTestCase(TestCase):
@@ -460,48 +534,6 @@ class WebsocketTestCase(TestCase):
             self.assertEqual(x, r.count)
 
 
-###############################################################################
-# Client tests
-###############################################################################
-# TODO -- I think I would need to move this into client_test.py or something to
-# get it to actually run
-class WebClientTestCase(TestCase):
-    """Tests the HTTP webclient"""
-    def test_get_fetch_url(self):
-        c = self.create_client()
-
-        uri = "http://foo.com"
-        url = c.get_fetch_url(uri)
-        self.assertEqual(uri, url)
-
-        uri = "/foo/bar"
-        url = c.get_fetch_url(uri)
-        self.assertEqual("{}{}".format(c.get_fetch_host(), uri), url)
-
-        url = c.get_fetch_url(["foo", "bar"])
-        self.assertEqual("{}{}".format(c.get_fetch_host(), "/foo/bar"), url)
-
-    def test_post_file(self):
-        filepath = testdata.create_file("json_post_file.txt", "json post file")
-        server = self.create_server(contents=[
-            "from endpoints import Controller, decorators",
-            "class Default(Controller):",
-            "    @decorators.param('file')",
-            "    def POST(self, *args, **kwargs):",
-            "        return dict(body=kwargs['file']['filename'])",
-            "",
-        ])
-        c = self.create_client()
-        r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
-        self.assertEqual(200, r.code)
-        self.assertEqual("json_post_file.txt", r._body["body"])
-
-    def test_basic_auth(self):
-        c = self.create_client()
-        c.basic_auth("foo", "bar")
-        self.assertRegex(c.headers["authorization"], r"Basic\s+[a-zA-Z0-9=]+")
-
-
 class WebServerTestCase(TestCase):
     """Tests the client.Webserver for the interface"""
     def test_start(self):
@@ -534,4 +566,7 @@ class WebServerTestCase(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual("foo bar", r._body)
 
+
+def load_tests(*args, **kwargs):
+    return TestSuite()
 

@@ -123,6 +123,7 @@ class BaseServer(object):
 
     @property
     def hostloc(self):
+        """Return host:port string that the server is using to answer requests"""
         raise NotImplementedError()
 
     @_property
@@ -147,10 +148,23 @@ class BaseServer(object):
         return self.connection_class(self, **kwargs)
 
     def create_backend(self, **kwargs):
+        """create instance of the backend class.
+
+        Endpoints works by translating incoming requests from this instance to something
+        endpoints understands in create_request() and then translating the response
+        from endpoints back into something the backend understands in handle_request()
+
+        :returns: mixed, an instance of the backend class
+        """
         return self.backend_class(**kwargs)
 
     def create_request(self, raw_request, **kwargs):
-        """convert the raw interface raw_request to a request that endpoints understands"""
+        """convert the raw interface raw_request to a request that endpoints understands
+
+        :params raw_request: mixed, this is the request given by backend
+        :params **kwargs:
+            :returns: an http.Request instance that endpoints understands
+        """
         raise NotImplementedError()
 
     def create_request_body(self, request, raw_request, **kwargs):
@@ -213,6 +227,10 @@ class BaseServer(object):
         return r
 
     def handle_request(self):
+        """this should be able to get a raw_request, pass it to create_call(),
+        then use the Call instance to handle the request, and then send a response
+        back to the backend
+        """
         raise NotImplementedError()
 
     def serve_forever(self):
@@ -236,4 +254,74 @@ class BaseServer(object):
 class BaseWebsocketServer(BaseServer):
 
     payload_class = Payload
+
+    def create_websocket_request(self, request, raw_request=None):
+
+        ws_req = request.copy()
+        ws_req.controller_info = None
+
+        # just in case we need access to the 
+        ws_req.parent = request
+
+        if raw_request:
+            # path, body, method, uuid
+            kwargs = self.payload_class.loads(raw_request)
+            kwargs.setdefault("body", None)
+            kwargs.setdefault("path", request.path)
+
+            ws_req.environ["REQUEST_METHOD"] = kwargs["method"]
+            ws_req.method = kwargs["method"]
+
+            ws_req.environ["PATH_INFO"] = kwargs["path"]
+            ws_req.path = kwargs["path"]
+
+            ws_req.environ.pop("wsgi.input", None)
+
+            ws_req.body = kwargs["body"]
+            ws_req.body_kwargs = kwargs["body"]
+
+            ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
+
+        return ws_req
+
+    def create_websocket_response_body(self, request, response, json_encoder=JSONEncoder, **kwargs):
+
+        raw_response = {}
+
+        raw_response["path"] = request.path
+        if request.uuid:
+            raw_response["uuid"] = request.uuid
+
+        raw_response["code"] = response.code
+        raw_response["body"] = response.body
+
+        body = self.payload_class.dumps(**raw_response)
+        yield ByteString(body, response.encoding).raw()
+
+    def connect_websocket_call(self, raw_request):
+        c = self.create_call(raw_request)
+        req = c.request
+
+        # if there is an X-uuid header then set uuid and send it down
+        # with every request using that header
+        # https://stackoverflow.com/questions/18265128/what-is-sec-websocket-key-for
+        uuid = req.find_header(["X-UUID", "Sec-Websocket-Key"])
+        if not uuid:
+            kwargs = req.kwargs
+            if "uuid" in kwargs:
+                uuid = kwargs["uuid"]
+        req.uuid = uuid
+        req.method = "CONNECT"
+        return c
+
+    def create_websocket_call(self, request, raw_request=None):
+        req = self.create_websocket_request(request, raw_request)
+        c = self.create_call(raw_request, request=req)
+        return c
+
+    def disconnect_websocket_call(self, request):
+        req = self.create_websocket_request(request)
+        req.method = "DISCONNECT"
+        c = self.create_call(None, request=req)
+        return c
 

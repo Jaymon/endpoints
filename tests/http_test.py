@@ -23,7 +23,9 @@ class EnvironTest(TestCase):
 
 
 class HeadersTest(TestCase):
-    def test_midbody_capital(self):
+    def test_midbody_capital_letter(self):
+        """Previously, before June 2019, our headers didn't handle WebSocket correctly
+        instead lowercasing the S to Websocket"""
         d = Headers()
         d["Sec-WebSocket-Key"] = "foobar"
         self.assertTrue("Sec-Websocket-Key" in d)
@@ -224,54 +226,6 @@ class RequestTest(TestCase):
         r.set_header("Via", "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)")
         self.assertEqual("54.241.34.107", r.ip)
 
-    def test_body_kwargs_bad_content_type(self):
-        """make sure a form upload content type with json body fails correctly"""
-        r = Request()
-        r.body = "foo=bar&che=baz&foo=che"
-        r.headers = {'content-type': 'application/json'}
-        with self.assertRaises(ValueError):
-            br = r.body_kwargs
-
-        r.body = '{"foo": ["bar", "che"], "che": "baz"}'
-        r.headers = {'content-type': "application/x-www-form-urlencoded"}
-
-        with self.assertRaises(ValueError):
-            br = r.body_kwargs
-
-    def test_body_kwargs(self):
-        #body = "foo=bar&che=baz&foo=che"
-        #body_kwargs = {'foo': ['bar', 'che'], 'che': 'baz'}
-        #body_json = '{"foo": ["bar", "che"], "che": "baz"}'
-        cts = {
-            "application/x-www-form-urlencoded": (
-                "foo=bar&che=baz&foo=che",
-                {'foo': ['bar', 'che'], 'che': 'baz'}
-            ),
-#             'application/json': (
-#                 '{"foo": ["bar", "che"], "che": "baz"}',
-#                 {'foo': ['bar', 'che'], 'che': 'baz'}
-#             ),
-        }
-
-        for ct, bodies in cts.items():
-            ct_body, ct_body_kwargs = bodies
-
-            r = Request()
-            r.body = ct_body
-            r.set_header('content-type', ct)
-            self.assertTrue(isinstance(r.body_kwargs, dict))
-            self.assertEqual(r.body_kwargs, ct_body_kwargs)
-
-            r = Request()
-            r.set_header('content-type', ct)
-            self.assertEqual(r.body_kwargs, {})
-            self.assertEqual(r.body, None)
-
-            r = Request()
-            r.set_header('content-type', ct)
-            r.body_kwargs = ct_body_kwargs
-            self.assertEqual(r._parse_query_str(r.body), r._parse_query_str(ct_body))
-
     def test_properties(self):
 
         path = '/foo/bar'
@@ -299,60 +253,6 @@ class RequestTest(TestCase):
         r.query_kwargs = query_kwargs
         self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
         self.assertEqual(r.query_kwargs, query_kwargs)
-
-    def test_body(self):
-        # simulate a problem I had with a request with curl
-        r = Request()
-        r.method = 'GET'
-        r.body = ""
-        r.set_headers({
-            'PATTERN': "/",
-            'x-forwarded-for': "127.0.0.1",
-            'URI': "/",
-            'accept': "*/*",
-            'user-agent': "curl/7.24.0 (x86_64-apple-darwin12.0) libcurl/7.24.0 OpenSSL/0.9.8y zlib/1.2.5",
-            'host': "localhost",
-            'VERSION': "HTTP/1.1",
-            'PATH': "/",
-            'METHOD': "GET",
-            'authorization': "Basic SOME_HASH_THAT_DOES_NOT_MATTER="
-        })
-        self.assertEqual("", r.body)
-
-        r = Request()
-        r.method = 'POST'
-
-        r.set_header('content-type', "application/x-www-form-urlencoded")
-        r.body = "foo=bar&che=baz&foo=che"
-        body_r = {'foo': ['bar', 'che'], 'che': 'baz'}
-        self.assertEqual(body_r, r.body_kwargs)
-
-
-        r.body = None
-        #del(r._body_kwargs)
-        body_r = {}
-        self.assertEqual(body_r, r.body_kwargs)
-
-        r.set_header('content-type', "application/json")
-        r.body = '{"person":{"name":"bob"}}'
-        #del(r._body_kwargs)
-        body_r = {'person': {"name":"bob"}}
-        self.assertEqual(body_r, r.body_kwargs)
-
-        r.body = ''
-        #del(r._body_kwargs)
-        body_r = ''
-        self.assertEqual(body_r, r.body)
-
-        r.headers = {}
-        body = '{"person":{"name":"bob"}}'
-        r.body = body
-        self.assertEqual(body, r.body)
-
-        r.method = 'GET'
-        r.set_header('content-type', "application/json")
-        r.body = None
-        self.assertEqual(None, r.body)
 
     def test_get_header(self):
         r = Request()
@@ -408,48 +308,6 @@ class ResponseTest(TestCase):
         r.code = 1000
         self.assertEqual("UNKNOWN", r.status)
 
-    def test_body(self):
-        b = {'foo': 'bar'}
-
-        r = Response()
-        r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual('', r.body)
-        r.body = b
-        self.assertEqual(String(b), r.body)
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = b
-        self.assertEqual(json.dumps(b), r.body)
-
-        r = Response()
-        r.headers['Content-Type'] = 'plain/text'
-        self.assertEqual('', r.body)
-        self.assertEqual('', r.body) # Make sure it doesn't change
-        r.body = b
-        self.assertEqual(String(b), r.body)
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = {}
-        self.assertEqual(r.body, "{}")
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = ValueError("this is the message")
-        r.code = 500
-        #self.assertEqual(r.body, '{"errno": 500, "errmsg": "this is the message"}')
-        self.assertEqual(r.body, '{"errmsg": "this is the message"}')
-        r.headers['Content-Type'] = ''
-        self.assertEqual("this is the message", r.body)
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = None
-        self.assertEqual('', r.body) # was getting "null" when content-type was set to json
-
-        # TODO: this really needs to be better tested with unicode data
-
     def test_body_file(self):
         r = Response()
         self.assertFalse("Content-Type" in r.headers)
@@ -470,19 +328,6 @@ class ResponseTest(TestCase):
             fs = r.headers["Content-Length"]
             self.assertEqual("text/plain", mt)
             self.assertEqual(3, int(fs))
-
-    def test_body_json_error(self):
-        """I was originally going to have the body method smother the error, but
-        after thinking about it a little more, I think it is better to bubble up
-        the error and rely on the user to handle it in their code"""
-        class Foo(object): pass
-        b = {'foo': Foo()}
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = b
-        with self.assertRaises(TypeError):
-            rb = r.body
 
     def test_code(self):
         r = Response()
@@ -513,6 +358,15 @@ class ResponseTest(TestCase):
 
 
 class UrlTest(TestCase):
+    def test_client_netloc(self):
+        u = Url("0.0.0.0:546")
+        self.assertFalse("0.0.0.0" in u.client_netloc)
+        self.assertTrue("0.0.0.0" in u.netloc)
+
+        u = Url("0.0.0.0")
+        self.assertFalse("0.0.0.0" in u.client_netloc)
+        self.assertTrue("0.0.0.0" in u.netloc)
+
     def test_normalize_query_kwargs(self):
         d = {b'foo': [b'bar'], b'baz': [b'che']}
         r = Url.normalize_query_kwargs(d)

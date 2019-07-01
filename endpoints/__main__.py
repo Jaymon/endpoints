@@ -58,6 +58,8 @@ def console():
     cli hook
     return -- integer -- the exit code
     '''
+    ret_code = 0
+
     parser = argparse.ArgumentParser(description='Start an endpoints WSGI server', add_help=True)
     #parser.add_argument('--debug', dest='debug', action='store_true', help='print debugging info')
     parser.add_argument(
@@ -142,6 +144,7 @@ def console():
         # load the configuration file
         config = runpy.run_path(args.file)
 
+
 #     if args.config_script:
 #         # load a config script so you can customize the environment
 #         h = "wsgiserver_config_{}".format(uuid.uuid4())
@@ -153,20 +156,21 @@ def console():
     if "application" in config:
         s.application = config["application"]
 
-    if args.count:
-        logger.info("Listening on {} for {} requests".format(s.hostloc, args.prefix))
-        s.serve_count(args.count)
+    try:
+        if args.count:
+            logger.info("Listening on {} for {} requests".format(s.hostloc, args.count))
+            s.serve_count(args.count)
 
-    else:
-        logger.info("Listening on {}".format(s.hostloc))
-        s.serve_forever()
+        else:
+            logger.info("Listening on {}".format(s.hostloc))
+            s.serve_forever()
 
-    return 0
+    except KeyboardInterrupt:
+        pass
+
+    return ret_code
 
 
 if __name__ == "__main__":
-    try:
-        sys.exit(console())
-    except KeyboardInterrupt:
-        sys.exit(0)
+    sys.exit(console())
 

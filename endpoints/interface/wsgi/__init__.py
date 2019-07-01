@@ -27,12 +27,11 @@ class Application(BaseServer):
     """
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server handles"""
-        c = self.create_call(environ)
-        c.handle()
-        return self.handle_http_response(c, start_response)
+        return self.handle_http_response(environ, start_response)
 
-    def handle_http_response(self, call, start_response):
-        res = call.response
+    def handle_http_response(self, environ, start_response):
+        c = self.create_call(environ)
+        res = c.handle()
 
         if is_py2:
             start_response(
