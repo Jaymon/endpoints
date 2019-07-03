@@ -1,6 +1,6 @@
 # Interfaces
 
-## Creating a new interface
+## Creating a new web interface
 
 You can start with a template like this:
 
@@ -50,3 +50,43 @@ class Server(BaseServer):
 These are the methods your new interface will need to define in order to work with Endpoints.
 
 You can look at the current built-in supported interfaces in `endpoints.interface` to see how they implemented the above `Server` class.
+
+
+## Creating a new websocket interface
+
+You can create a new websocket interface using `endpoints.interface.BaseWebsocketServer` which has some other methods that you can hook into to customize functionality:
+
+* `create_websocket_request`
+* `create_websocket_response_body`
+* `connect_websocket_call`
+* `create_websocket_call`
+* `disconnect_websocket_call`
+
+These are all already implemented but you can override them in order to customize how your websocket interface works. You can take a look at their method signatures in the code if you need to override them.
+
+
+### Payload class
+
+The `endpoints.interface.Payload` class is used by the `BaseWebsocketServer` to translate requests and responses to and from something that can be passed around.
+
+You can customize this class by creating an object that has `dumps` and `loads` class methods and then setting it:
+
+```python
+import json
+
+from endpoints interface import BaseWebsocketServer
+
+
+class JSONPayload(object):
+    @classmethod
+    def loads(cls, raw):
+        return json.loads(raw)
+
+    @classmethod
+    def dumps(cls, kwargs):
+        return json.dumps(kwargs)
+
+
+class WebsocketServer(BaseWebsocketServer):
+    payload_class = JSONPayload
+```

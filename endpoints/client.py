@@ -375,12 +375,12 @@ class WebsocketClient(WebClient):
         return ret
 
     def get_fetch_request(self, method, path, body, **kwargs):
-        p = self.payload_class.dumps(
+        p = self.payload_class.dumps(dict(
             method=method.upper(),
             path=path,
             body=body,
             **kwargs
-        )
+        ))
         return p
 
     def send(self, path, body, **kwargs):

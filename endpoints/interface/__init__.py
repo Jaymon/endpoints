@@ -34,11 +34,11 @@ class Payload(object):
     in order to send/receive data via websockets
     """
     @classmethod
-    def loads(self, raw):
+    def loads(cls, raw):
         return json.loads(raw)
 
     @classmethod
-    def dumps(self, **kwargs):
+    def dumps(cls, kwargs):
         return json.dumps(kwargs, cls=JSONEncoder)
 
 
@@ -256,12 +256,20 @@ class BaseWebsocketServer(BaseServer):
     payload_class = Payload
 
     def create_websocket_request(self, request, raw_request=None):
+        """create the websocket Request for this call using the original Request
+        instance from the initial ws connection
 
+        :param request: the original Request instance from the initial connection
+        :param raw_request: this will be passed to self.payload_class to be 
+            interpretted
+        :returns: a new Request instance to be used for this specific call
+        """
         ws_req = request.copy()
         ws_req.controller_info = None
 
-        # just in case we need access to the 
+        # just in case we need access to the original request object or the raw info
         ws_req.parent = request
+        ws_req.raw_request = raw_request
 
         if raw_request:
             # path, body, method, uuid
@@ -280,12 +288,20 @@ class BaseWebsocketServer(BaseServer):
             ws_req.body = kwargs["body"]
             ws_req.body_kwargs = kwargs["body"]
 
-            ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
+            #ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
+            ws_req.uuid = kwargs.get("uuid", request.uuid)
 
         return ws_req
 
     def create_websocket_response_body(self, request, response, json_encoder=JSONEncoder, **kwargs):
+        """Similar to create_response_body it prepares a response to be sent back
+        down the wire using the payload_class variable
 
+        :param request: the call's Request instance, this needs the request because
+            of how websockets are sent back and forth
+        :param response: the call's Response instance
+        :returns: a generator that yields bytes strings
+        """
         raw_response = {}
 
         raw_response["path"] = request.path
@@ -295,33 +311,66 @@ class BaseWebsocketServer(BaseServer):
         raw_response["code"] = response.code
         raw_response["body"] = response.body
 
-        body = self.payload_class.dumps(**raw_response)
+        body = self.payload_class.dumps(raw_response)
         yield ByteString(body, response.encoding).raw()
 
     def connect_websocket_call(self, raw_request):
+        """called during websocket handshake
+
+        this should modify the request instance to use the CONNECT method so you
+        can customize functionality in your controller using a CONNECT method
+
+        NOTE -- this does not call create_websocket_request, it does call create_request
+
+        :param raw_request: the raw request from the backend
+        :returns: Call instance that can handle the request
+        """
         c = self.create_call(raw_request)
         req = c.request
 
         # if there is an X-uuid header then set uuid and send it down
         # with every request using that header
         # https://stackoverflow.com/questions/18265128/what-is-sec-websocket-key-for
-        uuid = req.find_header(["X-UUID", "Sec-Websocket-Key"])
+        uuid = None
+
+        # first try and get the uuid from the body since javascript has limited
+        # capability of setting headers for websockets
+        kwargs = req.kwargs
+        if "uuid" in kwargs:
+            uuid = kwargs["uuid"]
+
+        # next use X-UUID header, then the websocket key
         if not uuid:
-            kwargs = req.kwargs
-            if "uuid" in kwargs:
-                uuid = kwargs["uuid"]
+            uuid = req.find_header(["X-UUID", "Sec-Websocket-Key"])
+
         req.uuid = uuid
         req.method = "CONNECT"
         return c
 
     def create_websocket_call(self, request, raw_request=None):
+        """for every message sent back and forth over the websocket this should be
+        called
+
+        :param request: Request, the main request from the initial ws connection
+        :param raw_request: mixed, the raw request pulled from some backend that
+            should be acted on
+        :returns: Call instance
+        """
         req = self.create_websocket_request(request, raw_request)
         c = self.create_call(raw_request, request=req)
         return c
 
     def disconnect_websocket_call(self, request):
-        req = self.create_websocket_request(request)
-        req.method = "DISCONNECT"
-        c = self.create_call(None, request=req)
+        """This handles a websocket disconnection
+
+        this should modify the request instance to use the DISCONNECT method so you
+        can customize functionality in your controller using a DISCONNECT method
+
+        :param request: Request, the main request from the initial ws connection
+        :returns: Call instance
+        """
+        #req = self.create_websocket_request(request)
+        request.method = "DISCONNECT"
+        c = self.create_call(None, request=request)
         return c
 
