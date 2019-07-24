@@ -126,6 +126,7 @@ class WebServer(object):
         for env_name in environ.get_prefix_names("ENDPOINTS_PREFIX"):
             env.pop(env_name)
         env["ENDPOINTS_PREFIX"] = self.controller_prefix
+        self._environ = env
 
         return env
 

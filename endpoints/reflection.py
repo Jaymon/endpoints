@@ -14,6 +14,7 @@ from .compat.environ import *
 import pkgutil
 
 from .decorators import _property, version, param
+from .utils import String
 
 
 class ReflectDecorator(object):
@@ -50,7 +51,7 @@ class ReflectDecorator(object):
 
 
 class ReflectMethod(object):
-    """This encompasses the http verbs like POST and GET"""
+    """Reflects a method on a class"""
 
     @property
     def positionals(self):
@@ -58,8 +59,8 @@ class ReflectMethod(object):
         return self.get_info().get("positionals", False)
 
     @_property
-    def required_path_args(self):
-        """return how many path bits are needed to call the method"""
+    def required_args(self):
+        """return how many *args are needed to call the method"""
         ret = []
         info = self.get_info()
         for param_d in info.get("params", []):
@@ -106,6 +107,51 @@ class ReflectMethod(object):
         return list(filter(lambda x: x is not None, ret))
 
     @_property
+    def name(self):
+        """return the method name (GET, POST)"""
+        return self.method_name
+
+    @_property
+    def decorators(self):
+        decorators = self.reflect_class.decorators
+        return decorators.get(self.method_name, [])
+
+    @_property
+    def desc(self):
+        """return the description of this method"""
+        doc = None
+        def visit_FunctionDef(node):
+            """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
+            if node.name != self.method_name:
+                return
+
+            doc = ast.get_docstring(node)
+            raise StopIteration(doc if doc else "")
+
+        target = self.reflect_class.cls
+        try:
+            node_iter = ast.NodeVisitor()
+            node_iter.visit_FunctionDef = visit_FunctionDef
+            node_iter.visit(ast.parse(inspect.getsource(target)))
+
+        except StopIteration as e:
+            doc = String(e)
+
+        return doc or ""
+
+    def __init__(self, method_name, method, reflect_class):
+        self.method_name = method_name
+        self.method = method
+        self.reflect_class = reflect_class
+
+    def get_info(self):
+        info = self.reflect_class.get_info()
+        return info[self.name][self.method_name]
+
+
+class ReflectHTTPMethod(ReflectMethod):
+    """This encompasses the http verbs like POST and GET"""
+    @_property
     def version(self):
         ret = ""
         for decor in self.decorators:
@@ -119,7 +165,7 @@ class ReflectMethod(object):
         headers = {}
         version = self.version
         if version:
-            headers['Accept'] = "{};version={}".format(self.controller.content_type, version)
+            headers['Accept'] = "{};version={}".format(self.reflect_class.cls.content_type, version)
         return headers
 
     @_property
@@ -127,35 +173,6 @@ class ReflectMethod(object):
         """return the method name (GET, POST)"""
         bits = self.method_name.split("_", 2)
         return bits[0]
-
-    @_property
-    def decorators(self):
-        decorators = self.controller.decorators
-        return decorators.get(self.method_name, [])
-
-    @_property
-    def desc(self):
-        """return the description of this endpoint"""
-        doc = None
-        def visit_FunctionDef(node):
-            """ https://docs.python.org/2/library/ast.html#ast.NodeVisitor.visit """
-            if node.name != self.method_name:
-                return
-
-            doc = ast.get_docstring(node)
-            raise StopIteration(doc if doc else "")
-
-        target = self.controller.controller_class
-        try:
-            node_iter = ast.NodeVisitor()
-            node_iter.visit_FunctionDef = visit_FunctionDef
-            node_iter.visit(ast.parse(inspect.getsource(target)))
-
-        except StopIteration as e:
-            doc = str(e)
-
-        if not doc: doc = ""
-        return doc
 
     @_property
     def params(self):
@@ -170,72 +187,11 @@ class ReflectMethod(object):
 
         return ret
 
-    def __init__(self, method_name, method, controller):
-        self.method_name = method_name
-        self.method = method
-        self.controller = controller
 
-    def get_info(self):
-        info = self.controller.get_info()
-        return info[self.name][self.method_name]
-
-
-class ReflectController(object):
-    """This will encompass an entire Controller and have information on all the http
-    methods (eg, GET and POST)"""
-
+class ReflectClass(object):
     method_class = ReflectMethod
 
     decorator_class = ReflectDecorator
-
-    @_property
-    def decorators(self):
-        """Get all the decorators of all the option methods in the class
-
-        http://stackoverflow.com/questions/5910703/ specifically, I used this
-        answer http://stackoverflow.com/a/9580006
-        """
-        ret = {}
-        info = self.get_info()
-        for http_method, methods in info.items():
-            for method, method_info in methods.items():
-                ret[method] = method_info.get("decorators", [])
-
-        return ret
-
-    @_property
-    def class_name(self):
-        return self.controller_class.__name__
-
-    @_property
-    def module_name(self):
-        return self.controller_class.__module__
-
-    @_property
-    def module(self):
-        return ReflectModule(self.module_name).module
-
-    @_property
-    def bits(self):
-        bits = self.module_name.replace(self.controller_prefix, '', 1).lower()
-        bits = list(filter(None, bits.split(".")))
-
-        class_name = self.class_name.lower()
-        if class_name != "default":
-            bits.append(class_name)
-
-        return bits
-
-    @_property
-    def uri(self):
-        return "/" + "/".join(self.bits)
-
-    @_property
-    def desc(self):
-        """return the description of this endpoint"""
-        doc = inspect.getdoc(self.controller_class)
-        if not doc: doc = ''
-        return doc
 
     @_property
     def methods(self):
@@ -255,28 +211,56 @@ class ReflectController(object):
                 ret[http_method].append(self.method_class(
                     method_name,
                     method_info["method"],
-                    controller=self
+                    reflect_class=self
                 ))
         return ret
 
-    def __init__(self, controller_prefix, controller_class):
-        """reflect a controller
+    @_property
+    def decorators(self):
+        """Get all the decorators of all the option methods in the class
 
-        :param controller_prefix: the base controller prefix that this controller
-            class resides in, this is needed so the path can be figured out, basically
-            if the controller prefix is foo.controllers and this controller is located
-            in the module foo.controllers.bar.che then the module path can be worked
-            out to bar/che using controller_prefix
-        :param controller_class: type, the actual python class
+        http://stackoverflow.com/questions/5910703/ specifically, I used this
+        answer http://stackoverflow.com/a/9580006
         """
-        self.controller_prefix = controller_prefix
-        self.controller_class = controller_class
-        self.content_type = controller_class.content_type
+        ret = {}
+        info = self.get_info()
+        for http_method, methods in info.items():
+            for method, method_info in methods.items():
+                ret[method] = method_info.get("decorators", [])
+
+        return ret
+
+    @property
+    def class_name(self):
+        return self.cls.__name__
+
+    @property
+    def module_name(self):
+        return self.cls.__module__
+
+    @property
+    def classpath(self):
+        return "{}.{}".format(self.module_name, self.class_name)
+
+    @_property
+    def module(self):
+        return self.reflect_module.module
+        #return ReflectModule(self.module_name).module
+
+    @_property
+    def desc(self):
+        """return the description of this endpoint"""
+        doc = inspect.getdoc(self.cls) or ""
+        return doc
+
+    def __init__(self, reflect_module, cls):
+        self.reflect_module = reflect_module
+        self.cls = cls
         self._cache = {} # cache of get_info methods return values
 
     def is_private(self):
-        """return True if this endpoint is considered private"""
-        return self.class_name.startswith('_') or getattr(self.controller_class, 'private', False)
+        """return True if this class is considered private"""
+        return self.class_name.startswith('_')
 
     def get_info(self):
         """Get all the decorators of all the option methods in the class
@@ -394,7 +378,7 @@ class ReflectController(object):
                         "args": args,
                         "kwargs": kwargs
                     }
-                    m = self.module
+                    m = self.reflect_module.module
                     decor = getattr(m, name, None)
                     if decor:
                         d["decorator"] = decor
@@ -404,7 +388,7 @@ class ReflectController(object):
 
         node_iter = ast.NodeVisitor()
         node_iter.visit_FunctionDef = visit_FunctionDef
-        for target_cls in inspect.getmro(self.controller_class):
+        for target_cls in inspect.getmro(self.cls):
             if target_cls == object: break
             node_iter.visit(ast.parse(inspect.getsource(target_cls).strip()))
 
@@ -414,7 +398,7 @@ class ReflectController(object):
                 m = mmap[method_name]
                 d = {
                     "decorators": res.get(method_name, []),
-                    "method": getattr(self.controller_class, method_name),
+                    "method": getattr(self.cls, method_name),
                 }
 
                 # does the method have *args?
@@ -472,6 +456,62 @@ class ReflectController(object):
 
     def _get_methods_info(self):
         """
+        return all the methods found in this class
+
+        :returns: dict, the key is the method name, the value is a list of the methods
+            named key, it returns a list for the value so ReflectController works
+        """
+        cached = self._cache.get("_get_methods_info", None)
+        if cached is not None: return cached
+
+        ret = collections.defaultdict(list)
+        for method_name, method in inspect.getmembers(self.cls):
+            ret[method_name].append(method)
+
+        self._cache["_get_methods_info"] = ret
+        return ret
+
+
+class ReflectController(ReflectClass):
+    """This will encompass an entire Controller and have information on all the http
+    methods (eg, GET and POST)"""
+
+    method_class = ReflectHTTPMethod
+
+    @_property
+    def bits(self):
+        bits = self.module_name.replace(self.controller_prefix, '', 1).lower()
+        bits = list(filter(None, bits.split(".")))
+
+        class_name = self.class_name.lower()
+        if class_name != "default":
+            bits.append(class_name)
+
+        return bits
+
+    @_property
+    def uri(self):
+        return "/" + "/".join(self.bits)
+
+    def __init__(self, reflect_module, controller_class, controller_prefix):
+        """reflect a controller
+
+        :param controller_prefix: the base controller prefix that this controller
+            class resides in, this is needed so the path can be figured out, basically
+            if the controller prefix is foo.controllers and this controller is located
+            in the module foo.controllers.bar.che then the module path can be worked
+            out to bar/che using controller_prefix
+        :param controller_class: type, the actual python class
+        """
+        self.controller_prefix = controller_prefix
+        super(ReflectController, self).__init__(reflect_module, controller_class)
+
+    def is_private(self):
+        """return True if this endpoint is considered private"""
+        return super(ReflectController, self).is_private() or getattr(self.controller_class, 'private', False)
+
+    def _get_methods_info(self):
+        """
         return the supported http method options that this class supports
         return what http method options this endpoint supports (eg, POST, GET)
 
@@ -486,7 +526,7 @@ class ReflectController(object):
 
         ret = collections.defaultdict(list)
         method_regex = re.compile(r"^([A-Z][A-Z0-9]+)(_|$)")
-        controller_methods = inspect.getmembers(self.controller_class)
+        controller_methods = inspect.getmembers(self.cls)
         for controller_method_name, controller_method in controller_methods:
             m = method_regex.match(controller_method_name)
             if m:
@@ -495,6 +535,157 @@ class ReflectController(object):
 
         self._cache["_get_methods_info"] = ret
         return ret
+
+
+class ReflectModule(object):
+    """Introspect on a given module_name/modulepath (eg foo.bar.che)"""
+
+    class_class = ReflectClass
+
+    @property
+    def path(self):
+        return self.find_module_import_path()
+
+    @property
+    def module(self):
+        """return the actual python module found at self.module_name"""
+        return importlib.import_module(self.module_name)
+        #return self.get_module(self.module_name)
+
+    @property
+    def module_names(self):
+        """return all the module names that this module encompasses
+
+        :returns: set, a set of string module names
+        """
+        module = self.module
+        #module = self.get_module(self.module_name)
+        module_names = set([self.module_name])
+
+        if hasattr(module, "__path__"):
+            # path attr exists so this is a package
+            rp = ReflectPath(module.__path__[0])
+            module_names.update(rp.find_module_names(rp.path, self.module_name))
+
+        return module_names
+
+    def __init__(self, module_name):
+        """
+        :param module_name: the module path of the module to introspect
+        """
+        self.module_name = module_name
+
+    def __iter__(self):
+        """This will iterate through this module and all its submodules
+
+        :returns: a generator that yields ReflectModule instances
+        """
+        for module_name in self.module_names:
+            yield type(self)(module_name)
+
+    def classes(self):
+        """yields all the (class_name, class_type) that is found in only this
+        module (not submodules)
+
+        this filters our private classes (classes that start with _)
+
+        :returns: a generator of ReflectClass instances
+        """
+        module = self.module
+        classes = inspect.getmembers(module, inspect.isclass)
+        for class_name, class_type in classes:
+            rc = self.class_class(self, class_type)
+            #if class_name.startswith('_'): continue
+            if not rc.is_private():
+                yield rc
+
+#     def get_module(self, module_name):
+#         """load a module by name"""
+#         return importlib.import_module(module_name)
+
+    def find_module_path(self):
+        """find where the master module is located"""
+        master_modname = self.module_name.split(".", 1)[0]
+        master_module = sys.modules[master_modname]
+        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
+        path = os.path.dirname(inspect.getsourcefile(master_module))
+        return path
+
+    def find_module_import_path(self):
+        """find and return the importable path for the module"""
+        module_path = self.find_module_path()
+        path = os.path.dirname(module_path)
+        return path
+        #path = os.path.dirname(os.path.realpath(os.path.join(module_path, "..")))
+        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
+
+
+class ReflectPath(object):
+    """Introspection on a given path"""
+    @property
+    def module_names(self):
+        """return all the module names that this module encompasses
+
+        :returns: set, a set of string module names
+        """
+        return self.find_module_names(self.path, "")
+
+    def __init__(self, path):
+        """
+        :param path: string, the path to introspect
+        """
+        self.path = path
+
+    def modules(self):
+        """yields ReflectModule instances for each found module under path"""
+        for module_name in self.module_names:
+            yield ReflectModule(module_name)
+
+    def find_module_names(self, path, prefix=""):
+        """recursive method that will find all the modules of the given path
+
+        :param path: string, the path to scan for modules/submodules
+        :param prefix: string, if you want found modules to be prefixed with a certain
+            module path
+        :returns: set, a set of submodule names under path prefixed with prefix
+        """
+        module_names = set()
+#         if prefix:
+#             module_names = set([prefix])
+#         else:
+#             module_names = set()
+
+        # https://docs.python.org/2/library/pkgutil.html#pkgutil.iter_modules
+        for module_info in pkgutil.iter_modules([path]):
+            # we want to ignore any "private" modules
+            if module_info[1].startswith('_'): continue
+
+            if prefix:
+                module_prefix = ".".join([prefix, module_info[1]])
+            else:
+                module_prefix = module_info[1]
+
+            if module_info[2]:
+                # module is a package
+                module_names.add(module_prefix)
+                submodule_names = self.find_module_names(os.path.join(path, module_info[1]), module_prefix)
+                module_names.update(submodule_names)
+            else:
+                module_names.add(module_prefix)
+
+        return module_names
+
+    def find_modules(self, callback):
+        """find all the modules where callback returns true and yield those
+
+        :param callback: callable, callback(module) where module is a ReflectModule
+            instance, if callback returns True, this will yield the module
+        :returns: generator, yielding ReflectModule instances where callback(module)
+            returns True
+        """
+        for module in self.modules():
+            if callback(module):
+                yield module
 
 
 class Reflect(object):
@@ -510,13 +701,14 @@ class Reflect(object):
 
         for controller_prefix in self.controller_prefixes:
             for rm in ReflectModule(controller_prefix):
-                for controller_class_name, controller_class in rm.classes:
-                    if not issubclass(controller_class, Controller): continue
-                    if controller_class == Controller: continue
+                for rc in rm.classes():
+                    if not issubclass(rc.cls, Controller): continue
+                    if rc.cls == Controller: continue
 
                     controller = self.create_controller(
+                        reflect_module=rm,
+                        controller_class=rc.cls,
                         controller_prefix=controller_prefix,
-                        controller_class=controller_class,
                     )
 
                     # filter out controllers that can't handle any requests
@@ -532,102 +724,4 @@ class Reflect(object):
     def __iter__(self):
         return self.controllers
 
-
-class ReflectModule(object):
-    @property
-    def path(self):
-        return self.find_module_import_path()
-
-    @property
-    def module(self):
-        """return the actual python module found at self.module_name"""
-        return self.get_module(self.module_name)
-
-    @property
-    def classes(self):
-        """yields all the (class_name, class_type) that is found in only this
-        module (not submodules)
-
-        this filters our private classes (classes that start with _)
-
-        :returns: a generator of tuples (class_name, class_type)
-        """
-        module = self.module
-        classes = inspect.getmembers(module, inspect.isclass)
-        for class_name, class_type in classes:
-            if class_name.startswith('_'): continue
-            yield class_name, class_type
-
-    @property
-    def module_names(self):
-        """return all the module names that this module encompasses
-
-        :returns: set, a set of string module names
-        """
-        module = self.get_module(self.module_name)
-
-        if hasattr(module, "__path__"):
-            # path attr exists so this is a package
-            module_names = self.find_module_names(module.__path__[0], self.module_name)
-
-        else:
-            # we have a lonely .py file
-            module_names = set([self.module_name])
-
-        return module_names
-
-    def __init__(self, module_name):
-        self.module_name = module_name
-
-    def __iter__(self):
-        """This will iterate through this module and all its submodules
-
-        :returns: a generator that yields ReflectModule instances
-        """
-        for module_name in self.module_names:
-            yield type(self)(module_name)
-
-    def find_module_names(self, path, prefix):
-        """recursive method that will find all the submodules of the given module
-        at prefix with path
-
-        :returns: list, a list of submodule names under prefix.path
-        """
-
-        module_names = set([prefix])
-
-        # https://docs.python.org/2/library/pkgutil.html#pkgutil.iter_modules
-        for module_info in pkgutil.iter_modules([path]):
-            # we want to ignore any "private" modules
-            if module_info[1].startswith('_'): continue
-
-            module_prefix = ".".join([prefix, module_info[1]])
-            if module_info[2]:
-                # module is a package
-                submodule_names = self.find_module_names(os.path.join(path, module_info[1]), module_prefix)
-                module_names.update(submodule_names)
-            else:
-                module_names.add(module_prefix)
-
-        return module_names
-
-    def get_module(self, module_name):
-        """load a module by name"""
-        return importlib.import_module(module_name)
-
-    def find_module_path(self):
-        """find where the master module is located"""
-        master_modname = self.module_name.split(".", 1)[0]
-        master_module = sys.modules[master_modname]
-        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
-        path = os.path.dirname(inspect.getsourcefile(master_module))
-        return path
-
-    def find_module_import_path(self):
-        """find and return the importable path for endpoints"""
-        module_path = self.find_module_path()
-        path = os.path.dirname(module_path)
-        return path
-        #path = os.path.dirname(os.path.realpath(os.path.join(module_path, "..")))
-        #return os.path.dirname(os.path.realpath(os.path.join(inspect.getsourcefile(endpoints), "..")))
 

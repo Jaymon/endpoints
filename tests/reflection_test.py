@@ -6,7 +6,15 @@ import os
 import testdata
 
 from endpoints.call import Controller
-from endpoints.reflection import Reflect, ReflectMethod, ReflectController, ReflectModule
+from endpoints.reflection import (
+    Reflect,
+    ReflectMethod,
+    ReflectController,
+    ReflectModule,
+    ReflectPath,
+    ReflectHTTPMethod,
+    ReflectClass,
+)
 
 
 class ReflectTest(TestCase):
@@ -81,7 +89,7 @@ class ReflectTest(TestCase):
             def ABSURD(self): pass
             def ignORED(self): pass
 
-        rc = ReflectController("foo", MethodsController)
+        rc = ReflectController(None, MethodsController, "foo")
         methods = list(rc.methods)
 
         self.assertEqual(4, len(methods))
@@ -354,7 +362,7 @@ class ReflectTest(TestCase):
 
 
 class ReflectControllerTest(TestCase):
-    def test_method_required_path_args(self):
+    def test_method_required_args(self):
         mp = testdata.create_module(contents=[
             "from endpoints import param, version, Controller",
             "class Foo(Controller):",
@@ -362,8 +370,9 @@ class ReflectControllerTest(TestCase):
             "    @param('one')",
             "    def POST(self, *args, **kwargs): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual([0], r)
 
         mp = testdata.create_module(contents=[
@@ -373,8 +382,9 @@ class ReflectControllerTest(TestCase):
             "    @param('one')",
             "    def POST(self, zero, one): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual(["zero"], r)
 
         mp = testdata.create_module(contents=[
@@ -384,8 +394,9 @@ class ReflectControllerTest(TestCase):
             "    @param(1, default=1)",
             "    def POST(self, *args): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual([0], r)
 
         mp = testdata.create_module(contents=[
@@ -395,8 +406,9 @@ class ReflectControllerTest(TestCase):
             "    @param(1, default=1)",
             "    def POST(self, zero, *args): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual(["zero"], r)
 
         mp = testdata.create_module(contents=[
@@ -406,8 +418,9 @@ class ReflectControllerTest(TestCase):
             "    @param(1, default=1)",
             "    def POST(self, zero, one): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual(["zero"], r)
 
         mp = testdata.create_module(contents=[
@@ -417,8 +430,9 @@ class ReflectControllerTest(TestCase):
             "    @param(1, default=1)",
             "    def POST(self, zero, one): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual([], r)
 
         mp = testdata.create_module(contents=[
@@ -426,8 +440,9 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def POST(self, one, two=2, three=3): pass",
         ])
-        rm = ReflectMethod("POST", mp.module.Foo.POST, ReflectController(mp, mp.module.Foo))
-        r = rm.required_path_args
+        rmod = ReflectModule(mp)
+        rm = ReflectHTTPMethod("POST", mp.module.Foo.POST, ReflectController(rmod, mp.module.Foo, mp))
+        r = rm.required_args
         self.assertEqual(1, len(r))
 
     def test__get_methods_info(self):
@@ -443,7 +458,8 @@ class ReflectControllerTest(TestCase):
             "    def POST(self, *args, **kwargs): pass",
         ])
 
-        rc = ReflectController(mp, mp.module.Bar)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Bar, mp)
         r = rc._get_methods_info()
         self.assertEqual(2, len(r["GET"]))
         self.assertEqual(1, len(r["POST"]))
@@ -454,7 +470,8 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def POST(self, one, two=2, three=3): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertFalse(r["POST"]["POST"]["positionals"])
         self.assertFalse(r["POST"]["POST"]["keywords"])
@@ -470,7 +487,8 @@ class ReflectControllerTest(TestCase):
             "    @param('che')",
             "    def POST(self, zero, one, che): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertEqual(3, len(r["POST"]["POST"]["params"]))
         self.assertEqual(3, len(r["POST"]["POST"]["decorators"]))
@@ -480,7 +498,8 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def GET(self, *args, **kwargs): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertTrue(r["GET"]["GET"]["positionals"])
         self.assertTrue(r["GET"]["GET"]["keywords"])
@@ -490,7 +509,8 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def GET(self): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertFalse(r["GET"]["GET"]["positionals"])
         self.assertFalse(r["GET"]["GET"]["keywords"])
@@ -500,7 +520,8 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def GET(self, **kwargs): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertFalse(r["GET"]["GET"]["positionals"])
         self.assertTrue(r["GET"]["GET"]["keywords"])
@@ -510,7 +531,8 @@ class ReflectControllerTest(TestCase):
             "class Foo(Controller):",
             "    def GET(self, *args): pass",
         ])
-        rc = ReflectController(mp, mp.module.Foo)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Foo, mp)
         r = rc.get_info()
         self.assertTrue(r["GET"]["GET"]["positionals"])
         self.assertFalse(r["GET"]["GET"]["keywords"])
@@ -562,8 +584,9 @@ class ReflectControllerTest(TestCase):
             "    def GET_version2(self): pass",
             ""
         ])
-
-        rc = ReflectController(controller_prefix, mp.module.Bar)
+ 
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Bar, controller_prefix)
         self.assertEqual(2, len(rc.methods["GET"]))
 
         for rm in rc.methods["GET"]:
@@ -582,7 +605,8 @@ class ReflectControllerTest(TestCase):
             "",
         ])
 
-        rc = ReflectController(controller_prefix, mp.module.Bar)
+        rmod = ReflectModule(mp)
+        rc = ReflectController(rmod, mp.module.Bar, controller_prefix)
 
         for rm in rc.methods["GET"]:
             for name, pr in rm.params.items():
@@ -705,4 +729,59 @@ class ReflectModuleTest(TestCase):
         # just making sure it always returns the same list
         controllers = r.module_names
         self.assertEqual(s, controllers)
+
+
+class ReflectPathTest(TestCase):
+    def test_modules(self):
+        prefix = "reflectmodules"
+        path = testdata.create_modules({
+            "foo": [
+                "class Foo(object): pass"
+            ],
+            "foo.bar": [
+                "class Bar1(object): pass",
+                "class Bar2(object): pass"
+            ],
+            "che": [
+                "class Che(object): pass"
+            ],
+        }, prefix=prefix)
+
+        r = ReflectPath(path)
+        s = set([
+            prefix,
+            "{}.foo".format(prefix),
+            "{}.foo.bar".format(prefix),
+            "{}.che".format(prefix)
+        ])
+        self.assertEqual(s, r.module_names)
+
+    def test_path_is_package(self):
+        m = testdata.create_package(contents="class Foo(object): pass")
+
+        r = ReflectPath(m.directory)
+        # we don't return the path because it isn't importable by name from the path we
+        # passed in (itself), as of 7-4-2019 I think this is the correct behavior
+        self.assertEqual(set(), r.module_names)
+
+    def test_find_modules(self):
+        prefix = "findmodules"
+        path = testdata.create_modules({
+            "foo": [
+                "class Foo(object): pass"
+            ],
+            "foo.bar": [
+                "class Bar1(object): pass",
+                "class Bar2(object): pass"
+            ],
+            "che": [
+                "class Che(object): pass"
+            ],
+        }, prefix=prefix)
+
+        r = ReflectPath(path)
+        ms = list(r.find_modules(lambda rm: rm.module_name.endswith("foo")))
+        self.assertEqual(1, len(ms))
+        self.assertEqual("{}.foo".format(prefix), ms[0].module_name)
+
 

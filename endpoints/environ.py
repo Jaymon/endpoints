@@ -32,8 +32,8 @@ def set_controller_prefixes(prefixes, env_name='ENDPOINTS_PREFIX'):
     :param prefixes: list, the new prefixes that will replace any old prefixes
     :param env_name: string, the name of the environment variables
     """
-    for env_name in get_prefix_names(env_name):
-        os.environ.pop(env_name)
+    for en in get_prefix_names(env_name):
+        os.environ.pop(en)
 
     for i, prefix in enumerate(prefixes, 1):
         os.environ["{}_{}".format(env_name, i)] = prefix
