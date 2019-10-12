@@ -43,6 +43,7 @@ class auth(TargetDecorator):
     """Optional namespace for WWW-Authenticate header"""
 
     def handle_error(self, e):
+        logger.debug(e, exc_info=True)
         if isinstance(e, NotImplementedError):
             raise CallError(403, "You need a validator function to use authentication")
         else:

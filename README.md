@@ -1,6 +1,6 @@
 # Endpoints
 
-Quickest API builder in the West!
+Quickest API builder in the West! A lightweight REST api framework written in python.
 
 This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/jaymon/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once I consider _version 2_ stable we will publish it to pip also.
 
