@@ -274,7 +274,8 @@ class BaseWebsocketServer(BaseServer):
         if raw_request:
             # path, body, method, uuid
             kwargs = self.payload_class.loads(raw_request)
-            kwargs.setdefault("body", None)
+            #kwargs.setdefault("body", None)
+            kwargs.setdefault("body", {})
             kwargs.setdefault("path", request.path)
 
             ws_req.environ["REQUEST_METHOD"] = kwargs["method"]
