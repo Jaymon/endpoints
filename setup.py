@@ -45,7 +45,7 @@ setup(
     extras_require={
         'websockets':  ["websocket-client", "gevent"],
         'tornado': ["tornado"],
-    }
+    },
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
