@@ -27,7 +27,9 @@ else:
 version = re.search(r"^__version__\s*=\s*[\'\"]([^\'\"]+)", read(vpath), flags=re.I | re.M).group(1)
 
 
-kwargs["long_description"] = read('README.rst')
+# https://pypi.org/help/#description-content-type
+kwargs["long_description"] = read('README.md')
+kwargs["long_description_content_type"] = "text/markdown"
 
 
 setup(
@@ -40,6 +42,10 @@ setup(
     license="MIT",
     install_requires=['decorators'],
     tests_require=['testdata', 'requests'],
+    extras_require={
+        'websockets':  ["websocket-client", "gevent"],
+        'tornado': ["tornado"],
+    }
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 5 - Production/Stable',
         'Environment :: Web Environment',
