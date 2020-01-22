@@ -351,8 +351,7 @@ class WebsocketClient(WebClient):
             if ret.code >= 400:
                 raise IOError("Failed to connect with code {}".format(ret.code))
 
-#             self.headers = headers
-#             self.query_kwargs = query_kwargs
+            logger.debug("{} connected to {}".format(self.client_id, ws_url))
 
         except websocket.WebSocketTimeoutException as e:
             #pout.v(e)

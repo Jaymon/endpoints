@@ -19,7 +19,10 @@ testdata.basic_logging()
 
 class Server(BaseServer):
     """This is just a wrapper to get access to the Interface handling code"""
-    def __init__(self, controller_prefix, contents):
+    def __init__(self, controller_prefix="", contents=""):
+        if not controller_prefix:
+            controller_prefix = testdata.get_module_name()
+
         super(Server, self).__init__(
             controller_prefixes=[controller_prefix]
         )

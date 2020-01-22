@@ -1112,9 +1112,103 @@ class ParamTest(TestCase):
 
 
 class RouteTest(TestCase):
+    def test_error(self):
+        c = Server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import route",
+            "class Foo(Controller):",
+            "    @route(lambda req: len(req.path_args) == 2)",
+            "    def GET_1(*args, **kwargs):",
+            "        pass",
+            "",
+            "    @route(lambda req: len(req.path_args) == 3)",
+            "    def GET_2(*args, **kwargs):",
+            "        pass",
+        ])
+
+        res = c.handle("/foo")
+        self.assertEqual(405, res.code)
+
+    def test_path_route(self):
+        c = Server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import path_route",
+            "class Foo(Controller):",
+            "    @path_route('bar')",
+            "    def GET_1(*args, **kwargs):",
+            "        return 'bar'",
+            "",
+            "    @path_route('che')",
+            "    def GET_2(*args, **kwargs):",
+            "        return 'che'",
+        ])
+
+        res = c.handle("/foo/che")
+        self.assertEqual("che", res.body)
+
+        res = c.handle("/foo/bar")
+        self.assertEqual("bar", res.body)
+
+        res = c.handle("/foo")
+        self.assertEqual(405, res.code)
+
+        res = c.handle("/foo/baz")
+        self.assertEqual(405, res.code)
+
+    def test_param_route_keys(self):
+        c = Server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import param_route",
+            "class Foo(Controller):",
+            "    @param_route('bar')",
+            "    def GET_1(*args, **kwargs):",
+            "        return 'bar'",
+            "",
+            "    @param_route('che')",
+            "    def GET_2(*args, **kwargs):",
+            "        return 'che'",
+        ])
+
+        res = c.handle("/foo", query_kwargs={"che": 1})
+        self.assertEqual("che", res.body)
+
+        res = c.handle("/foo", query_kwargs={"bar": 1})
+        self.assertEqual("bar", res.body)
+
+        res = c.handle("/foo")
+        self.assertEqual(400, res.code)
+
+        res = c.handle("/foo", query_kwargs={"baz": 1})
+        self.assertEqual(400, res.code)
+
+    def test_param_route_matches(self):
+        c = Server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import param_route",
+            "class Foo(Controller):",
+            "    @param_route(bar=1)",
+            "    def GET_1(*args, **kwargs):",
+            "        return 1",
+            "",
+            "    @param_route(bar=2)",
+            "    def GET_2(*args, **kwargs):",
+            "        return 2",
+        ])
+
+        res = c.handle("/foo", query_kwargs={"bar": 1})
+        self.assertEqual(1, res.body)
+
+        res = c.handle("/foo", query_kwargs={"bar": 2})
+        self.assertEqual(2, res.body)
+
+        res = c.handle("/foo")
+        self.assertEqual(400, res.code)
+
+        res = c.handle("/foo", query_kwargs={"baz": 1})
+        self.assertEqual(400, res.code)
+
     def test_simple(self):
-        controller_prefix = "route_simple"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "class Foo(Controller):",
@@ -1147,8 +1241,7 @@ class RouteTest(TestCase):
         self.assertEqual(4, res._body)
 
     def test_extend_1(self):
-        controller_prefix = "route_extend1"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "",
@@ -1204,8 +1297,7 @@ class RouteTest(TestCase):
             self.assertEqual(5, res._body)
 
     def test_extend_2(self):
-        controller_prefix = "route_extend2"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "",
@@ -1226,8 +1318,7 @@ class RouteTest(TestCase):
 
     def test_mixed(self):
         """make sure plays nice with param"""
-        controller_prefix = "route_mixed"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import route, param",
             "class Foo(Controller):",

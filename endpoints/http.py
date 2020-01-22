@@ -15,7 +15,7 @@ from socket import gethostname
 
 from .compat.environ import *
 from .compat.imports import BaseHTTPRequestHandler, parse as urlparse, urlencode
-from .decorators import _property
+from .decorators.utils import _property
 from .utils import AcceptHeader, ByteString, MimeType, String, Base64, Deepcopy
 
 

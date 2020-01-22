@@ -523,7 +523,7 @@ class Controller(object):
         encoding = req.accept_encoding
         res.encoding = encoding if encoding else self.encoding
 
-        res_method_name = ""
+        res_error_handler = None
         controller_methods = self.find_methods()
         #controller_args, controller_kwargs = self.find_method_params()
         for controller_method_name, controller_method in controller_methods:
@@ -537,10 +537,14 @@ class Controller(object):
                     *controller_args,
                     **controller_kwargs
                 )
-                res_method_name = controller_method_name
+
+                res_error_handler = None
                 break
 
             except VersionError as e:
+                if not res_error_handler:
+                    res_error_handler = getattr(e.instance, "handle_failure", None)
+
                 self.logger.debug("Request {}.{}.{} failed version check [{} not in {}]".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
@@ -549,25 +553,22 @@ class Controller(object):
                     e.versions
                 ))
 
-            except RouteError:
+            except RouteError as e:
+                if not res_error_handler:
+                    res_error_handler = getattr(e.instance, "handle_failure", None)
+
                 self.logger.debug("Request {}.{}.{} failed routing check".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name
                 ))
 
-        if not res_method_name:
-            # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-            # An origin server SHOULD return the status code 405 (Method Not Allowed)
-            # if the method is known by the origin server but not allowed for the
-            # requested resource
-            raise CallError(405, "Could not find a method to satisfy {}".format(
-                req.path
-            ))
+        if res_error_handler:
+            res_error_handler(self)
 
     def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
-        go through this method
+        go through this method, this method is called from the Call instance
 
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
