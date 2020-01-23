@@ -18,16 +18,16 @@ class auth(TargetDecorator):
     on its own if you want, but I would look at using the other decorators first
     before deciding to use this one
 
-    the request get_auth_client(), get_auth_basic(), and get_auth_bearer() methods
-    and access_token property should come in real handy here
+    the request .get_auth_client(), .get_auth_basic(), .get_auth_schem(), and 
+    .get_auth_bearer() methods and .access_token property should come in handy here
 
     :example:
         # create a token auth decorator
         from endpoints import Controller
         from endpoints.decorators.auth import auth
 
-        def target(request, *args, **kwargs):
-            if request.access_token != "foo":
+        def target(controller, *args, **kwargs):
+            if controller.request.access_token != "foo":
                 raise ValueError("invalid access token")
 
         class Default(Controller):
@@ -40,9 +40,6 @@ class auth(TargetDecorator):
 
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
-
-    def handle_params(self, controller, controller_args, controller_kwargs):
-        return [controller.request, controller_args, controller_kwargs], {}
 
     def handle_error(self, controller, e):
         logger.debug(e, exc_info=True)
@@ -71,7 +68,7 @@ class auth_basic(auth):
         from endpoints import Controller
         from endpoints.decorators.auth import auth_basic
 
-        def target(request, username, password):
+        def target(controller, username, password):
             return username == "foo" and password == "bar"
 
         class Default(Controller):
@@ -87,7 +84,7 @@ class auth_basic(auth):
         if not username: raise ValueError("username is required")
         if not password: raise ValueError("password is required")
 
-        return [controller.request, username, password], {}
+        return [controller, username, password], {}
 
 
 class auth_client(auth_basic):
@@ -100,7 +97,7 @@ class auth_client(auth_basic):
         from endpoints import Controller
         from endpoints.decorators.auth import auth_client
 
-        def target(request, client_id, client_secret):
+        def target(controller, client_id, client_secret):
             return client_id == "foo" and client_secret == "bar"
 
         class Default(Controller):
@@ -114,7 +111,7 @@ class auth_client(auth_basic):
         if not client_id: raise ValueError("client_id is required")
         if not client_secret: raise ValueError("client_secret is required")
 
-        return [controller.request, client_id, client_secret], {}
+        return [controller, client_id, client_secret], {}
 
 
 class auth_token(auth):
@@ -143,5 +140,5 @@ class auth_token(auth):
 
         if not access_token: raise ValueError("access_token is required")
 
-        return [controller.request, access_token], {}
+        return [controller, access_token], {}
 

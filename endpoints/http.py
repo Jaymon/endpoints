@@ -897,11 +897,15 @@ class Request(Http):
         return -- tuple -- client_id, client_secret
         """
         client_id, client_secret = self.get_auth_basic()
-        if not client_id and not client_secret:
+
+        if not client_id:
             client_id = self.query_kwargs.get('client_id', '')
-            client_secret = self.query_kwargs.get('client_secret', '')
-            if not client_id and not client_secret:
+            if not client_id:
                 client_id = self.body_kwargs.get('client_id', '')
+
+        if not client_secret:
+            client_secret = self.query_kwargs.get('client_secret', '')
+            if not client_secret:
                 client_secret = self.body_kwargs.get('client_secret', '')
 
         return client_id, client_secret
@@ -1105,6 +1109,39 @@ class Request(Http):
                 username, password = auth_str.split(':', 1)
 
         return username, password
+
+    def get_auth_scheme(self):
+        """The authorization header is defined like:
+
+            Authorization = credentials
+            credentials = auth-scheme TOKEN_VALUE
+            auth-scheme = token
+
+        which roughly translates to:
+
+            Authorization: token TOKEN_VALUE
+
+        This returns the token part of the auth header's value
+
+        :returns: string, the authentication scheme (eg, Bearer, Basic)
+        """
+        scheme = ""
+        auth_header = self.get_header('authorization')
+        if auth_header:
+            m = re.search(r"^(\S+)\s+", auth_header)
+            if m:
+                scheme = m.group(1)
+        return scheme
+
+    def is_auth(self, scheme):
+        """Return True if scheme matches the authorization scheme
+
+        :Example:
+            # Authorization: Basic FOOBAR
+            request.is_auth("basic") # True
+            request.is_auth("bearer") # False
+        """
+        return scheme.lower() == self.get_auth_scheme().lower()
 
 
 class Response(Http):

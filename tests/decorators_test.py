@@ -235,7 +235,7 @@ class AuthTest(TestCase):
 
     def test_bad_setup(self):
 
-        def target(request, *args, **kwargs):
+        def target(controller, *args, **kwargs):
             return False
 
         class TARA(object):
@@ -260,12 +260,12 @@ class AuthTest(TestCase):
                 getattr(c, m)()
 
     def test_token_auth(self):
-        def target(request, access_token):
+        def target(controller, access_token):
             if access_token != "bar":
                 raise ValueError()
             return True
 
-        def target_bad(request, *args, **kwargs):
+        def target_bad(controller, *args, **kwargs):
             return False
 
         class TARA(object):
@@ -310,10 +310,10 @@ class AuthTest(TestCase):
             c.foo_bad()
 
     def test_client_auth(self):
-        def target(request, client_id, client_secret):
+        def target(controller, client_id, client_secret):
             return client_id == "foo" and client_secret == "bar"
 
-        def target_bad(request, *args, **kwargs):
+        def target_bad(controller, *args, **kwargs):
             return False
 
         class TARA(object):
@@ -341,12 +341,12 @@ class AuthTest(TestCase):
             c.foo_bad()
 
     def test_basic_auth_simple(self):
-        def target(request, username, password):
+        def target(controller, username, password):
             if username != "bar":
                 raise ValueError()
             return True
 
-        def target_bad(request, *args, **kwargs):
+        def target_bad(controller, *args, **kwargs):
             return False
 
         class TARA(object):
@@ -375,7 +375,7 @@ class AuthTest(TestCase):
             c.foo_bad()
 
     def test_basic_auth_same_kwargs(self):
-        def target(request, username, password):
+        def target(controller, username, password):
             if username != "bar":
                 raise ValueError()
             return True
@@ -396,12 +396,12 @@ class AuthTest(TestCase):
         self.assertEqual(1, r)
 
     def test_auth(self):
-        def target(request, controller_args, controller_kwargs):
-            if request.body_kwargs["foo"] != "bar":
+        def target(controller, controller_args, controller_kwargs):
+            if controller.request.body_kwargs["foo"] != "bar":
                 raise ValueError()
             return True
 
-        def target_bad(request, *args, **kwargs):
+        def target_bad(controller, *args, **kwargs):
             return False
 
         class TARA(object):
@@ -421,6 +421,39 @@ class AuthTest(TestCase):
 
         r.body_kwargs = {"foo": "bar"}
         c.foo()
+
+#     def test_auth_child(self):
+# 
+#         class auth_token_fail(decorators.auth_token):
+#             def target(self, *args, **kwargs):
+#                 raise ValueError("failed auth_token_fail.target")
+# 
+#         class auth_child(decorators.auth):
+#             def target(self, *args, **kwargs):
+#                 try:
+#                     auth = auth_token_fail()
+#                     auth.target(*args, **kwargs)
+# 
+#                 except ValueError as e:
+#                     pout.v(e)
+# #                     if e.code == 401:
+# #                         auth = auth_another()
+# #                         auth.target(self.request, args, kwargs)
+# 
+#                 return True
+# 
+# 
+# 
+#                 #pout.v(args, kwargs)
+#                 #raise ValueError()
+# 
+#         class ACController(object):
+#             @auth_child
+#             def foo(self): pass
+# 
+#         c = ACController()
+#         c.request = endpoints.Request()
+#         c.foo()
 
 
 class PropertyTest(TestCase):

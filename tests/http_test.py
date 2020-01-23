@@ -134,6 +134,21 @@ class HeadersTest(TestCase):
 
 
 class RequestTest(TestCase):
+    def test_get_auth_scheme(self):
+        r = Request()
+        r.set_headers({
+            "Authorization": "Basic FOOBAR",
+        })
+
+        self.assertEqual("Basic", r.get_auth_scheme())
+        self.assertTrue(r.is_auth("basic"))
+        self.assertTrue(r.is_auth("Basic"))
+        self.assertFalse(r.is_auth("bearer"))
+
+        r.headers["Authorization"] = "BLAH_TOKEN"
+        self.assertEqual("", r.get_auth_scheme())
+        self.assertFalse(r.is_auth("basic"))
+
     def test_override(self):
 
         class RO(Request):
