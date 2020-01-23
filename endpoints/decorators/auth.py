@@ -22,7 +22,6 @@ class auth(TargetDecorator):
     and access_token property should come in real handy here
 
     :example:
-
         # create a token auth decorator
         from endpoints import Controller
         from endpoints.decorators.auth import auth
@@ -42,7 +41,10 @@ class auth(TargetDecorator):
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
 
-    def handle_error(self, e):
+    def handle_params(self, controller, controller_args, controller_kwargs):
+        return [controller.request, controller_args, controller_kwargs], {}
+
+    def handle_error(self, controller, e):
         logger.debug(e, exc_info=True)
         if isinstance(e, NotImplementedError):
             raise CallError(403, "You need a validator function to use authentication")
@@ -53,11 +55,13 @@ class auth(TargetDecorator):
                 realm=self.realm,
             )
 
-    def decorate(self, func, target=None):
-        return super(auth, self).decorate(func, target=target)
+    def handle_definition(self, target=None, *anoop, **kwnoop):
+        """makes target optional since auth decorators are made to have target passed
+        in or to easily be extended"""
+        return super(auth, self).handle_definition(target=target)
 
 
-class basic_auth(auth):
+class auth_basic(auth):
     """
     handy basic auth decorator that checks for username, password in an auth header
 
@@ -65,36 +69,28 @@ class basic_auth(auth):
 
         # create a basic http auth decorator
         from endpoints import Controller
-        from endpoints.decorators.auth import basic_auth
+        from endpoints.decorators.auth import auth_basic
 
         def target(request, username, password):
             return username == "foo" and password == "bar"
 
         class Default(Controller):
-            @basic_auth(target=target)
+            @auth_basic(target=target)
             def GET(self):
                 return "hello world"
     """
     scheme = AccessDenied.SCHEME_BASIC
 
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
-        username, password = request.get_auth_basic()
+    def handle_params(self, controller, controller_args, controller_kwargs):
+        username, password = controller.request.get_auth_basic()
 
         if not username: raise ValueError("username is required")
         if not password: raise ValueError("password is required")
 
-        kwargs = {
-            "request": request,
-            "username": username,
-            "password": password,
-        }
-        return [], kwargs
-
-    def decorate(self, func, target=None):
-        return super(basic_auth, self).decorate(func, target=target)
+        return [controller.request, username, password], {}
 
 
-class client_auth(basic_auth):
+class auth_client(auth_basic):
     """
     handy OAuth client auth decorator that checks for client_id and client_secret
 
@@ -102,34 +98,26 @@ class client_auth(basic_auth):
 
         # create a client auth decorator
         from endpoints import Controller
-        from endpoints.decorators.auth import client_auth
+        from endpoints.decorators.auth import auth_client
 
         def target(request, client_id, client_secret):
             return client_id == "foo" and client_secret == "bar"
 
         class Default(Controller):
-            @client_auth(target=target)
+            @auth_client(target=target)
             def GET(self):
                 return "hello world"
     """
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
-        client_id, client_secret = request.client_tokens
+    def handle_params(self, controller, controller_args, controller_kwargs):
+        client_id, client_secret = controller.request.client_tokens
 
         if not client_id: raise ValueError("client_id is required")
         if not client_secret: raise ValueError("client_secret is required")
 
-        kwargs = {
-            "request": request,
-            "client_id": client_id,
-            "client_secret": client_secret,
-        }
-        return [], kwargs
-
-    def decorate(self, func, target=None):
-        return super(client_auth, self).decorate(func, target=target)
+        return [controller.request, client_id, client_secret], {}
 
 
-class token_auth(auth):
+class auth_token(auth):
     """
     handy token auth decorator that checks for access_token in an authorization
     Bearer header
@@ -138,78 +126,22 @@ class token_auth(auth):
 
         # create a token auth decorator
         from endpoints import Controller
-        from endpoints.decorators.auth import token_auth
+        from endpoints.decorators.auth import auth_token
 
         def target(request, access_token):
             return access_token == "foo"
 
         class Default(Controller):
-            @token_auth(target=target)
+            @auth_token(target=target)
             def GET(self):
                 return "hello world"
     """
     scheme = AccessDenied.SCHEME_BEARER
 
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
-        access_token = request.access_token
+    def handle_params(self, controller, controller_args, controller_kwargs):
+        access_token = controller.request.access_token
 
         if not access_token: raise ValueError("access_token is required")
 
-        kwargs = {
-            "request": request,
-            "access_token": access_token,
-        }
-        return [], kwargs
-
-    def decorate(self, func, target=None):
-        return super(token_auth, self).decorate(func, target=target)
-
-
-class AuthDecorator(auth):
-    """
-    A Decorator that is meant to be extended
-
-    this is different than the other decorators in that you need to actually extend
-    this decorator and implement the target() method to make it work
-
-    :example:
-
-        # create a custom auth decorator
-        from endpoints import Controller
-        from endpoints.decorators.auth import AuthDecorator
-
-        class auth(AuthDecorator):
-            def target(self, *args, **kwargs):
-                if kwargs["key"] != foo
-                    raise ValueError("invalid access token")
-
-        class Default(Controller):
-            @auth()
-            def GET(self):
-                return "hello world"
-    """
-    def handle_target(self, request, controller_args, controller_kwargs):
-        """Only here to set self.request and get rid of it after
-
-        this will set self.request so the target method can access request using
-        self.request, just like in the controller.
-        """
-        self.request = request
-        super(AuthDecorator, self).handle_target(request, controller_args, controller_kwargs)
-        del self.request
-
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
-        """prepare params to be passed to child's target method
-
-        :param request: ignored, target methods should access this using self.request
-        :returns: tuple of (controller_args, controller_kwargs) so the target can
-            mimic the Controller method completely
-        """
-        return controller_args, controller_kwargs
-
-    def target(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    def decorate(self, func):
-        return super(auth, self).decorate(func, target=None)
+        return [controller.request, access_token], {}
 

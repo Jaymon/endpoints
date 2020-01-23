@@ -5,7 +5,7 @@ import datetime
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
-from .base import TargetDecorator, BackendDecorator
+from .base import BackendDecorator
 
 
 logger = logging.getLogger(__name__)
@@ -35,7 +35,7 @@ class Backend(object):
     _calls = {}
     """class dictionary that will hold all limiting keys"""
 
-    def target(self, request, key, limit, ttl):
+    def handle(self, request, key, limit, ttl):
         now = datetime.datetime.utcnow()
         count = 1
 
@@ -97,7 +97,8 @@ class RateLimitDecorator(BackendDecorator):
         """
         return self.ttl
 
-    def normalize_target_params(self, request, controller_args, controller_kwargs):
+    def handle_params(self, controller, controller_args, controller_kwargs):
+        request = controller.request
         kwargs = {
             "request": request,
             "key": self.normalize_key(
@@ -118,7 +119,7 @@ class RateLimitDecorator(BackendDecorator):
         }
         return [], kwargs
 
-    def target(self, request, key, limit, ttl):
+    def handle(self, request, key, limit, ttl):
         """this will only run the request if the key has a value, if you want to
         fail if the key doesn't have a value, then normalize_key() should raise
         an exception
@@ -139,21 +140,20 @@ class RateLimitDecorator(BackendDecorator):
             #if method:
             #    ttl = method(request, ttl)
             #ret = backend.target(request, key, limit, ttl)
-            ret = super(RateLimitDecorator, self).target(request, key, limit, ttl)
+            ret = super(RateLimitDecorator, self).handle(request, key, limit, ttl)
         else:
             logger.warn("No ratelimit key found for {}".format(request.path))
 
         return ret
 
-    def handle_error(self, e):
+    def handle_error(self, controller, e):
         """all exceptions should generate 429 responses"""
         raise CallError(429, String(e))
 
-    def decorate(self, func, limit=0, ttl=0, *anoop, **kwnoop):
+    def handle_definition(self, limit=0, ttl=0, *anoop, **kwnoop):
         """see target for an explanation of limit and ttl"""
         self.limit = int(limit)
         self.ttl = int(ttl)
-        return super(RateLimitDecorator, self).decorate(func, target=None, *anoop, **kwnoop)
 
 
 class ratelimit_ip(RateLimitDecorator):
@@ -176,9 +176,9 @@ class ratelimit(ratelimit_ip):
 
     .. seealso:: RateLimitDecorator
     """
-    def decorate(self, func, limit, ttl, *anoop, **kwnoop):
+    def handle_definition(self, limit, ttl, *anoop, **kwnoop):
         """make limit and ttl required"""
-        return super(ratelimit, self).decorate(func, limit, ttl, *anoop, **kwnoop)
+        return super(ratelimit, self).handle_definition(limit, ttl, *anoop, **kwnoop)
 
 
 class ratelimit_token(RateLimitDecorator):
@@ -198,9 +198,9 @@ class ratelimit_param(RateLimitDecorator):
             ret = ""
         return ret
 
-    def decorate(self, func, param_name, *args, **kwargs):
+    def handle_definition(self, param_name, *args, **kwargs):
         self.param_name = param_name
-        return super(ratelimit_param, self).decorate(func, *args, **kwargs)
+        return super(ratelimit_param, self).handle_definition(*args, **kwargs)
 
 
 class ratelimit_param_ip(ratelimit_param):

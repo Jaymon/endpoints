@@ -535,11 +535,11 @@ class param(FuncDecorator):
         return decorated
 
 
-class get_param(param):
+class param_query(param):
     """same as param, but only checks GET params"""
     def find_kwarg(self, request, names, required, default, kwargs):
         try:
-            return super(get_param, self).find_kwarg(
+            return super(param_query, self).find_kwarg(
                 request,
                 names,
                 required,
@@ -551,11 +551,11 @@ class get_param(param):
             raise ValueError("required param {} was not present in GET params".format(self.name))
 
 
-class post_param(param):
+class param_body(param):
     """same as param but only checks POST params"""
     def find_kwarg(self, request, names, required, default, kwargs):
         try:
-            return super(post_param, self).find_kwarg(
+            return super(param_body, self).find_kwarg(
                 request,
                 names,
                 required,

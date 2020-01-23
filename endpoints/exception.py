@@ -97,8 +97,7 @@ class RouteError(CallError):
 class VersionError(RouteError):
     """Raised when @version fails on a Controller method"""
     def __init__(self, instance, request_version, versions):
-        self.instance = instance
         self.request_version = request_version
         self.versions = versions
-        super(VersionError, self).__init__(code=-2)
+        super(VersionError, self).__init__(instance, code=-2)
 

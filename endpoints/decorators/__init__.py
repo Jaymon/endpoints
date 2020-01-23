@@ -3,18 +3,14 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 
 from decorators import FuncDecorator
 
-from . import auth, limit
-
 from .auth import (
     auth,
-    basic_auth,
-    client_auth,
-    token_auth,
-    AuthDecorator,
+    auth_basic,
+    auth_client,
+    auth_token,
 )
 
 from .limit import (
-    Backend,
     RateLimitDecorator,
     ratelimit_ip,
     ratelimit,
@@ -24,9 +20,17 @@ from .limit import (
     ratelimit_param_only,
 )
 
-from .base import TargetDecorator, BackendDecorator
+from .base import (
+    TargetDecorator,
+    BackendDecorator,
+)
 
-from .call import route, path_route, param_route, version
+from .call import (
+    route,
+    route_path,
+    route_param,
+    version
+)
 
 from .utils import (
     httpcache,
@@ -34,8 +38,8 @@ from .utils import (
     _property,
     _propertyset,
     param,
-    get_param,
-    post_param,
+    param_query,
+    param_body,
     code_error,
 )
 

@@ -8,14 +8,21 @@ import testdata
 
 import endpoints
 from endpoints import CallError
+from endpoints import decorators
 from endpoints.utils import ByteString, Base64, String
 from endpoints.http import Request
-from endpoints.decorators import param, post_param
-from endpoints.decorators.limit import ratelimit, \
-    ratelimit_ip, \
-    ratelimit_param, \
-    ratelimit_param_ip, \
-    ratelimit_token
+from endpoints.decorators import (
+    param,
+    param_body,
+    param_query
+)
+from endpoints.decorators.limit import (
+    ratelimit,
+    ratelimit_ip,
+    ratelimit_param,
+    ratelimit_param_ip,
+    ratelimit_token,
+)
 
 
 def create_controller():
@@ -229,19 +236,19 @@ class AuthTest(TestCase):
     def test_bad_setup(self):
 
         def target(request, *args, **kwargs):
-            pass
+            return False
 
         class TARA(object):
-            @endpoints.decorators.auth.token_auth(target=target)
+            @decorators.auth_token(target=target)
             def foo_token(self): pass
 
-            @endpoints.decorators.auth.client_auth(target=target)
+            @decorators.auth_client(target=target)
             def foo_client(self): pass
 
-            @endpoints.decorators.auth.basic_auth(target=target)
+            @decorators.auth_basic(target=target)
             def foo_basic(self): pass
 
-            @endpoints.decorators.auth.auth(target=target)
+            @decorators.auth(target=target)
             def foo_auth(self): pass
 
         r = endpoints.Request()
@@ -259,13 +266,13 @@ class AuthTest(TestCase):
             return True
 
         def target_bad(request, *args, **kwargs):
-            pass
+            return False
 
         class TARA(object):
-            @endpoints.decorators.auth.token_auth(target=target)
+            @decorators.auth_token(target=target)
             def foo(self): pass
 
-            @endpoints.decorators.auth.token_auth(target=target_bad)
+            @decorators.auth_token(target=target_bad)
             def foo_bad(self): pass
 
         r = endpoints.Request()
@@ -307,13 +314,13 @@ class AuthTest(TestCase):
             return client_id == "foo" and client_secret == "bar"
 
         def target_bad(request, *args, **kwargs):
-            pass
+            return False
 
         class TARA(object):
-            @endpoints.decorators.auth.client_auth(target=target)
+            @decorators.auth_client(target=target)
             def foo(self): pass
 
-            @endpoints.decorators.auth.client_auth(target=target_bad)
+            @decorators.auth_client(target=target_bad)
             def foo_bad(self): pass
 
         client_id = "foo"
@@ -340,13 +347,13 @@ class AuthTest(TestCase):
             return True
 
         def target_bad(request, *args, **kwargs):
-            pass
+            return False
 
         class TARA(object):
-            @endpoints.decorators.auth.basic_auth(target=target)
+            @decorators.auth_basic(target=target)
             def foo(self): pass
 
-            @endpoints.decorators.auth.basic_auth(target=target_bad)
+            @decorators.auth_basic(target=target_bad)
             def foo_bad(self): pass
 
         username = "foo"
@@ -374,7 +381,7 @@ class AuthTest(TestCase):
             return True
 
         class MockObject(object):
-            @endpoints.decorators.auth.basic_auth(target=target)
+            @decorators.auth_basic(target=target)
             def foo(self, *args, **kwargs): return 1
 
         c = MockObject()
@@ -395,13 +402,13 @@ class AuthTest(TestCase):
             return True
 
         def target_bad(request, *args, **kwargs):
-            pass
+            return False
 
         class TARA(object):
-            @endpoints.decorators.auth.auth(target=target)
+            @decorators.auth(target=target)
             def foo(self): pass
 
-            @endpoints.decorators.auth.auth(target=target_bad)
+            @decorators.auth(target=target_bad)
             def foo_bad(self): pass
 
         r = endpoints.Request()
@@ -814,11 +821,11 @@ class ParamTest(TestCase):
         r = foo(c, **{'foo': '2'})
         self.assertEqual(2, r)
 
-    def test_post_param(self):
+    def test_post_param_body(self):
         c = create_controller()
         c.request.method = 'POST'
 
-        @post_param('foo', type=int, choices=set([1, 2, 3]))
+        @param_body('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
             return kwargs['foo']
 
@@ -843,26 +850,26 @@ class ParamTest(TestCase):
         r = foo(c, **{'foo': '3'})
         self.assertEqual(3, r)
 
-    def test_get_param(self):
+    def test_param_query(self):
         c = create_controller()
 
         c.request.query_kwargs = {'foo': '8'}
-        @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
+        @endpoints.decorators.param_query('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **c.request.query_kwargs)
 
         c.request.query_kwargs = {'foo': '1'}
-        @endpoints.decorators.get_param('foo', type=int, choices=set([1, 2, 3]))
+        @endpoints.decorators.param_query('foo', type=int, choices=set([1, 2, 3]))
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
         self.assertEqual(1, r)
 
         c.request.query_kwargs = {'foo': '1', 'bar': '1.5'}
-        @endpoints.decorators.get_param('foo', type=int)
-        @endpoints.decorators.get_param('bar', type=float)
+        @endpoints.decorators.param_query('foo', type=int)
+        @endpoints.decorators.param_query('bar', type=float)
         def foo(*args, **kwargs):
             return kwargs['foo'], kwargs['bar']
         r = foo(c, **c.request.query_kwargs)
@@ -870,28 +877,28 @@ class ParamTest(TestCase):
         self.assertEqual(1.5, r[1])
 
         c.request.query_kwargs = {'foo': '1'}
-        @endpoints.decorators.get_param('foo', type=int, action='blah')
+        @endpoints.decorators.param_query('foo', type=int, action='blah')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(RuntimeError):
             r = foo(c, **c.request.query_kwargs)
 
         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-        @endpoints.decorators.get_param('foo', type=int, action='store_list')
+        @endpoints.decorators.param_query('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
             r = foo(c, **c.request.query_kwargs)
 
         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-        @endpoints.decorators.get_param('foo', type=int, action='append_list')
+        @endpoints.decorators.param_query('foo', type=int, action='append_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
         self.assertEqual(list(range(1, 6)), r)
 
         c.request.query_kwargs = {'foo': '1,2,3,4'}
-        @endpoints.decorators.get_param('foo', type=int, action='store_list')
+        @endpoints.decorators.param_query('foo', type=int, action='store_list')
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
@@ -899,32 +906,32 @@ class ParamTest(TestCase):
 
         c.request.query_kwargs = {}
 
-        @endpoints.decorators.get_param('foo', type=int, default=1, required=False)
+        @endpoints.decorators.param_query('foo', type=int, default=1, required=False)
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.get_param('foo', type=int, default=1, required=True)
+        @endpoints.decorators.param_query('foo', type=int, default=1, required=True)
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.get_param('foo', type=int, default=1)
+        @endpoints.decorators.param_query('foo', type=int, default=1)
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c)
         self.assertEqual(1, r)
 
-        @endpoints.decorators.get_param('foo', type=int)
+        @endpoints.decorators.param_query('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
         with self.assertRaises(endpoints.CallError):
             r = foo(c)
 
         c.request.query_kwargs = {'foo': '1'}
-        @endpoints.decorators.get_param('foo', type=int)
+        @endpoints.decorators.param_query('foo', type=int)
         def foo(*args, **kwargs):
             return kwargs['foo']
         r = foo(c, **c.request.query_kwargs)
@@ -1132,13 +1139,13 @@ class RouteTest(TestCase):
     def test_path_route(self):
         c = Server(contents=[
             "from endpoints import Controller",
-            "from endpoints.decorators import path_route",
+            "from endpoints.decorators import route_path",
             "class Foo(Controller):",
-            "    @path_route('bar')",
+            "    @route_path('bar')",
             "    def GET_1(*args, **kwargs):",
             "        return 'bar'",
             "",
-            "    @path_route('che')",
+            "    @route_path('che')",
             "    def GET_2(*args, **kwargs):",
             "        return 'che'",
         ])
@@ -1158,13 +1165,13 @@ class RouteTest(TestCase):
     def test_param_route_keys(self):
         c = Server(contents=[
             "from endpoints import Controller",
-            "from endpoints.decorators import param_route",
+            "from endpoints.decorators import route_param",
             "class Foo(Controller):",
-            "    @param_route('bar')",
+            "    @route_param('bar')",
             "    def GET_1(*args, **kwargs):",
             "        return 'bar'",
             "",
-            "    @param_route('che')",
+            "    @route_param('che')",
             "    def GET_2(*args, **kwargs):",
             "        return 'che'",
         ])
@@ -1184,13 +1191,13 @@ class RouteTest(TestCase):
     def test_param_route_matches(self):
         c = Server(contents=[
             "from endpoints import Controller",
-            "from endpoints.decorators import param_route",
+            "from endpoints.decorators import route_param",
             "class Foo(Controller):",
-            "    @param_route(bar=1)",
+            "    @route_param(bar=1)",
             "    def GET_1(*args, **kwargs):",
             "        return 1",
             "",
-            "    @param_route(bar=2)",
+            "    @route_param(bar=2)",
             "    def GET_2(*args, **kwargs):",
             "        return 2",
         ])
