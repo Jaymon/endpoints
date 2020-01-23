@@ -15,7 +15,7 @@ First, install endpoints with the following command.
 
 If you want the latest and greatest you can also install from source:
 
-    $ pip install git+https://github.com/jaymon/endpoints#egg=endpoints
+    $ pip install -U "git+https://github.com/jaymon/endpoints#egg=endpoints"
 
 **Note:** if you get the following error
 
