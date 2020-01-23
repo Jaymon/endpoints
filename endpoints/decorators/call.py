@@ -36,8 +36,8 @@ class route(ControllerDecorator):
     def handle(self, request):
         return self.callback(request)
 
-    def handle_params(self, controller, controller_args, controller_kwargs):
-        return [controller.request], {}
+    def handle_args(self, controller, controller_args, controller_kwargs):
+        return [controller.request]
 
     def handle_error(self, controller, e):
         raise RouteError(instance=self)
@@ -163,8 +163,8 @@ class version(route):
     def handle_definition(self, *versions):
         self.versions = set(versions)
 
-    def handle_params(self, controller, controller_args, controller_kwargs):
-        return [controller], {}
+    def handle_args(self, controller, controller_args, controller_kwargs):
+        return [controller]
 
     def handle_error(self, controller, e):
         raise

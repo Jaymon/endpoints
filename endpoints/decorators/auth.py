@@ -78,13 +78,13 @@ class auth_basic(auth):
     """
     scheme = AccessDenied.SCHEME_BASIC
 
-    def handle_params(self, controller, controller_args, controller_kwargs):
+    def handle_args(self, controller, controller_args, controller_kwargs):
         username, password = controller.request.get_auth_basic()
 
         if not username: raise ValueError("username is required")
         if not password: raise ValueError("password is required")
 
-        return [controller, username, password], {}
+        return [controller, username, password]
 
 
 class auth_client(auth_basic):
@@ -105,13 +105,13 @@ class auth_client(auth_basic):
             def GET(self):
                 return "hello world"
     """
-    def handle_params(self, controller, controller_args, controller_kwargs):
+    def handle_args(self, controller, controller_args, controller_kwargs):
         client_id, client_secret = controller.request.client_tokens
 
         if not client_id: raise ValueError("client_id is required")
         if not client_secret: raise ValueError("client_secret is required")
 
-        return [controller, client_id, client_secret], {}
+        return [controller, client_id, client_secret]
 
 
 class auth_token(auth):
@@ -135,10 +135,10 @@ class auth_token(auth):
     """
     scheme = AccessDenied.SCHEME_BEARER
 
-    def handle_params(self, controller, controller_args, controller_kwargs):
+    def handle_args(self, controller, controller_args, controller_kwargs):
         access_token = controller.request.access_token
 
         if not access_token: raise ValueError("access_token is required")
 
-        return [controller, access_token], {}
+        return [controller, access_token]
 

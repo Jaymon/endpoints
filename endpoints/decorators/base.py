@@ -19,6 +19,20 @@ class ControllerDecorator(FuncDecorator):
 
     .. seealso:: decorators.auth
     """
+    def handle_args(self, controller, controller_args, controller_kwargs):
+        """Returns the *args part that will be passed into the .handle() method
+
+        this is called from .handle_params()
+        """
+        return [controller, controller_args, controller_kwargs]
+
+    def handle_kwargs(self, controller, controller_args, controller_kwargs):
+        """Returns the **kwargs part that will be passed into the .handle() method
+
+        this is called from .handle_params()
+        """
+        return {}
+
     def handle_params(self, controller, controller_args, controller_kwargs):
         """get params ready for calling .handle()
 
@@ -34,7 +48,8 @@ class ControllerDecorator(FuncDecorator):
         :returns: a tuple (list, dict) that correspond to the *args, **kwargs that
             will be passed to the target() method
         """
-        return [controller, controller_args, controller_kwargs], {}
+        args = [controller, controller_args, controller_kwargs]
+        return self.handle_args(*args), self.handle_kwargs(*args)
 
     def handle_error(self, controller, e):
         """Any error the class isn't sure how to categorize will go through this method
