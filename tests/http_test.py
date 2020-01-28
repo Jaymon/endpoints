@@ -1,14 +1,14 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
-from . import TestCase, Server
 import json
 
-import testdata
+from requests.auth import _basic_auth_str
 
 from endpoints.compat.environ import *
 from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
 from endpoints.http import Headers, Url, Response, Request, Environ
 from endpoints.utils import String, ByteString
+from . import testdata, TestCase, Server
 
 
 class EnvironTest(TestCase):
@@ -148,6 +148,29 @@ class RequestTest(TestCase):
         r.headers["Authorization"] = "BLAH_TOKEN"
         self.assertEqual("", r.get_auth_scheme())
         self.assertFalse(r.is_auth("basic"))
+
+    def test_is_oauth(self):
+        username = "foo"
+        password = "bar"
+        r = Request()
+
+        r.set_headers({"Authorization": _basic_auth_str(username, password)})
+        self.assertTrue(r.is_oauth("basic"))
+        self.assertTrue(r.is_oauth("client"))
+        self.assertFalse(r.is_oauth("token"))
+        self.assertFalse(r.is_oauth("access"))
+
+        r.headers["Authorization"] = "Bearer FOOBAR"
+        self.assertFalse(r.is_oauth("basic"))
+        self.assertFalse(r.is_oauth("client"))
+        self.assertTrue(r.is_oauth("token"))
+        self.assertTrue(r.is_oauth("access"))
+
+        r.headers.pop("Authorization")
+        self.assertFalse(r.is_oauth("basic"))
+        self.assertFalse(r.is_oauth("client"))
+        self.assertFalse(r.is_oauth("token"))
+        self.assertFalse(r.is_oauth("access"))
 
     def test_override(self):
 
