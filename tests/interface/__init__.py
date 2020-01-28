@@ -285,6 +285,25 @@ class WebsocketTestCase(TestCase):
     client_class = WebsocketClient
     server_class = None
 
+    def test_connect_on_fetch(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, CallError",
+            "class Confetch(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        if int(kwargs['foo']) != 1:",
+            "            raise CallError(400)",
+            "    def GET(self, **kwargs):",
+            "        pass",
+        ])
+
+        c = self.create_client()
+        r = c.get("/confetch", {"foo": 1, "bar": 2})
+        self.assertEqual(204, r.code)
+
+        c = self.create_client()
+        with self.assertRaises(RuntimeError):
+            r = c.get("/confetch", {"foo": 2})
+
     def test_get_fetch_host(self):
         client_cls = self.client_class
         c = client_cls("http://localhost")

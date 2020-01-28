@@ -394,14 +394,16 @@ class WebsocketClient(WebClient):
         :param timeout: integer, how long to wait before failing trying to send
         """
         ret = None
+
+        # body takes precedence over query in the payload_body
         if not query: query = {}
         if not body: body = {}
-        query.update(body) # body takes precedence
-        body = query
+        payload_body = dict(query)
+        payload_body.update(body)
 
         self.send_count += 1
         uuid = self.client_id
-        payload = self.get_fetch_request(method, path, body, uuid=uuid)
+        payload = self.get_fetch_request(method, path, payload_body, uuid=uuid)
         attempts = 1
         max_attempts = self.attempts
         success = False
@@ -410,7 +412,9 @@ class WebsocketClient(WebClient):
             kwargs['timeout'] = timeout
             try:
                 try:
-                    if not self.connected: self.connect(path)
+                    if not self.connected:
+                        self.connect(path, query=query, **dict(kwargs))
+
                     with self.wstimeout(**kwargs) as timeout:
                         kwargs['timeout'] = timeout
 

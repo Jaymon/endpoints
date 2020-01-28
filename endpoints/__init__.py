@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
-#from logging import NullHandler
 
 
 # configure root endpoints logging handler to avoid "No handler found" warnings.
@@ -22,5 +21,5 @@ from . import decorators
 from .decorators import param, route, version # this is for fluidity convenience
 
 
-__version__ = '3.1.3'
+__version__ = '3.1.4'
 
