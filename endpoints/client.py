@@ -113,13 +113,15 @@ class WebClient(object):
         self.response = res
         return res
 
-    def get_fetch_query(self, query_str, query):
-
-        all_query = getattr(self, "query", {})
-        if not all_query: all_query = {}
+    def get_fetch_query(self, query):
+        ret = getattr(self, "query", {})
+        if not ret: ret = {}
         if query:
-            all_query.update(query)
+            ret.update(query)
+        return ret
 
+    def get_fetch_query_str(self, query_str, query):
+        all_query = self.get_fetch_query(query)
         if all_query:
             more_query_str = urlencode(all_query, doseq=True)
             if query_str:
@@ -148,7 +150,7 @@ class WebClient(object):
                 uri = uri[0:i]
 
             uri = uri.lstrip('/')
-            query_str = self.get_fetch_query(query_str, query)
+            query_str = self.get_fetch_query_str(query_str, query)
             if query_str:
                 uri = '{}?{}'.format(uri, query_str)
 
@@ -374,10 +376,12 @@ class WebsocketClient(WebClient):
         return ret
 
     def get_fetch_request(self, method, path, body, **kwargs):
+        payload_body = self.get_fetch_query({})
+        payload_body.update(self.get_fetch_body(body))
         p = self.payload_class.dumps(dict(
             method=method.upper(),
             path=path,
-            body=body,
+            body=payload_body,
             **kwargs
         ))
         return p

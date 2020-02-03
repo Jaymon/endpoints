@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 from __future__ import unicode_literals, division, print_function, absolute_import
 
-from endpoints.client import WebClient
+from endpoints.client import WebClient, WebsocketClient
 from . import TestCase
 
 
@@ -33,4 +33,18 @@ class WebClientTestCase(TestCase):
         c = self.create_client()
         c.basic_auth("foo", "bar")
         self.assertRegex(c.headers["authorization"], r"Basic\s+[a-zA-Z0-9=]+")
+
+
+class WebsocketClientTestCase(WebClientTestCase):
+    client_class = WebsocketClient
+
+    def test_get_fetch_request(self):
+        c = self.create_client()
+        c.query = {
+            "bar": 2
+        }
+
+        p = c.get_fetch_request("GET", "/foo", {"foo": 1})
+        self.assertTrue('"foo": 1' in p)
+        self.assertTrue('"bar": 2' in p)
 
