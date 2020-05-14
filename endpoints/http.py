@@ -260,20 +260,6 @@ class Url(String):
 
         return uristring
 
-#     @property
-#     def client_netloc(self):
-#         """Url can technically hold a hostname like 0.0.0.0, this will compensate
-#         for that, useful for test clients
-# 
-#         :returns: a netloc that a client can use to make a request
-#         """
-#         netloc = ""
-#         domain, port = self.split_hostname_from_port(self.netloc)
-#         netloc = gethostname() if domain == "0.0.0.0" else domain
-#         if port:
-#             netloc += ":{}".format(port)
-#         return netloc
-
     def __new__(cls, urlstring=None, **kwargs):
         parts = cls.merge(urlstring, **kwargs)
         urlstring = parts.pop("urlstring")
@@ -287,9 +273,6 @@ class Url(String):
         # we need to ignore property objects also
         is_valid = lambda k, v: not k.startswith("__") and not callable(v) and not isinstance(v, property)
         keys = set(k for k, v in inspect.getmembers(cls) if is_valid(k, v))
-        # we need to strip out properties
-#         for dk in ["root", "anchor", "uri", "client_netloc"]:
-#             keys.discard(dk)
         return keys
 
     @classmethod
@@ -335,79 +318,15 @@ class Url(String):
                 # still parse correctly
                 s = "//{}".format(String(urlstring))
                 o = urlparse.urlsplit(s)
-                #o = list(urlparse.urlsplit(s))
-                #o[0] = "" # remove our bogus scheme
-
-            #if re.match(r"^[^/:]+:\d+"
-
-            #o = urlparse.urlsplit(String(urlstring))
-            #pout.v(o)
 
             for k in properties:
                 v = getattr(o, k)
                 if v:
                     parts[k] = v
 
-
-#             if not o.scheme and o.path: # no scheme: host/some/path
-#                 # we need to better normalize to account for port
-#                 if "/" in o.path:
-#                     hostname, path = o.path.split("/", 1)
-#                     parts["hostname"] = hostname
-#                     parts["path"] = path
-# 
-#                 elif "." in o.path:
-#                     parts["hostname"] = o.path
-#                     parts["path"] = ""
-
-#                 if "?" in path:
-#                     path, query = path.split("?", 1)
-#                     parts["path"] = path
-#                     parts["query"] = query
-# 
-#                 else:
-#                     parts["path"] = path
-
-
-
-
             query = parts.get("query", "")
             if query:
                 parts["query_kwargs"].update(cls.parse_query(query))
-
-
-
-
-
-
-
-
-#             if o.scheme and o.netloc: # full url 
-#                 for k in properties:
-#                     v = getattr(o, k)
-#                     parts[k] = v
-# 
-#             elif o.scheme and o.path: # no scheme: host/some/path
-#                 parts["scheme"] = o.scheme
-#                 # we need to better normalize to account for port
-#                 hostname, path = o.path.split("/", 1)
-#                 parts["hostname"] = hostname
-#                 if "?" in path:
-#                     path, query = path.split("?", 1)
-#                     parts["path"] = path
-#                     parts["query"] = query
-# 
-#                 else:
-#                     parts["path"] = path
-# 
-#             else:
-#                 parts["hostname"] = o.path
-# 
-#             query = parts.get("query", "")
-#             if query:
-#                 parts["query_kwargs"].update(cls.parse_query(query))
-
-        #pout.v(parts)
 
         query = kwargs.pop("query", "")
         if query:
@@ -428,8 +347,6 @@ class Url(String):
             "http": 80,
             "https": 443,
         }
-        #common_ports = set([80, 443])
-
         domain, port = cls.split_hostname_from_port(parts["hostname"])
         parts["hostname"] = domain
         if port:
@@ -440,10 +357,6 @@ class Url(String):
                 parts["port"] = kwargs["default_port"]
             else:
                 parts["port"] = ports.get(parts["scheme"], None)
-#             if parts["scheme"] == "http":
-#                 parts["port"] = 80
-#             elif parts["scheme"] == "https":
-#                 parts["port"] = 443
 
         # make sure port is an int
         if parts["port"]:
@@ -456,8 +369,6 @@ class Url(String):
         if port and port not in set(ports.values()):
             hostloc = '{}:{}'.format(hostloc, port)
         parts["hostloc"] = hostloc
-#         if not parts.get("netloc", ""):
-#             parts["netloc"] = parts["hostloc"]
 
         parts["netloc"] = parts["hostloc"]
         username = kwargs.get("username", parts["username"])
@@ -468,20 +379,6 @@ class Url(String):
                 password or "",
                 parts["hostloc"]
             )
-
-#         username = kwargs.get("username", None)
-#         password = kwargs.get("password", None)
-#         merge_netloc = username or password
-# 
-#         if merge_netloc:
-#             if not username: username = parts["username"]
-#             if not password: password = parts["password"]
-#             if username:
-#                 parts["netloc"] = "{}:{}@{}".format(
-#                     kwargs.get("username", parts["username"]),
-#                     password if password else "",
-#                     parts["hostloc"]
-#                 )
 
         parts["path"] = "/".join(cls.normalize_paths(parts["path"]))
 
@@ -813,16 +710,33 @@ class Url(String):
 
 
 class Host(tuple):
+    """Creates a tuple (hostname, port) that can be passed to built-in PYthon server
+    classes and anything that uses that same interface, does all the lifting to
+    figure out what the hostname and port should be based on the passed in input,
+    so you can pass things like hostname:port, or (host, port), etc.
+    """
     @property
     def hostname(self):
+        """Return just the hostname with no port or scheme or anything
+
+        :returns: string
+        """
         return self[0]
 
     @property
     def port(self):
+        """return just the port
+
+        :returns: int
+        """
         return self[1]
 
     @property
     def hostloc(self):
+        """Returns hostname:port
+
+        :returns: string
+        """
         return "{}:{}".format(self.hostname, self.port)
     netloc = hostloc
 
