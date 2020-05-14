@@ -16,7 +16,7 @@ import tornado.httputil
 
 from .. import BaseServer, BaseWebsocketServer, Payload
 from ...reflection import Reflect
-from ...http import Url
+from ...http import Url, Host
 from ...utils import String, ByteString, JSONEncoder
 from ... import environ
 
@@ -143,11 +143,12 @@ class Server(BaseServer):
         return ":".join(map(String, server_address))
 
     def create_backend(self, **kwargs):
-        hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
-        port = port if port else 0
+        h = Host(kwargs.pop('host', environ.HOST))
+        #hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
+        #port = port if port else 0
 
         app = self.tornado_application_class(self)
-        server = app.listen(port, hostname)
+        server = app.listen(h.port, h.hostname)
         #server.start(0) # I'm not sure what this did but it messed up py2, py3 stayed the same
         return server
 

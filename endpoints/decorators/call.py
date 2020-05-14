@@ -74,7 +74,7 @@ class route_path(route):
 
         class Foo(Controller):
             @path_route("bar", "che")
-            def GET(self, bar, che):
+            def GET(self, *args):
                 # you can only get here by requesting /foo/bar/che where /foo is
                 # the controller path and /bar/che is the path_route
     """
@@ -99,16 +99,16 @@ class route_path(route):
 
 
 class route_param(route):
-    """easier route decorator that will check the sub paths to make sure they are part 
-    of the full endpoint path
+    """easier route decorator that will check the parameters to make sure they are part 
+    of the request
 
     :Example:
 
         class Foo(Controller):
-            @path_route("bar", "che")
-            def GET(self, bar, che):
-                # you can only get here by requesting /foo/bar/che where /foo is
-                # the controller path and /bar/che is the path_route
+            @route_param(bar="che")
+            def GET(self, **kwargs):
+                # you can only get here by requesting /foo?bar=che where /foo is
+                # the controller path and ?bar=che is one of the query parameters
     """
     def handle_definition(self, *keys, **matches):
         self.keys = keys

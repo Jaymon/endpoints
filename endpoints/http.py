@@ -201,7 +201,7 @@ class Url(String):
     .netloc = user:pass@foo.com:1000
     .hostloc = foo.com:1000
     .hostname = foo.com
-    .host = http://foo.com
+    .host() = http://foo.com
     .port = 1000
     .base = http://user:pass@foo.com:1000/bar/che
     .fragment = anchor
@@ -260,19 +260,19 @@ class Url(String):
 
         return uristring
 
-    @property
-    def client_netloc(self):
-        """Url can technically hold a hostname like 0.0.0.0, this will compensate
-        for that, useful for test clients
-
-        :returns: a netloc that a client can use to make a request
-        """
-        netloc = ""
-        domain, port = self.split_hostname_from_port(self.netloc)
-        netloc = gethostname() if domain == "0.0.0.0" else domain
-        if port:
-            netloc += ":{}".format(port)
-        return netloc
+#     @property
+#     def client_netloc(self):
+#         """Url can technically hold a hostname like 0.0.0.0, this will compensate
+#         for that, useful for test clients
+# 
+#         :returns: a netloc that a client can use to make a request
+#         """
+#         netloc = ""
+#         domain, port = self.split_hostname_from_port(self.netloc)
+#         netloc = gethostname() if domain == "0.0.0.0" else domain
+#         if port:
+#             netloc += ":{}".format(port)
+#         return netloc
 
     def __new__(cls, urlstring=None, **kwargs):
         parts = cls.merge(urlstring, **kwargs)
@@ -316,41 +316,98 @@ class Url(String):
 
         if urlstring:
             properties = [
-                "scheme",
-                "netloc",
-                "path",
-                "fragment",
+                "scheme", # 0
+                "netloc", # 1
+                "path", # 2
+                "fragment", # 5
                 "username",
                 "password",
                 "hostname",
                 "port",
-                "query",
+                "query", # 4
             ]
 
-            o = urlparse.urlsplit(str(urlstring))
-            if o.scheme and o.netloc: # full url 
-                for k in properties:
-                    v = getattr(o, k)
-                    parts[k] = v
-
-            elif o.scheme and o.path: # no scheme: host/some/path
-                # we need to better normalize to account for port
-                hostname, path = urlstring.split("/", 1)
-                parts["hostname"] = hostname
-                if "?" in path:
-                    path, query = path.split("?", 1)
-                    parts["path"] = path
-                    parts["query"] = query
-
-                else:
-                    parts["path"] = path
+            if re.match(r"^\S+://", urlstring) or urlstring.startswith("//"):
+                o = urlparse.urlsplit(String(urlstring))
 
             else:
-                parts["hostname"] = o.path
+                # if we don't have a scheme we put // in front of it so it will
+                # still parse correctly
+                s = "//{}".format(String(urlstring))
+                o = urlparse.urlsplit(s)
+                #o = list(urlparse.urlsplit(s))
+                #o[0] = "" # remove our bogus scheme
+
+            #if re.match(r"^[^/:]+:\d+"
+
+            #o = urlparse.urlsplit(String(urlstring))
+            #pout.v(o)
+
+            for k in properties:
+                v = getattr(o, k)
+                if v:
+                    parts[k] = v
+
+
+#             if not o.scheme and o.path: # no scheme: host/some/path
+#                 # we need to better normalize to account for port
+#                 if "/" in o.path:
+#                     hostname, path = o.path.split("/", 1)
+#                     parts["hostname"] = hostname
+#                     parts["path"] = path
+# 
+#                 elif "." in o.path:
+#                     parts["hostname"] = o.path
+#                     parts["path"] = ""
+
+#                 if "?" in path:
+#                     path, query = path.split("?", 1)
+#                     parts["path"] = path
+#                     parts["query"] = query
+# 
+#                 else:
+#                     parts["path"] = path
+
+
+
 
             query = parts.get("query", "")
             if query:
                 parts["query_kwargs"].update(cls.parse_query(query))
+
+
+
+
+
+
+
+
+#             if o.scheme and o.netloc: # full url 
+#                 for k in properties:
+#                     v = getattr(o, k)
+#                     parts[k] = v
+# 
+#             elif o.scheme and o.path: # no scheme: host/some/path
+#                 parts["scheme"] = o.scheme
+#                 # we need to better normalize to account for port
+#                 hostname, path = o.path.split("/", 1)
+#                 parts["hostname"] = hostname
+#                 if "?" in path:
+#                     path, query = path.split("?", 1)
+#                     parts["path"] = path
+#                     parts["query"] = query
+# 
+#                 else:
+#                     parts["path"] = path
+# 
+#             else:
+#                 parts["hostname"] = o.path
+# 
+#             query = parts.get("query", "")
+#             if query:
+#                 parts["query_kwargs"].update(cls.parse_query(query))
+
+        #pout.v(parts)
 
         query = kwargs.pop("query", "")
         if query:
@@ -367,49 +424,64 @@ class Url(String):
         for k, v in kwargs.items():
             parts[k] = v
 
-        common_ports = set([80, 443])
+        ports = {
+            "http": 80,
+            "https": 443,
+        }
+        #common_ports = set([80, 443])
+
         domain, port = cls.split_hostname_from_port(parts["hostname"])
         parts["hostname"] = domain
         if port:
             parts["port"] = kwargs.get("port", port)
 
         if not parts.get("port", None):
-            if parts["scheme"] == "http":
-                parts["port"] = 80
-            elif parts["scheme"] == "https":
-                parts["port"] = 443
+            if "default_port" in kwargs:
+                parts["port"] = kwargs["default_port"]
+            else:
+                parts["port"] = ports.get(parts["scheme"], None)
+#             if parts["scheme"] == "http":
+#                 parts["port"] = 80
+#             elif parts["scheme"] == "https":
+#                 parts["port"] = 443
 
-        if not parts.get("hostloc", ""):
-            hostloc = parts["hostname"]
-            port = parts["port"]
-            if port and port not in common_ports:
-                hostloc = '{}:{}'.format(hostloc, port)
-            parts["hostloc"] = hostloc
+        # make sure port is an int
+        if parts["port"]:
+            parts["port"] = int(parts["port"])
 
-        if not parts.get("netloc", ""):
-            parts["netloc"] = parts["hostloc"]
-
-        username = kwargs.get("username", None)
-        password = kwargs.get("password", None)
-        merge_netloc = username or password
-
-        if merge_netloc:
-            if not username: username = parts["username"]
-            if not password: password = parts["password"]
-            if username:
-                parts["netloc"] = "{}:{}@{}".format(
-                    kwargs.get("username", parts["username"]),
-                    password if password else "",
-                    parts["hostloc"]
-                )
-
+        hostloc = parts["hostname"]
+        port = parts["port"]
         # we don't want common ports to be a part of a .geturl() call, but we do
         # want .port to return them
-        if not merge_netloc:
-            for common_port in common_ports:
-                port_str = ":{}".format(common_port)
-                if parts["netloc"].endswith(port_str):
-                    parts["netloc"] = parts["netloc"][:-len(port_str)]
+        if port and port not in set(ports.values()):
+            hostloc = '{}:{}'.format(hostloc, port)
+        parts["hostloc"] = hostloc
+#         if not parts.get("netloc", ""):
+#             parts["netloc"] = parts["hostloc"]
+
+        parts["netloc"] = parts["hostloc"]
+        username = kwargs.get("username", parts["username"])
+        password = kwargs.get("password", parts["password"])
+        if username:
+            parts["netloc"] = "{}:{}@{}".format(
+                username or "",
+                password or "",
+                parts["hostloc"]
+            )
+
+#         username = kwargs.get("username", None)
+#         password = kwargs.get("password", None)
+#         merge_netloc = username or password
+# 
+#         if merge_netloc:
+#             if not username: username = parts["username"]
+#             if not password: password = parts["password"]
+#             if username:
+#                 parts["netloc"] = "{}:{}@{}".format(
+#                     kwargs.get("username", parts["username"]),
+#                     password if password else "",
+#                     parts["hostloc"]
+#                 )
 
         parts["path"] = "/".join(cls.normalize_paths(parts["path"]))
 
@@ -424,9 +496,6 @@ class Url(String):
         for k in parts:
             if isinstance(parts[k], bytes):
                 parts[k] = String(parts[k])
-
-        if parts["port"]:
-            parts["port"] = int(parts["port"])
 
         return parts
 
@@ -492,10 +561,10 @@ class Url(String):
         return kwargs
 
     @classmethod
-    def split_hostname_from_port(cls, hostname):
+    def split_hostname_from_port(cls, hostname, default_port=None):
         """given a hostname:port return a tuple (hostname, port)"""
         bits = hostname.split(":", 2)
-        p = None
+        p = int(default_port) if default_port else default_port
         d = bits[0]
         if len(bits) == 2:
             p = int(bits[1])
@@ -644,8 +713,8 @@ class Url(String):
 
             print url # http://host.com/foo/bar
 
-            print url.host_url() # http://host.com/
-            print url.host_url("che", boom="bam") # http://host/che?boom=bam
+            print url.host() # http://host.com/
+            print url.host("che", boom="bam") # http://host/che?boom=bam
 
         :param *paths: list, the paths to append to the current path without query params
         :param **query_kwargs: dict, any query string params to add
@@ -741,6 +810,47 @@ class Url(String):
                 ret[k] = v
 
         return ret
+
+
+class Host(tuple):
+    @property
+    def hostname(self):
+        return self[0]
+
+    @property
+    def port(self):
+        return self[1]
+
+    @property
+    def hostloc(self):
+        return "{}:{}".format(self.hostname, self.port)
+    netloc = hostloc
+
+    def __new__(cls, host, port=None):
+        u = Url(host, default_port=port)
+        return super(Host, cls).__new__(cls, [u.hostname, u.port if u.port else 0])
+
+    def __str__(self):
+        return self.__bytes__() if is_py2 else self.__unicode__()
+
+    def __unicode__(self):
+        return String(self.hostloc)
+
+    def __bytes__(self):
+        return ByteString(self.hostloc)
+
+    def client(self):
+        """Url can technically hold a hostname like 0.0.0.0, this will compensate
+        for that, useful for test clients
+
+        :returns: a netloc (host:port) that a client can use to make a request
+        """
+        netloc = ""
+        domain, port = self
+        netloc = gethostname() if domain == "0.0.0.0" else domain
+        if port:
+            netloc += ":{}".format(port)
+        return netloc
 
 
 class Http(object):

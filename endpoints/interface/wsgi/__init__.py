@@ -8,7 +8,7 @@ import json
 from ...compat.environ import *
 from ...compat.imports import socketserver
 from .. import BaseServer
-from ...http import Url
+from ...http import Url, Host
 from ...decorators import _property
 from ...utils import ByteString, String
 from ... import environ
@@ -169,8 +169,9 @@ class Server(BaseServer):
         self.backend.set_app(v)
 
     def create_backend(self, **kwargs):
-        hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
-        server_address = (hostname, port if port else 0)
+        server_address = Host(kwargs.pop('host', environ.HOST))
+        #hostname, port = Url.split_hostname_from_port(kwargs.pop('host', environ.HOST))
+        #server_address = (hostname, port if port else 0)
         s = self.backend_class(server_address, WSGIRequestHandler, **kwargs)
         s.set_app(self.application)
         return s

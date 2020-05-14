@@ -26,7 +26,7 @@ except ImportError:
 from .compat.environ import *
 from .compat.imports import urlencode
 from .utils import String, ByteString, Base64
-from .http import Headers, Url
+from .http import Headers, Url, Host
 from .interface import Payload
 
 
@@ -38,7 +38,7 @@ class WebClient(object):
     timeout = 10
 
     def __init__(self, host, *args, **kwargs):
-        self.host = Url(host)
+        self.host = Url(host, hostname=Host(host).client())
 
         # these are the common headers that usually don't change all that much
         self.headers = Headers({

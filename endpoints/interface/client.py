@@ -12,7 +12,7 @@ from collections import deque
 from .. import environ
 from ..compat.environ import *
 from ..utils import String, ByteString, Path
-from ..http import Url
+from ..http import Url, Host
 from ..reflection import ReflectModule
 
 
@@ -158,7 +158,7 @@ class WebServer(object):
         self.controller_prefix = controller_prefix
         if not host:
             host = environ.HOST
-        self.host = Url(host).netloc if host else None
+        self.host = Host(host).netloc if host else None
 
         self.cwd = Path(kwargs.get("cwd", os.getcwd()))
         self.config_path = config_path
@@ -213,7 +213,7 @@ class WebServer(object):
         self.thread = ServerThread(self)
         self.thread.start()
 
-        self.host = Url(self.find_host()).client_netloc
+        self.host = Host(self.find_host()).client()
 
     def find_host(self):
         host = ""
