@@ -1078,12 +1078,12 @@ class Request(Http):
         """combine GET and POST params to be passed to the controller"""
         kwargs = dict(self.query_kwargs)
         kwargs.update(self.body_kwargs)
-
         return kwargs
 
     def __init__(self):
         self.environ = Environ()
         self.body = None
+        self.body_args = []
         self.body_kwargs = {}
         super(Request, self).__init__()
 
@@ -1108,7 +1108,8 @@ class Request(Http):
 
     def has_body(self):
         #return self.method.upper() in set(['POST', 'PUT'])
-        return True if self.body_kwargs else False
+        return True if (self.body_kwargs or self.body_args) else False
+        #return True if self.body_kwargs else False
         #return self.method.upper() not in set(['GET'])
 
     def get_auth_bearer(self):

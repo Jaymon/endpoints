@@ -79,6 +79,7 @@ class Application(BaseServer):
         return r
 
     def create_request_body(self, request, raw_request, **kwargs):
+        body_args = []
         body_kwargs = {}
         body = None
         if 'wsgi.input' in raw_request:
@@ -94,7 +95,7 @@ class Application(BaseServer):
                     if request.is_json():
                         body = body.read(content_length)
                         if body:
-                            body_kwargs = json.loads(body)
+                            body_args, body_kwargs = self.get_request_body_json(body, **kwargs)
 
                     else:
                         body_fields = cgi.FieldStorage(
@@ -116,6 +117,7 @@ class Application(BaseServer):
                             else:
                                 body_kwargs[field_name] = body_field.value
 
+        request.body_args = body_args
         request.body_kwargs = body_kwargs
         request.body = body
         return request

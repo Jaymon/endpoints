@@ -21,5 +21,5 @@ from . import decorators
 from .decorators import param, route, version # this is for fluidity convenience
 
 
-__version__ = '3.2.0'
+__version__ = '3.3.0'
 

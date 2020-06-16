@@ -175,6 +175,7 @@ class Server(BaseServer):
         return r
 
     def create_request_body(self, request, raw_request, **kwargs):
+        body_args = []
         body_kwargs = {}
         body = None
         if raw_request.body_arguments:
@@ -188,12 +189,16 @@ class Server(BaseServer):
             # tornado won't un-jsonify stuff automatically, so if there aren't
             # any body arguments there might still be something in body
             if request.is_json():
-                body_kwargs = json.loads(raw_request.body)
+                body_args, body_kwargs = self.get_request_body_json(
+                    raw_request.body,
+                    **kwargs
+                )
 
             body = raw_request.body
 
         #pout.v(r.body_kwargs)
         #pout.v(r)
+        request.body_args = body_args
         request.body_kwargs = body_kwargs
         request.body = body
         return request

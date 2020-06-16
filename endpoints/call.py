@@ -259,9 +259,8 @@ class Router(object):
     def find(self, req, res):
         ret = {}
         controller_path = []
-        request_path_args = list(req.path_args)
 
-        module_name, module_path, controller_method_args = self.get_module_name(request_path_args)
+        module_name, module_path, controller_method_args = self.get_module_name(list(req.path_args))
         controller_module_name = module_name
         controller_module = ReflectModule(module_name).module
 
@@ -295,6 +294,9 @@ class Router(object):
         ret['class_name'] = controller_class_name
         ret['class_instance'] = self.get_class_instance(req, res, controller_class)
         ret['class_path'] = "/".join(controller_path)
+
+        # we merge the leftover path args with the body kwargs
+        controller_method_args.extend(req.body_args)
 
         ret['method_args'] = controller_method_args
         ret['method_kwargs'] = req.kwargs

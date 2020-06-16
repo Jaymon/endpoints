@@ -67,6 +67,13 @@ class Server(BaseServer):
         c.handle()
         return c.response
 
+    def path(self, *args):
+        bits = [""]
+        pout.v(self.controller.name)
+        bits.append(self.controller.name)
+        bits.extend(args)
+        return "/".join(bits)
+
 
 class TestCase(testdata.TestCase):
     def get_host(self):

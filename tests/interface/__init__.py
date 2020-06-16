@@ -47,6 +47,25 @@ class TestCase(BaseTestCase):
 
 
 class WebTestCase(TestCase):
+    def test_request_json_list(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Reqsonlist(Controller):",
+            "    def POST(self, *args, **kwargs):",
+            "        return {'args': args, 'kwargs': kwargs}",
+        ])
+
+        c = self.create_client(json=True)
+        body = ["foo", "bar"]
+        r = c.post("/reqsonlist", body)
+        self.assertEqual(body, r._body["args"])
+        self.assertEqual(0, len(r._body["kwargs"]))
+
+        body = [{"foo": 1}, {"foo": 2}]
+        r = c.post("/reqsonlist", body)
+        self.assertEqual(1, r._body["args"][0]["foo"])
+        self.assertEqual(2, len(r._body["args"]))
+
     def test_request_url(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server(contents=[

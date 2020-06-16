@@ -170,6 +170,27 @@ class BaseServer(object):
     def create_request_body(self, request, raw_request, **kwargs):
         raise NotImplementedError()
 
+    def get_request_body_json(self, body, **kwargs):
+        """Returns the body args and kwargs from a json body
+
+        :param body: string, the json body
+        :param **kwargs:
+        :returns: list, dict, the args and kwargs ready to be set into Request
+        """
+        body_args = []
+        body_kwargs = {}
+        b = json.loads(body)
+        if isinstance(b, list):
+            body_args = b
+
+        elif isinstance(b, dict):
+            body_kwargs = b
+
+        else:
+            body_args = [b]
+
+        return body_args, body_kwargs
+
     def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used to
         return output to the client"""
