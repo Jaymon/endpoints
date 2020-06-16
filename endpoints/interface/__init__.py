@@ -179,7 +179,8 @@ class BaseServer(object):
         """
         body_args = []
         body_kwargs = {}
-        b = json.loads(body)
+        body_string = str(body, "utf-8")
+        b = json.loads(body_string)
         if isinstance(b, list):
             body_args = b
 
