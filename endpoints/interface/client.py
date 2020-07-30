@@ -9,8 +9,8 @@ import logging
 import threading
 from collections import deque
 
+from ..compat import *
 from .. import environ
-from ..compat.environ import *
 from ..utils import String, ByteString, Path
 from ..http import Url, Host
 from ..reflection import ReflectModule
@@ -217,6 +217,7 @@ class WebServer(object):
 
     def find_host(self):
         host = ""
+        attempts = 0
         i = 0
         while not host:
             try:
@@ -227,7 +228,11 @@ class WebServer(object):
                     i += 1
 
             except IndexError:
-                pass
+                attempts += 1
+                if attempts > 10000000:
+                    raise RuntimeError(
+                        "Tried {} time(s) to find host, is something wrong?".format(attempts)
+                    )
 
         return host
 
@@ -245,5 +250,8 @@ class WebServer(object):
             self.kill()
 
             if process:
-                process.stdout.close()
+                try:
+                    process.stdout.close()
+                except IOError:
+                    pass
 

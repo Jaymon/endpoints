@@ -60,17 +60,6 @@ class Connection(object):
         if payload and payload != 'undefined':
             yield payload
 
-
-#         if not self.is_websocket(fd): return None
-# 
-#         payload = uwsgi.websocket_recv_nb()
-
-        # make sure the received message is valid
-#         if not payload: return None
-#         if payload == 'undefined': return None
-#         return payload
-
-
     def send_payload(self, payload):
         """take all the messages received from a redis pubsub channel_name and send it
         down the websocket to the user"""

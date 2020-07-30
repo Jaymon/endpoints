@@ -40,11 +40,12 @@ setup(
     author_email='jay@marcyes.com',
     url='http://github.com/firstopinion/{}'.format(name),
     license="MIT",
-    install_requires=['decorators'],
+    install_requires=['decorators', 'datatypes'],
     tests_require=['testdata', 'requests'],
     extras_require={
-        'websockets':  ["websocket-client", "gevent"],
+        'websockets': ["websocket-client", "gevent"],
         'tornado': ["tornado"],
+        'html': ['jinja2'],
     },
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
         'Development Status :: 5 - Production/Stable',

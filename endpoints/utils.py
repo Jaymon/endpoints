@@ -10,144 +10,16 @@ import copy
 from collections import Mapping
 from io import IOBase
 
+from datatypes import (
+    ByteString,
+    String,
+    Base64,
+    Path,
+    Deepcopy,
+)
 
-from .compat.environ import *
+from .compat import *
 from . import environ
-
-
-class ByteString(Bytes):
-    """Wrapper around a byte string b"" to make sure we have a byte string that
-    will work across python versions and handle the most annoying encoding issues
-    automatically
-
-    :Example:
-        # python 3
-        s = ByteString("foo)
-        str(s) # calls __str__ and returns self.unicode()
-        unicode(s) # errors out
-        bytes(s) # calls __bytes__ and returns ByteString
-
-        # python 2
-        s = ByteString("foo)
-        str(s) # calls __str__ and returns ByteString
-        unicode(s) # calls __unicode__ and returns String
-        bytes(s) # calls __str__ and returns ByteString
-    """
-    def __new__(cls, val=b"", encoding=""):
-        if isinstance(val, type(None)): return None
-
-        if not encoding:
-            encoding = environ.ENCODING
-
-        if not isinstance(val, (bytes, bytearray)):
-            if is_py2:
-                val = unicode(val)
-            else:
-                val = str(val)
-            #val = val.__str__()
-            val = bytearray(val, encoding)
-
-        instance = super(ByteString, cls).__new__(cls, val)
-        instance.encoding = encoding
-        return instance
-
-    def __str__(self):
-        return self if is_py2 else self.unicode()
-
-    def unicode(self):
-        s = self.decode(self.encoding)
-        return String(s)
-    __unicode__ = unicode
-
-    def bytes(self):
-        return self
-    __bytes__ = bytes
-
-    def raw(self):
-        """because sometimes you need a vanilla bytes()"""
-        return b"" + self
-
-
-class String(Str):
-    """Wrapper around a unicode string "" to make sure we have a unicode string that
-    will work across python versions and handle the most annoying encoding issues
-    automatically
-
-    :Example:
-        # python 3
-        s = String("foo)
-        str(s) # calls __str__ and returns String
-        unicode(s) # errors out
-        bytes(s) # calls __bytes__ and returns ByteString
-
-        # python 2
-        s = String("foo)
-        str(s) # calls __str__ and returns ByteString
-        unicode(s) # calls __unicode__ and returns String
-        bytes(s) # calls __str__ and returns ByteString
-    """
-    def __new__(cls, val="", encoding=""):
-        if isinstance(val, type(None)): return None
-
-        if not encoding:
-            encoding = environ.ENCODING
-
-        if not isinstance(val, Str):
-            val = ByteString(val, encoding).unicode()
-
-        instance = super(String, cls).__new__(cls, val)
-        instance.encoding = encoding
-        return instance
-
-    def __str__(self):
-        return self.bytes() if is_py2 else self
-
-    def unicode(self):
-        return self
-    __unicode__ = unicode
-
-    def bytes(self):
-        s = self.encode(self.encoding)
-        return ByteString(s)
-    __bytes__ = bytes
-
-    def raw(self):
-        """because sometimes you need a vanilla str() (or unicode() in py2)"""
-        return "" + self
-
-
-class Base64(String):
-    """This exists to normalize base64 encoding between py2 and py3, it assures that
-    you always get back a unicode string when you encode or decode and that you can
-    pass in a unicode or byte string and it just works
-    """
-    @classmethod
-    def encode(cls, s):
-        """converts a plain text string to base64 encoding
-
-        :param s: unicode str|bytes, the base64 encoded string
-        :returns: unicode str
-        """
-        b = ByteString(s)
-        be = base64.b64encode(b).strip()
-        return String(be)
-
-    @classmethod
-    def decode(cls, s):
-        """decodes a base64 string to plain text
-
-        :param s: unicode str|bytes, the base64 encoded string
-        :returns: unicode str
-        """
-        b = ByteString(s)
-        bd = base64.b64decode(b)
-        return String(bd)
-
-
-class Path(String):
-    def __new__(cls, s):
-        s = os.path.abspath(os.path.expanduser(str(s)))
-        return super(Path, cls).__new__(cls, s)
 
 
 class MimeType(object):
@@ -155,6 +27,9 @@ class MimeType(object):
 
     https://docs.python.org/2/library/mimetypes.html
     """
+    @classmethod
+    def find(cls, val):
+        return cls.find_type(val)
 
     @classmethod
     def find_type(cls, val):
@@ -325,60 +200,4 @@ class JSONEncoder(json.JSONEncoder):
 
         else:
             return json.JSONEncoder.default(self, obj)
-
-
-class Deepcopy(object):
-    """deep copy an object trying to anticipate and handle any errors"""
-    @classmethod
-    def copy(cls, val, memodict=None, shell_instance=None):
-        ret = val
-        if not memodict:
-            memodict = {}
-
-        if isinstance(val, Mapping):
-            ret = shell_instance if shell_instance else type(val)()
-            for k, v in val.items():
-                ret[k] = cls.copy(v, memodict)
-
-        elif isinstance(val, IOBase):
-            # file/stream objects should just be passed through
-            pass
-
-        elif hasattr(val, "__dict__"):
-            if shell_instance:
-                ret = shell_instance
-                for k, v in val.__dict__.items():
-                    if not k.startswith("_"):
-                        if v is None:
-                            setattr(ret, k, v)
-
-                        else:
-                            if k in memodict and v is memodict[k]:
-                                continue
-
-                            else:
-                                setattr(ret, k, cls.copy(v, memodict))
-
-            else:
-                ret = cls._copy(val, memodict)
-
-        else:
-            ret = cls._copy(val, memodict)
-
-        return ret
-
-    @classmethod
-    def _copy(cls, val, memodict):
-        ret = val
-        try:
-            ret = copy.deepcopy(val, memodict)
-
-        except (AttributeError, TypeError):
-            try:
-                ret = copy.copy(val)
-
-            except TypeError:
-                pass
-
-        return ret
 

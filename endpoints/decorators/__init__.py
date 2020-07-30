@@ -23,6 +23,7 @@ from .limit import (
 from .base import (
     TargetDecorator,
     BackendDecorator,
+    ControllerDecorator,
 )
 
 from .call import (

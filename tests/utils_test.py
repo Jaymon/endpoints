@@ -5,88 +5,8 @@ import json
 
 import testdata
 
-from endpoints.utils import MimeType, AcceptHeader, String, ByteString, Base64, JSONEncoder
+from endpoints.utils import MimeType, AcceptHeader, JSONEncoder
 from endpoints.compat.environ import *
-
-
-# class HostTest(TestCase):
-#     def test_port(self):
-#         h = Host("localhost:8080")
-#         self.assertEqual(8080, h.port)
-# 
-#         h = Host("localhost")
-#         self.assertEqual(0, h.port)
-# 
-#         h = Host("localhost:")
-#         self.assertEqual(0, h.port)
-
-
-class Base64Test(TestCase):
-    def test_encode_decode(self):
-        s = testdata.get_words()
-
-        b = Base64.encode(s)
-        self.assertTrue(isinstance(b, unicode))
-        self.assertNotEqual(b, s)
-
-        s2 = Base64.decode(b)
-        self.assertTrue(isinstance(s2, unicode))
-        self.assertNotEqual(b, s2)
-        self.assertEqual(s, s2)
-
-
-class StringTest(TestCase):
-    def test_string(self):
-        s = String(1)
-        self.assertEqual("1", s)
-
-        s = String(b"foo")
-        self.assertEqual("foo", s)
-
-        s = String({"foo": 1})
-        self.assertEqual("{u'foo': 1}" if is_py2 else "{'foo': 1}", s)
-
-        s = String((1, 2))
-        self.assertEqual("(1, 2)", s)
-
-        s = String([1, 2])
-        self.assertEqual("[1, 2]", s)
-
-        s = String(True)
-        self.assertEqual("True", s)
-
-        s = String(None)
-        self.assertEqual(None, s)
-
-        s = String("foo")
-        self.assertEqual("foo", s)
-
-        su = testdata.get_unicode()
-        s = String(su)
-        sb = bytes(s)
-        s2 = String(sb)
-        self.assertEqual(s, s2)
-
-    def test_bytestring(self):
-        s = ByteString(1)
-        self.assertEqual(b"1", s)
-
-        s = ByteString("foo")
-        self.assertEqual(b"foo", s)
-
-        s = ByteString(True)
-        self.assertEqual(b"True", s)
-
-        s = ByteString(None)
-        self.assertEqual(None, s)
-
-        su = testdata.get_unicode()
-        s = ByteString(su)
-        self.assertEqual(su, s.unicode())
-
-
-
-
 
 
 class MimeTypeTest(TestCase):

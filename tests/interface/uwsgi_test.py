@@ -57,7 +57,7 @@ class WebsocketTest(WebsocketTestCase):
             #"if not gevent.monkey.saved:",
             #"    gevent.monkey.patch_all()",
             "",
-            "from endpoints.interface.uwsgi.async import WebsocketApplication as Application",
+            "from endpoints.interface.uwsgi.gevent import WebsocketApplication as Application",
             "",
             "##############################################################",
             config_contents if isinstance(config_contents, basestring) else "\n".join(config_contents),

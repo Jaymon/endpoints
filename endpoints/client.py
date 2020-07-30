@@ -23,8 +23,7 @@ try:
 except ImportError:
     websocket = None
 
-from .compat.environ import *
-from .compat.imports import urlencode
+from .compat import *
 from .utils import String, ByteString, Base64
 from .http import Headers, Url, Host
 from .interface import Payload

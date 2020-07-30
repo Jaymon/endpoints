@@ -9,7 +9,6 @@ import logging
 logger = logging.getLogger(__name__)
 if not logger.handlers:
     logger.addHandler(logging.NullHandler())
-del(logger)
 
 
 from .reflection import Reflect, ReflectController, ReflectMethod
@@ -18,8 +17,8 @@ from .http import Request, Response, Url
 from .utils import AcceptHeader
 from .call import Controller, Router, Call
 from . import decorators
-from .decorators import param, route, version # this is for fluidity convenience
+from .decorators import param, route, version # this is for fluidity/convenience
 
 
-__version__ = '3.3.0'
+__version__ = '3.4.0'
 
