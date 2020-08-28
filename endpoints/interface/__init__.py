@@ -296,8 +296,9 @@ class BaseWebsocketServer(BaseServer):
             # path, body, method, uuid
             kwargs = self.payload_class.loads(raw_request)
             #kwargs.setdefault("body", None)
-            kwargs.setdefault("body", {})
             kwargs.setdefault("path", request.path)
+            kwargs.setdefault("headers", {})
+            kwargs.setdefault("body", {})
 
             ws_req.environ["REQUEST_METHOD"] = kwargs["method"]
             ws_req.method = kwargs["method"]
@@ -312,6 +313,8 @@ class BaseWebsocketServer(BaseServer):
 
             #ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
             ws_req.uuid = kwargs.get("uuid", request.uuid)
+
+            ws_req.headers.update(kwargs["headers"])
 
         return ws_req
 

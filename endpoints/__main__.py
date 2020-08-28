@@ -40,6 +40,7 @@ class Console(object):
         if not args.quiet:
             # https://docs.python.org/2.7/library/logging.html#logging.basicConfig
             logging.basicConfig(format="%(message)s", level=logging.DEBUG, stream=sys.stderr)
+            #logging.basicConfig(format='[%(levelname).1s|%(asctime)s|%(filename)s:%(lineno)s] %(message)s', level=logging.DEBUG, stream=sys.stderr)
 
         logger = self.get_logger()
 

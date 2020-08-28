@@ -26,7 +26,7 @@ class Templates(object):
     def __init__(self, directories=None, **kwargs):
 
         if not directories:
-            directories = list(environ.paths("HTML_TEMPLATE_PATH"))
+            directories = list(environ.paths("HTML_TEMPLATE_PATH")) + list(environ.paths("HTML_TEMPLATE_DIR"))
         self.directories = [Path(d) for d in directories]
 
         # https://jinja.palletsprojects.com/en/master/api/#jinja2.Environment

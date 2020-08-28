@@ -304,6 +304,47 @@ class WebsocketTestCase(TestCase):
     client_class = WebsocketClient
     server_class = None
 
+    def test_versioning(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import version",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    @version('', 'v1')",
+            "    def GET_v1(*args, **kwargs): return 'v1'",
+            "    @version('v2')",
+            "    def GET_v2(*args, **kwargs): return 'v2'",
+        ])
+
+        c = self.create_client()
+        c.connect()
+
+        r = c.get(
+            '/',
+            headers={
+                "Accept": "application/json;version=v1"
+            }
+        )
+        self.assertEqual(200, r.code)
+        self.assertTrue("v1" in r.body)
+
+        r = c.get(
+            '/',
+            headers={
+                "Accept": "application/json;version=v2"
+            }
+        )
+        self.assertEqual(200, r.code)
+        self.assertTrue("v2" in r.body)
+
+        r = c.get('/')
+        self.assertEqual(200, r.code)
+        self.assertTrue("v1" in r.body)
+
+
     def test_connect_on_fetch(self):
         server = self.create_server(contents=[
             "from endpoints import Controller, CallError",

@@ -132,6 +132,13 @@ class HeadersTest(TestCase):
         self.assertEqual("2", hs["bar-foo"])
         self.assertEqual(2, len(hs))
 
+    def test_update(self):
+        h = Headers()
+        h["foo"] = "1"
+        self.assertEqual("1", h["foo"])
+        h.update({"foo": "2"})
+        self.assertEqual("2", h["foo"])
+
 
 class RequestTest(TestCase):
     def test_get_auth_scheme(self):
@@ -198,6 +205,10 @@ class RequestTest(TestCase):
         r2 = r.copy()
         self.assertEqual(r.foo, r2.foo)
         self.assertEqual(r.environ["SERVER_PORT"], r2.environ["SERVER_PORT"])
+
+        r2.headers["foo"] = "bar"
+        self.assertFalse("foo" in r.headers)
+        self.assertTrue("foo" in r2.headers)
 
     def test_url(self):
         """make sure the .url attribute is correctly populated"""

@@ -406,7 +406,13 @@ class WebsocketClient(WebClient):
 
         self.send_count += 1
         uuid = self.client_id
-        payload = self.get_fetch_request(method, path, payload_body, uuid=uuid)
+        payload = self.get_fetch_request(
+            method,
+            path,
+            payload_body,
+            uuid=uuid,
+            headers=kwargs.get("headers", {})
+        )
         attempts = 1
         max_attempts = self.attempts
         success = False

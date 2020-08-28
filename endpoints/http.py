@@ -171,10 +171,7 @@ class Headers(BaseHeaders, Mapping):
             self[k] = v
 
     def copy(self):
-        return self.__deepcopy__()
-
-    def __deepcopy__(self):
-        return type(self)(self._headers)
+        return Deepcopy().copy(self)
 
     def list(self):
         """Return all the headers as a list of headers instead of a dict"""
@@ -709,6 +706,7 @@ class Response(Http):
     @code.setter
     def code(self, v):
         self._code = v
+        self._status = None
 
     @property
     def status_code(self): return self.code
