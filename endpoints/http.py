@@ -329,7 +329,7 @@ class Http(object):
         if self.controller_info:
             memodict.setdefault("controller_info", self.controller_info)
 
-        return Deepcopy().copy(self, memodict)
+        return Deepcopy(ignore_private=True).copy(self, memodict)
 
     def is_json(self):
         ct = self.get_header('Content-Type')

@@ -304,6 +304,33 @@ class WebsocketTestCase(TestCase):
     client_class = WebsocketClient
     server_class = None
 
+    def test_path_mixup(self):
+        """Jarid was hitting this problem, we were only able to get it to happen
+        consistently with his environment, the problem stemmed from one request
+        being remembered on the next request, this makes sure that is fixed"""
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import version",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    def GET(*args, **kwargs):"
+            "        return 'Default.GET'",
+            "",
+            "class Foo(Controller):",
+            "    def POST(*args, **kwargs):",
+            "        return 'Foo.POST'",
+        ])
+
+        c = self.create_client()
+        c.connect()
+
+        r = c.post("/foo")
+        self.assertEqual(200, r.code)
+        self.assertTrue("Foo.POST" in r.body)
+
     def test_versioning(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
