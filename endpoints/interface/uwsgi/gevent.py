@@ -22,6 +22,7 @@ from ...http import Request as BaseRequest
 from ...utils import ByteString
 from .. import Payload, BaseWebsocketServer
 from . import Application, uwsgi
+from ...exception import CloseConnection
 
 
 logger = logging.getLogger(__name__)
@@ -40,7 +41,6 @@ class Connection(object):
     """
 
     def __init__(self, app):
-
         uwsgi.websocket_handshake()
 
         self.app = app
@@ -51,14 +51,25 @@ class Connection(object):
         self.ws_fd = uwsgi.connection_fd()
         self.descriptors = [self.ws_fd]
 
+    def is_websocket(self, fd):
+        return fd == self.ws_fd
+
     def recv_payload(self, fd):
         """receive a message from the user that will be routed to other users, 
         in other words, the user sent a message from their client that the server
         is receiving on the internets"""
 
-        payload = uwsgi.websocket_recv_nb()
-        if payload and payload != 'undefined':
-            yield payload
+        if self.is_websocket(fd):
+            while True:
+                # loop over payload until all queued messages are exhausted, if
+                # we don't consume them all then they will be silently discarded
+                # https://github.com/unbit/uwsgi/issues/1241#issuecomment-241366419
+                payload = uwsgi.websocket_recv_nb()
+                if payload and payload != 'undefined':
+                    yield payload
+
+                else:
+                    break
 
     def send_payload(self, payload):
         """take all the messages received from a redis pubsub channel_name and send it
@@ -121,6 +132,7 @@ class WebsocketApplication(BaseWebsocketServer, Application):
     def handle_websocket_response(self, environ):
         conn = self.create_connection()
         req = None
+        message_count = 0
 
         try:
             c = self.connect_websocket_call(raw_request=environ)
@@ -128,7 +140,7 @@ class WebsocketApplication(BaseWebsocketServer, Application):
             res = c.handle()
             if res.code < 400:
 
-                logger.info("Websocket {} Connected".format(req.uuid))
+                logger.info("Websocket {} Connected to server".format(req.uuid))
                 conn.handle_connected(req, res)
 
                 # send down connect success so js clients can know both success or
@@ -138,7 +150,11 @@ class WebsocketApplication(BaseWebsocketServer, Application):
 
                 for raw_request in conn:
                     c = self.create_websocket_call(req, raw_request)
-                    logger.debug("Websocket {} message".format(c.request.uuid))
+                    message_count += 1
+                    logger.debug("Websocket {} message {} received on server".format(
+                        c.request.uuid,
+                        message_count,
+                    ))
                     res = c.handle()
                     conn.handle_called(c.request, res)
                     self.send(c.request, res, conn)
@@ -146,7 +162,11 @@ class WebsocketApplication(BaseWebsocketServer, Application):
             else:
                 # send down the connect results so javascript webclients can know
                 # why we are about to disconnect
+                logger.debug("Websocket {} Failed to connect to server".format(req.uuid))
                 self.send(req, res, conn)
+
+        except CloseConnection as e:
+            req = None
 
         except IOError as e:
             # user disconnected
@@ -154,14 +174,19 @@ class WebsocketApplication(BaseWebsocketServer, Application):
             # receive websocket message", this is entirely normal and nothing to
             # be concerned about, it basically means the client closed the connection
             #logger.exception(e)
-            pass
+            logger.debug("Websocket {} client disconnected from server: {}".format(req.uuid, e))
+            #logger.debug("Websocket {} client disconnected from server: {}".format(req.uuid, e), exc_info=True)
+            #logger.debug(e, exc_info=True)
 
         except Exception as e:
             logger.exception(e)
 
         finally:
             if req:
-                logger.info("Websocket {} Disconnected".format(req.uuid))
+                logger.info("Websocket {} Disconnected from server after {} message(s)".format(
+                    req.uuid,
+                    message_count,
+                ))
                 c = self.disconnect_websocket_call(req)
                 c.quiet = True
                 c.handle()

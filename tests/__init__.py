@@ -11,8 +11,8 @@ from endpoints import environ
 from endpoints.interface import BaseServer
 
 
+testdata.basic_logging()
 #testdata.basic_logging(format='[%(levelname).1s|%(asctime)s|%(filename)s:%(lineno)s] %(message)s')
-logging.basicConfig()
 #logging.basicConfig(format="[%(levelname).1s] %(message)s", level=logging.DEBUG, stream=sys.stdout)
 #logger = logging.getLogger(__name__)
 

@@ -14,9 +14,17 @@ import pkgutil
 
 from .utils import AcceptHeader
 from .http import Response, Request
-from .exception import CallError, Redirect, CallStop, AccessDenied, RouteError, VersionError
+from .exception import (
+    CallError,
+    Redirect,
+    CallStop,
+    AccessDenied,
+    RouteError,
+    VersionError,
+    CloseConnection,
+)
 from .decorators import _property
-from .compat.environ import *
+from .compat import *
 from .reflection import ReflectModule
 
 
@@ -110,11 +118,15 @@ class Call(object):
                 controller_method = getattr(con, "handle")
 
             if not self.quiet:
-                logger.debug("Using handle method: {}.{}".format(
+                logger.debug("Request handle method: {}.{}.{}".format(
+                    con.__class__.__module__,
                     con.__class__.__name__,
                     controller_method.__name__
                 ))
             controller_method(*controller_args, **controller_kwargs)
+
+        except CloseConnection:
+            raise
 
         except Exception as e:
             self.handle_error(e) # this will manipulate self.response
@@ -377,7 +389,6 @@ class Router(object):
         # let's get the class
         class_name = class_name.capitalize()
         class_object = getattr(module, class_name, None)
-        logger.debug("Getting class {}.{}".format(module.__name__, class_name))
         if not class_object or not issubclass(class_object, Controller):
             class_object = None
 
@@ -530,7 +541,7 @@ class Controller(object):
         #controller_args, controller_kwargs = self.find_method_params()
         for controller_method_name, controller_method in controller_methods:
             try:
-                self.logger.debug("Attempting to handle request with {}.{}.{}".format(
+                self.logger.debug("Request Controller method: {}.{}.{}".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name
@@ -547,7 +558,7 @@ class Controller(object):
                 if not res_error_handler:
                     res_error_handler = getattr(e.instance, "handle_failure", None)
 
-                self.logger.debug("Request {}.{}.{} failed version check [{} not in {}]".format(
+                self.logger.debug("Request Controller method: {}.{}.{} failed version check [{} not in {}]".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name,
@@ -559,7 +570,7 @@ class Controller(object):
                 if not res_error_handler:
                     res_error_handler = getattr(e.instance, "handle_failure", None)
 
-                self.logger.debug("Request {}.{}.{} failed routing check".format(
+                self.logger.debug("Request Controller method: {}.{}.{} failed routing check".format(
                     req.controller_info['module_name'],
                     req.controller_info['class_name'],
                     controller_method_name
@@ -639,18 +650,22 @@ class Controller(object):
 
         try:
             req = self.request
+            uuid = getattr(req, "uuid", "")
+            if uuid:
+                uuid += " "
 
-            self.logger.info("REQUEST {} {}?{}".format(req.method, req.path, req.query))
-            self.logger.info(
-                datetime.datetime.utcfromtimestamp(start).strftime("DATE %Y-%m-%dT%H:%M:%S.%f")
-            )
+            self.logger.info("Request {}method: {} {}?{}".format(uuid, req.method, req.path, req.query))
+            self.logger.info("Request {}date: {}".format(
+                uuid,
+                datetime.datetime.utcfromtimestamp(start).strftime("%Y-%m-%dT%H:%M:%S.%f"),
+            ))
 
             ip = req.ip
             if ip:
-                self.logger.info("\tIP ADDRESS: {}".format(ip))
+                self.logger.info("Request {}IP address: {}".format(uuid, ip))
 
             if 'authorization' in req.headers:
-                self.logger.info('AUTH {}'.format(req.headers['authorization']))
+                self.logger.info('Request {}auth: {}'.format(uuid, req.headers['authorization']))
 
             ignore_hs = set([
                 'accept-language',
@@ -660,12 +675,13 @@ class Controller(object):
                 'host',
                 'x-forwarded-for'
             ])
-            hs = ["Request Headers..."]
+            #hs = []
             for k, v in req.headers.items():
                 if k not in ignore_hs:
-                    hs.append("\t{}: {}".format(k, v))
+                    self.logger.info("Request {}header {}: {}".format(uuid, k, v))
+                    #hs.append("Request header: {}: {}".format(k, v))
 
-            self.logger.info(os.linesep.join(hs))
+            #self.logger.info(os.linesep.join(hs))
             self.log_start_body()
 
         except Exception as e:
@@ -679,13 +695,16 @@ class Controller(object):
         if not self.logger.isEnabledFor(logging.DEBUG): return
 
         req = self.request
+        uuid = getattr(req, "uuid", "")
+        if uuid:
+            uuid += " "
 
         if req.has_body():
             try:
-                self.logger.debug("BODY: {}".format(req.body_kwargs))
+                self.logger.debug("Request {}body: {}".format(uuid, req.body_kwargs))
 
             except Exception:
-                self.logger.debug("BODY RAW: {}".format(req.body))
+                self.logger.debug("Request {}body raw: {}".format(uuid, req.body))
                 #logger.debug("RAW REQUEST: {}".format(req.raw_request))
                 raise
 
@@ -693,9 +712,19 @@ class Controller(object):
         """log a summary line on how the request went"""
         if not self.logger.isEnabledFor(logging.INFO): return
 
+        req = self.request
+        uuid = getattr(req, "uuid", "")
+        if uuid:
+            uuid += " "
+
         stop = time.time()
         get_elapsed = lambda start, stop, multiplier, rnd: round(abs(stop - start) * float(multiplier), rnd)
         elapsed = get_elapsed(start, stop, 1000.00, 1)
         total = "%0.1f ms" % (elapsed)
-        self.logger.info("RESPONSE {} {} in {}".format(self.response.code, self.response.status, total))
+        self.logger.info("Request {}response {} {} in {}".format(
+            uuid,
+            self.response.code,
+            self.response.status,
+            total
+        ))
 

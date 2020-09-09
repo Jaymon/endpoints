@@ -304,6 +304,63 @@ class WebsocketTestCase(TestCase):
     client_class = WebsocketClient
     server_class = None
 
+    def test_close_connection(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, CloseConnection",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    def GET(self, **kwargs):",
+            "        raise CloseConnection()",
+        ])
+
+        c = self.create_client()
+        c.connect()
+        with self.assertRaises(RuntimeError):
+            c.get("/", timeout=0.1, attempts=1)
+
+    def test_rapid_requests(self):
+        """We were dropping requests when making a whole bunch of websocket
+        requests all at once, a version of this test was able to duplicate it about
+        every 5 or 6 run (dang async programming) which allowed me to figure out
+        that uwsgi batches ws requests and if you don't read them all then it will
+        silently discard the unread ones when another request is received"""
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    def GET(self, **kwargs):",
+            "        return kwargs['pid']",
+        ])
+
+        c = self.create_client()
+        c.connect()
+
+        # we are basically going to do Y sets of X requests, if any of them
+        # stall then we failed this test, otherwise we succeeded
+        for y in range(5):
+            ts = []
+            rs = []
+            for x in range(5):
+                def target(x):
+                    r = c.get("/", {"pid": x})
+                    rs.append(int(r.body))
+
+
+                t = testdata.Thread(target=target, args=[x])
+                t.start()
+                ts.append(t)
+
+            for t in ts:
+                t.join()
+
+            self.assertEqual(set([0, 1, 2, 3, 4]), set(rs))
+
     def test_path_mixup(self):
         """Jarid was hitting this problem, we were only able to get it to happen
         consistently with his environment, the problem stemmed from one request

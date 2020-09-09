@@ -39,7 +39,7 @@ class WebServer(BaseWebServer):
             "--need-app",
             "--show-config",
             "--plugin-list",
-            "--master",
+            #"--master",
             "--processes", str(self.process_count),
             "--cpu-affinity", "1",
             "--thunder-lock",

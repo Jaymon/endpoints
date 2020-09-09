@@ -42,49 +42,6 @@ class Payload(object):
         return json.dumps(kwargs, cls=JSONEncoder)
 
 
-# TODO -- I don't think this is needed
-class BaseConnection(object):
-    """Handle the full websocket connection lifecycle
-    When a websocket connection is fully established, this class is created and
-    ties the user to the file descriptors for the websocket and Redis pubsub
-    connections. It handles receiving and routing the messages that come in from
-    and to the user.
-    It's created in Application.application_websocket and is only used there, so look
-    at that method to see how this object is used
-
-    https://github.com/unbit/uwsgi/blob/master/tests/websockets_chat.py
-    """
-    def __init__(self, server, **kwargs):
-        self.server = server
-        self.pid = os.getpid()
-
-    def recv_payload(self, fd):
-        """receive a message from the user that will be routed to other users, 
-        in other words, the user sent a message from their client that the server
-        is receiving on the internets"""
-        raise NotImplementedError()
-
-    def send_payload(self, payload):
-        """take all the messages received from a redis pubsub channel_name and send it
-        down the websocket to the user"""
-        raise NotImplementedError()
-
-    def close(self):
-        pass
-
-    def handle_connected(self, call):
-        """called right after a successful websocket connection"""
-        pass
-
-    def handle_disconnected(self, call):
-        """called right after a successful websocket disconnection"""
-        pass
-
-    def handle_called(self, call):
-        """called each time after a controller has handled the request"""
-        pass
-
-
 class BaseServer(object):
     """all servers should extend this and implemented the NotImplemented methods,
     this ensures a similar interface among all the different servers

@@ -413,8 +413,8 @@ class WebsocketClient(WebClient):
             uuid=uuid,
             headers=kwargs.get("headers", {})
         )
-        attempts = 1
-        max_attempts = self.attempts
+        attempt = 1
+        max_attempts = kwargs.get("attempts", self.attempts)
         success = False
 
         while not success:
@@ -426,11 +426,12 @@ class WebsocketClient(WebClient):
 
                     with self.wstimeout(**kwargs) as timeout:
                         kwargs['timeout'] = timeout
+                        kwargs["attempt"] = attempt
 
                         logger.debug('{} send {} attempt {}/{} with timeout {}'.format(
                             self.client_id,
                             uuid,
-                            attempts,
+                            attempt,
                             max_attempts,
                             timeout
                         ))
@@ -447,18 +448,18 @@ class WebsocketClient(WebClient):
                     raise IOError("connection is not open but reported it was open: {}".format(e))
 
             except (IOError, TypeError) as e:
-                logger.debug('{} error on send attempt {}: {}'.format(self.client_id, attempts, e))
+                logger.debug('{} error on send attempt {}: {}'.format(self.client_id, attempt, e))
                 success = False
 
             finally:
                 if not success:
-                    attempts += 1
-                    if attempts > max_attempts:
-                        raise RuntimeError("{} fetch attempts exceeded {} max_attempts".format(attempts, max_attempts))
+                    attempt += 1
+                    if attempt > max_attempts:
+                        raise RuntimeError("{} fetch attempts exceeded {} max attempts".format(attempt, max_attempts))
 
                     else:
                         timeout *= 2
-                        if (attempts / max_attempts) > 0.50:
+                        if (attempt / max_attempts) > 0.50:
                             logger.debug(
                                 "{} closing and re-opening connection for next attempt".format(self.client_id)
                             )
@@ -485,7 +486,6 @@ class WebsocketClient(WebClient):
             return ret
 
         res_payload = self.recv_callback(callback, **kwargs)
-
         return res_payload
 
     def ping(self, timeout=0, **kwargs):

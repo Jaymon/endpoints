@@ -12,7 +12,13 @@ if not logger.handlers:
 
 
 from .reflection import Reflect, ReflectController, ReflectMethod
-from .exception import CallError, Redirect, CallStop, AccessDenied
+from .exception import (
+    CallError,
+    Redirect,
+    CallStop,
+    AccessDenied,
+    CloseConnection,
+)
 from .http import Request, Response, Url
 from .utils import AcceptHeader
 from .call import Controller, Router, Call
@@ -20,5 +26,5 @@ from . import decorators
 from .decorators import param, route, version # this is for fluidity/convenience
 
 
-__version__ = '3.5.1'
+__version__ = '3.6.0'
 

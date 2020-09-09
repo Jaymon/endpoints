@@ -101,3 +101,17 @@ class VersionError(RouteError):
         self.versions = versions
         super(VersionError, self).__init__(instance, code=-2)
 
+
+class CloseConnection(CallError):
+    def __init__(self, msg='', *args, **kwargs):
+        '''
+        Close a connection, so in a websocket request this will cause the server
+        to close the websocket connection.
+
+        You have to be careful with this since it might have unexpected effects
+        if the connection is not a websocket connection
+
+        :param msg: string, the message you want to accompany your close
+        '''
+        super(CloseConnection, self).__init__(0, msg, *args, **kwargs)
+
