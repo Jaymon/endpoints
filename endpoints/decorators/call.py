@@ -30,7 +30,7 @@ class route(ControllerDecorator):
     If this decorator is used then all GET methods in the controller have to have
     a unique name (ie, there can be no just GET method, they have to be GET_1, etc.)
     """
-    def handle_definition(self, callback, *args, **kwargs):
+    def definition(self, callback, *args, **kwargs):
         self.callback = callback
 
     def handle(self, request):
@@ -78,7 +78,7 @@ class route_path(route):
                 # you can only get here by requesting /foo/bar/che where /foo is
                 # the controller path and /bar/che is the path_route
     """
-    def handle_definition(self, *paths, **kwargs):
+    def definition(self, *paths, **kwargs):
         self.paths = paths
 
     def handle(self, request):
@@ -110,7 +110,7 @@ class route_param(route):
                 # you can only get here by requesting /foo?bar=che where /foo is
                 # the controller path and ?bar=che is one of the query parameters
     """
-    def handle_definition(self, *keys, **matches):
+    def definition(self, *keys, **matches):
         self.keys = keys
         self.matches = matches
 
@@ -160,7 +160,7 @@ class version(route):
     If this decorator is used then all GET methods in the controller have to have
     a unique name (ie, there can be no just GET method, they have to be GET_1, etc.)
     """
-    def handle_definition(self, *versions):
+    def definition(self, *versions):
         self.versions = set(versions)
 
     def handle_args(self, controller, controller_args, controller_kwargs):

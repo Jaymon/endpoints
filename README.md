@@ -1,8 +1,8 @@
 # Endpoints
 
-Quickest API builder in the West! A lightweight REST api framework written in python.
+Quickest API builder in the West! 
 
-This is the latest and greatest version of _Endpoints_, but you might still need the [version 1 branch](https://github.com/jaymon/endpoints/tree/v1) of the code, the _version 1_ branch is the only branch that is currently installed using `pip endpoints`, since _version 2_ is under active development. Once I consider _version 2_ stable we will publish it to pip also.
+_Endpoints_ is a lightweight REST api framework written in python and used in multiple production systems that handle millions of requests daily.
 
 
 ## 5 Minute Getting Started
@@ -85,7 +85,7 @@ It uses the following convention.
 
     METHOD /module/class/args?kwargs
 
-Endpoints will use the base module you set as a reference point to find the correct submodule using the path specified by the request.
+_Endpoints_ will use the base module you set as a reference point to find the correct submodule using the path specified by the request.
 
 Requests are translated from the left bit to the right bit of the path.
 So for the path `/foo/bar/che/baz`, endpoints would check for the `foo` module, then the `foo.bar` module, then the `foo.bar.che` module, etc. until it fails to find a valid module.

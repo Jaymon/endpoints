@@ -52,10 +52,10 @@ class auth(TargetDecorator):
                 realm=self.realm,
             )
 
-    def handle_definition(self, target=None, *anoop, **kwnoop):
+    def definition(self, target=None, *anoop, **kwnoop):
         """makes target optional since auth decorators are made to have target passed
         in or to easily be extended"""
-        return super(auth, self).handle_definition(target=target)
+        return super(auth, self).definition(target=target)
 
 
 class auth_basic(auth):

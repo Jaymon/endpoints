@@ -13,11 +13,9 @@ from .auth import (
 from .limit import (
     RateLimitDecorator,
     ratelimit_ip,
-    ratelimit,
-    ratelimit_token,
+    ratelimit_access_token,
     ratelimit_param,
     ratelimit_param_ip,
-    ratelimit_param_only,
 )
 
 from .base import (

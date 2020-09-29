@@ -4,6 +4,7 @@ import logging
 
 from decorators import FuncDecorator
 
+from ..compat import *
 from ..exception import CallError
 
 
@@ -95,7 +96,7 @@ class ControllerDecorator(FuncDecorator):
         :param target: the target that will be run when func is called
         :returns: the decorated func
         """
-        self.handle_definition(*args, **kwargs)
+        self.definition(*args, **kwargs)
 
         def decorated(controller, *controller_args, **controller_kwargs):
             self.handle_call(controller, controller_args, controller_kwargs)
@@ -103,7 +104,7 @@ class ControllerDecorator(FuncDecorator):
 
         return decorated
 
-    def handle_definition(self, *args, **kwargs):
+    def definition(self, *args, **kwargs):
         """whatever is passed into the decorator creation will be passed to this
         method, so you can set instance variables and stuff, this is meant to 
         be overridden in child classes
@@ -115,7 +116,7 @@ class ControllerDecorator(FuncDecorator):
 
             would be passed to this method as:
 
-                handle_definition(*["bar", "che"], **{"baz": 1})
+                definition(*["bar", "che"], **{"baz": 1})
 
 
         :param *args: list, should be defined in a child class
@@ -145,7 +146,7 @@ class TargetDecorator(ControllerDecorator):
 
     .. seealso:: decorators.auth
     """
-    def handle_definition(self, target, *anoop, **kwnoop):
+    def definition(self, target, *anoop, **kwnoop):
         if target:
             self.target = target
 
@@ -159,13 +160,16 @@ class BackendDecorator(ControllerDecorator):
 
     def create_backend(self, *args, **kwargs):
         if not self.backend_class:
+            self.backend_class = kwargs.pop("backend_class", None)
+
+        if not self.backend_class:
             raise ValueError("You are using a BackendDecorator with no backend class")
+
         return self.backend_class(*args, **kwargs)
 
     def handle(self, *args, **kwargs):
-        backend = self.create_backend()
-        return backend.handle(*args, **kwargs)
+        return self.backend.handle(*args, **kwargs)
 
-    def handle_definition(self, *anoop, **kwnoop):
-        pass
+    def definition(self, *args, **kwargs):
+        self.backend = self.create_backend(*args, **kwargs)
 

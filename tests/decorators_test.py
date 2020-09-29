@@ -17,11 +17,11 @@ from endpoints.decorators import (
     param_query
 )
 from endpoints.decorators.limit import (
-    ratelimit,
+    RateLimitDecorator,
     ratelimit_ip,
+    ratelimit_access_token,
     ratelimit_param,
     ratelimit_param_ip,
-    ratelimit_token,
 )
 
 
@@ -45,10 +45,10 @@ class RatelimitTest(TestCase):
 
     def test_throttle(self):
         class TARA(object):
-            @ratelimit(limit=3, ttl=1)
+            @ratelimit_ip(limit=3, ttl=1)
             def foo(self): return 1
 
-            @ratelimit(limit=10, ttl=1)
+            @ratelimit_ip(limit=10, ttl=1)
             def bar(self): return 2
 
 
@@ -119,9 +119,9 @@ class RatelimitTest(TestCase):
         r = o.foo()
         self.assertEqual(1, r)
 
-    def test_ratelimit_token(self):
+    def test_ratelimit_access_token(self):
         class MockObject(object):
-            @ratelimit_token(limit=2, ttl=1)
+            @ratelimit_access_token(limit=2, ttl=1)
             def foo(self): return 1
 
         o = MockObject()
@@ -222,6 +222,42 @@ class RatelimitTest(TestCase):
         # make sure bar not existing is not a problem
         for x in range(5):
             self.assertEqual(1, o.foo())
+
+    def test_backend(self):
+
+        class Backend(object):
+            def handle(self, request, key, limit, ttl):
+                return False
+
+        with testdata.environment(RateLimitDecorator, backend_class=Backend):
+            class MockObject(object):
+                request = Request()
+
+                @ratelimit_ip()
+                def rl_ip(self): return 2
+
+                @ratelimit_param_ip("bar")
+                def rl_param_ip(self, **kwargs): return 3
+
+                @ratelimit_param("bar")
+                def rl_param(self, **kwargs): return 4
+
+                @ratelimit_access_token()
+                def rl_access_token(self): return 5
+
+            o = MockObject()
+
+            with self.assertRaises(CallError):
+                o.rl_param_ip(bar=1)
+
+            with self.assertRaises(CallError):
+                o.rl_ip()
+
+            with self.assertRaises(CallError):
+                o.rl_param(bar=1)
+
+            with self.assertRaises(CallError):
+                o.rl_access_token()
 
 
 class AuthTest(TestCase):
