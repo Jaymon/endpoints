@@ -11,6 +11,8 @@ import logging
 import inspect
 import copy
 from socket import gethostname
+import cgi
+import io
 
 from datatypes import Url as BaseUrl, Host, Headers, Environ
 
@@ -28,32 +30,13 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-
-
-
-import io
-import cgi
-from .decorators.utils import _propertyset
-
-
-class Input(io.RawIOBase):
-    def __init__(self, fp):
-        self.fp = fp
-        self.buf = io.BytesIO()
-
-    def read(self, size=-1):
-        buf = self.fp.read(size)
-        if buf:
-            self.buf.write(buf)
-        return buf
-
-
-    #def seek(self, *args, **kwargs):
-
-
-
-
 class Body(cgi.FieldStorage, object):
+    """Wraps the default FieldStorage to handle json and also recovers when the
+    input fails to parse correctly
+
+    https://github.com/python/cpython/blob/2.7/Lib/cgi.py
+    https://github.com/python/cpython/blob/3.8/Lib/cgi.py
+    """
     FieldStorageClass = cgi.FieldStorage
 
     @_property
@@ -78,18 +61,11 @@ class Body(cgi.FieldStorage, object):
                         raw=body_field,
                     )
 
-#                     body_kwargs[field_name] = {
-#                         "filename": body_field.filename,
-#                         "file": body_field.file,
-#                         "content_type": body_field.type
-#                     }
-
                 else:
                     body_kwargs[field_name] = body_field.value
 
 
         return body_kwargs
-
 
     def __init__(self, fp, request, **kwargs):
         if request.headers.get('transfer-encoding', "").lower().startswith("chunked"):
@@ -165,13 +141,6 @@ class Body(cgi.FieldStorage, object):
         self.json_args = body_args
         self.json_kwargs = body_kwargs
 
-#     def read_single(self):
-#         if self.is_json():
-#             pass
-# 
-#         else:
-#             super(Body, self).read_single()
-
     def read_urlencoded(self):
         """Internal: read data in query string format."""
         body = self.fp.read(self.length)
@@ -211,10 +180,6 @@ class Body(cgi.FieldStorage, object):
 
     def make_file(self, *args, **kwargs):
         return io.BytesIO()
-#         if self._binary_file or self.is_plain():
-#             return io.BytesIO()
-#         else:
-#             return StringIO()
 
     def seek(self, *args, **kwargs):
         return self.file.seek(*args, **kwargs)
@@ -224,41 +189,6 @@ class Body(cgi.FieldStorage, object):
 
     def tell(self, *args, **kwargs):
         return self.file.tell(*args, **kwargs)
-
-
-# class Body(io.RawIOBase):
-#     def __init__(self, fp, request):
-#         self.fp = fp
-#         self.request = request
-# 
-#     def fileno(self):
-#         return self.fp.fileno()
-# 
-#     def readable():
-#         return True
-# 
-#     def read(self, size=-1):
-# 
-# 
-
-#     def readinto(self, buff):
-#         if not self.remaining: return 0
-# 
-#         remaining = 
-# 
-#         sz0 = min(len(buff), self.remaining)
-#         data = self.file.read(sz0)
-#         sz = len(data)
-#         self.remaining -= sz
-# 
-#         if sz < sz0 and self.remaining:
-#             raise DisconnectionError(
-#                 "The client disconnected while sending the body "
-#                 "(%d more bytes were expected)" % (self.remaining,)
-#             )
-#         buff[:sz] = data
-# 
-#         return sz
 
 
 class Url(BaseUrl):
@@ -431,7 +361,6 @@ class Request(Http):
     query -- the ?name=val portion of a url
     query_kwargs -- tied to query, the values in query but converted to a dict {name: val}
     '''
-
     environ = None
     """holds all the values that aren't considered headers but usually get passed with the request"""
 
@@ -443,6 +372,9 @@ class Request(Http):
 
     controller_info = None
     """will hold the controller information for the request, populated from the Call"""
+
+    body_class = Body
+    """see create_body()"""
 
     @property
     def accept_encoding(self):
@@ -652,6 +584,9 @@ class Request(Http):
         self.body_args = []
         self.body_kwargs = {}
         super(Request, self).__init__()
+
+    def create_body(self, body):
+        return self.body_class(body, self)
 
     def version(self, content_type="*/*"):
         """

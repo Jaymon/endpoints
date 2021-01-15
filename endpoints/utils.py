@@ -23,6 +23,11 @@ from . import environ
 
 
 class FileWrapper(FileIO):
+    """Wraps a file descriptor.
+
+    Honestly, this exists because Python2 won't allow you to add properties to a
+    descriptor (because it doesn't extend object), this is currently used for any
+    uploaded files"""
     def __init__(self, fp, name=None, **kwargs):
         self.fp = fp
         self.name = name

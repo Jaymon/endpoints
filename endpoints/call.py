@@ -219,21 +219,6 @@ class Call(object):
                     except TypeError:
                         res.code = 404
 
-                    # python3 messes this all up because unexpected kwargs takes
-                    # precedence over args, so in python2 the first if statement
-                    # always fires
-#                     if len(controller_info["method_args"]):
-#                         res.code = 404
-# 
-#                     else:
-#                         res.code = 405
-
-#                     logger.warning("Controller method {}.{}.{}".format(
-#                         controller_info['module_name'],
-#                         controller_info['class_name'],
-#                         e_msg
-#                     ), exc_info=True)
-
                 elif "multiple values" in e_msg:
                     # TypeError: <METHOD>() got multiple values for keyword argument '<NAME>'
                     try:

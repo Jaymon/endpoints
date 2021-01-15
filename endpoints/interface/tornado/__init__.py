@@ -194,16 +194,12 @@ class Server(BaseServer):
         if raw_request.body:
             # tornado won't un-jsonify stuff automatically, so if there aren't
             # any body arguments there might still be something in body
-            if request.is_json():
-                body_args, body_kwargs = self.get_request_body_json(
-                    raw_request.body,
-                    **kwargs
-                )
-
             body = io.BytesIO(raw_request.body)
+            if request.is_json():
+                body = request.create_body(body)
+                body_kwargs = body.kwargs
+                body_args = body.args
 
-        #pout.v(r.body_kwargs)
-        #pout.v(r)
         request.body_args = body_args
         request.body_kwargs = body_kwargs
         request.body = body

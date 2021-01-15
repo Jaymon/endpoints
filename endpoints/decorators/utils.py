@@ -209,7 +209,6 @@ class _propertyset(_property):
         self.name = '_{}'.format(self.__name__)
 
 
-
 class param(FuncDecorator):
     """
     decorator to allow setting certain expected query/body values and options
