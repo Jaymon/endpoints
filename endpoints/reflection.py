@@ -8,11 +8,10 @@ import re
 import fnmatch
 import ast
 import collections
-#import keyword
-from .compat.imports import builtins
-from .compat.environ import *
+
 import pkgutil
 
+from .compat import *
 from .decorators import property, version, param
 from .utils import String
 

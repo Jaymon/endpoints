@@ -6,6 +6,6 @@ try:
 except ImportError:
     uwsgi = None
 
-from ...compat.environ import *
+from ...compat import *
 from ..wsgi import Application
 

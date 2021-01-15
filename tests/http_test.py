@@ -6,7 +6,6 @@ import io
 from requests.auth import _basic_auth_str
 
 from endpoints.compat import *
-from endpoints.compat.imports import parse as urlparse, BaseHTTPRequestHandler
 from endpoints.http import Headers, Url, Response, Request, Environ, Body
 from endpoints.utils import String, ByteString
 from . import testdata, TestCase, Server
@@ -195,12 +194,12 @@ class RequestTest(TestCase):
 
         r = Request()
         r.query = query
-        self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
+        self.assertEqual(parse.parse_qs(r.query, True), parse.parse_qs(query, True))
         self.assertEqual(r.query_kwargs, query_kwargs)
 
         r = Request()
         r.query_kwargs = query_kwargs
-        self.assertEqual(urlparse.parse_qs(r.query, True), urlparse.parse_qs(query, True))
+        self.assertEqual(parse.parse_qs(r.query, True), parse.parse_qs(query, True))
         self.assertEqual(r.query_kwargs, query_kwargs)
 
     def test_get_header(self):

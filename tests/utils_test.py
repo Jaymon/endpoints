@@ -5,8 +5,8 @@ import json
 
 import testdata
 
+from endpoints.compat import *
 from endpoints.utils import MimeType, AcceptHeader, JSONEncoder
-from endpoints.compat.environ import *
 
 
 class MimeTypeTest(TestCase):

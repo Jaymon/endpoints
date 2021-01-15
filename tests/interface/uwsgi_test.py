@@ -3,7 +3,7 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 
 import testdata
 
-from endpoints.compat.environ import *
+from endpoints.compat import *
 from endpoints.interface.uwsgi.client import WebServer, WebsocketServer
 from . import WebTestCase, WebServerTestCase, WebsocketTestCase
 

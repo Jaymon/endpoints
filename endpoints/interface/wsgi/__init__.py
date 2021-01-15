@@ -5,8 +5,7 @@ from wsgiref.simple_server import WSGIServer, WSGIRequestHandler
 import cgi
 import json
 
-from ...compat.environ import *
-from ...compat.imports import socketserver
+from ...compat import *
 from .. import BaseServer
 from ...http import Host
 from ...decorators import property
