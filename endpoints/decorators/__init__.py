@@ -34,8 +34,7 @@ from .call import (
 from .utils import (
     httpcache,
     nohttpcache,
-    _property,
-    _propertyset,
+    property,
     param,
     param_query,
     param_body,

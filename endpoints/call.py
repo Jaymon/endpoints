@@ -23,7 +23,6 @@ from .exception import (
     VersionError,
     CloseConnection,
 )
-from .decorators import _property
 from .compat import *
 from .reflection import ReflectModule, ReflectController, ReflectHTTPMethod
 

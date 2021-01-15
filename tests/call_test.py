@@ -322,9 +322,6 @@ class RouterTest(TestCase):
 
         for t in ts:
             req, res = self.get_http_instances(**t['in'])
-#             r = Request()
-#             for key, val in t['in'].items():
-#                 setattr(r, key, val)
 
             r = Router([controller_prefix])
             d = r.find(req, res)

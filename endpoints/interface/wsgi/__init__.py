@@ -9,7 +9,7 @@ from ...compat.environ import *
 from ...compat.imports import socketserver
 from .. import BaseServer
 from ...http import Host
-from ...decorators import _property
+from ...decorators import property
 from ...utils import ByteString, String
 from ... import environ
 
@@ -123,7 +123,7 @@ class Server(BaseServer):
     def hostloc(self):
         return ":".join(map(String, self.backend.server_address))
 
-    @_property
+    @property(cached="_application")
     def application(self):
         """if no application has been set, then create it using application_class"""
         app = self.application_class()

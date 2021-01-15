@@ -9,7 +9,7 @@ from functools import partial
 from ..http import Request, Response
 from .. import environ
 from ..call import Router, Call
-from ..decorators import _property
+from ..decorators import property
 from ..exception import CallError, Redirect, CallStop, AccessDenied
 from ..utils import ByteString, JSONEncoder
 
@@ -83,7 +83,7 @@ class BaseServer(object):
         """Return host:port string that the server is using to answer requests"""
         raise NotImplementedError()
 
-    @_property
+    @property(cached="_backend")
     def backend(self):
         ret = self.create_backend()
         return ret

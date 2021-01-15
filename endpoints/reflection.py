@@ -13,7 +13,7 @@ from .compat.imports import builtins
 from .compat.environ import *
 import pkgutil
 
-from .decorators import _property, version, param
+from .decorators import property, version, param
 from .utils import String
 
 
@@ -21,7 +21,7 @@ class ReflectDecorator(object):
     """The information of each individual decorator on a given ReflectMethod will
     be wrapped in this class"""
 
-    @_property
+    @property(cached="_parents")
     def parents(self):
         ret = []
         decor = self.decorator
@@ -53,7 +53,7 @@ class ReflectDecorator(object):
 class ReflectMethod(object):
     """Reflects a method on a class"""
 
-    @_property
+    @property(cached="_required_args")
     def required_args(self):
         """return how many *args are needed to call the method"""
         ret = []
@@ -101,17 +101,17 @@ class ReflectMethod(object):
         #pout.v(info, self.params)
         return list(filter(lambda x: x is not None, ret))
 
-    @_property
+    @property(cached="_name")
     def name(self):
         """return the method name (GET, POST)"""
         return self.method_name
 
-    @_property
+    @property(cached="_decorators")
     def decorators(self):
         decorators = self.reflect_class.decorators
         return decorators.get(self.method_name, [])
 
-    @_property
+    @property(cached="_desc")
     def desc(self):
         """return the description of this method"""
         doc = None
@@ -154,7 +154,7 @@ class ReflectMethod(object):
 
 class ReflectHTTPMethod(ReflectMethod):
     """This encompasses the http verbs like POST and GET"""
-    @_property
+    @property(cached="_version")
     def version(self):
         ret = ""
         for decor in self.decorators:
@@ -171,13 +171,13 @@ class ReflectHTTPMethod(ReflectMethod):
             headers['Accept'] = "{};version={}".format(self.reflect_class.cls.content_type, version)
         return headers
 
-    @_property
+    @property(cached="_name")
     def name(self):
         """return the method name (GET, POST)"""
         bits = self.method_name.split("_", 2)
         return bits[0]
 
-    @_property
+    @property(cached="_params")
     def params(self):
         """return information about the params that the given http option takes"""
         ret = {}
@@ -200,7 +200,7 @@ class ReflectClass(object):
 
     decorator_class = ReflectDecorator
 
-    @_property
+    @property(cached="_methods")
     def methods(self):
         """
         return the supported http method options that this class supports
@@ -222,7 +222,7 @@ class ReflectClass(object):
                 ))
         return ret
 
-    @_property
+    @property(cached="_decorators")
     def decorators(self):
         """Get all the decorators of all the option methods in the class
 
@@ -249,12 +249,12 @@ class ReflectClass(object):
     def classpath(self):
         return "{}.{}".format(self.module_name, self.class_name)
 
-    @_property
+    @property(cached="_module")
     def module(self):
         return self.reflect_module.module
         #return ReflectModule(self.module_name).module
 
-    @_property
+    @property(cached="_desc")
     def desc(self):
         """return the description of this endpoint"""
         doc = inspect.getdoc(self.cls) or ""
@@ -499,7 +499,7 @@ class ReflectController(ReflectClass):
 
     method_class = ReflectHTTPMethod
 
-    @_property
+    @property(cached="_bits")
     def bits(self):
         bits = self.module_name.replace(self.controller_prefix, '', 1).lower()
         bits = list(filter(None, bits.split(".")))
@@ -510,7 +510,7 @@ class ReflectController(ReflectClass):
 
         return bits
 
-    @_property
+    @property(cached="_uri")
     def uri(self):
         return "/" + "/".join(self.bits)
 

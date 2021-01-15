@@ -16,7 +16,7 @@ import io
 from datatypes import Url as BaseUrl, Host, Headers as BaseHeaders, Environ
 
 from .compat import *
-from .decorators.utils import _property
+from .decorators.utils import property # must be .utils because circular dep
 from .utils import (
     AcceptHeader,
     MimeType,
@@ -60,11 +60,11 @@ class Body(cgi.FieldStorage, object):
     """
     FieldStorageClass = cgi.FieldStorage
 
-    @_property
+    @property(cached="_args")
     def args(self):
         return getattr(self, "json_args", [])
 
-    @_property
+    @property(cached="_kwargs")
     def kwargs(self):
         body_kwargs = {}
         body_kwargs.update(getattr(self, "json_kwargs", {}))
@@ -404,7 +404,7 @@ class Request(Http):
             ret = bits[0]
         return ret
 
-    @_property
+    @property(cached="_encoding")
     def encoding(self):
         """the character encoding of the request, usually only set in POST type requests"""
         encoding = None
@@ -448,7 +448,7 @@ class Request(Http):
 
         return client_id, client_secret
 
-    @_property(read_only=True)
+    @property(read_only="_ips")
     def ips(self):
         """return all the possible ips of this request, this will include public and private ips"""
         r = []
@@ -467,7 +467,7 @@ class Request(Http):
 
         return r
 
-    @_property(read_only=True)
+    @property(read_only="_ip")
     def ip(self):
         """return the public ip address"""
         r = ''
@@ -502,18 +502,18 @@ class Request(Http):
 
         return r
 
-    @_property
+    @property(cached="_host")
     def host(self):
         """return the request host"""
         return self.get_header("host")
 
-    @_property
+    @property(cached="_scheme")
     def scheme(self):
         """return the request scheme (eg, http, https)"""
         scheme = self.environ.get('wsgi.url_scheme', "http")
         return scheme
 
-    @_property
+    @property(cached="_port")
     def port(self):
         """return the server port"""
         return int(self.environ.get('SERVER_PORT', 0))
@@ -554,7 +554,7 @@ class Request(Http):
         )
         return u
 
-    @_property
+    @property(cached="_path")
     def path(self):
         """path part of a url (eg, http://host.com/path?query=string)"""
         self._path = ''
@@ -562,7 +562,7 @@ class Request(Http):
         path = "/{}".format("/".join(path_args))
         return path
 
-    @_property
+    @property(cached="_path_args")
     def path_args(self):
         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
         self._path_args = []
@@ -570,7 +570,7 @@ class Request(Http):
         path_args = list(filter(None, path.split('/')))
         return path_args
 
-    @_property
+    @property(cached="_query")
     def query(self):
         """query_string part of a url (eg, http://host.com/path?query=string)"""
         self._query = query = ""
@@ -579,7 +579,7 @@ class Request(Http):
         if query_kwargs: query = urlencode(query_kwargs, doseq=True)
         return query
 
-    @_property
+    @property(cached="query_kwargs")
     def query_kwargs(self):
         """{foo: bar, baz: che}"""
         self._query_kwargs = query_kwargs = {}
