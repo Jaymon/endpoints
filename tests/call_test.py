@@ -14,6 +14,59 @@ from endpoints.exception import CallError
 
 
 class ControllerTest(TestCase):
+    def test_any_1(self):
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def ANY(self):",
+            "        return 'any'",
+        ])
+
+        res = c.handle("/")
+        self.assertEqual(200, res.code)
+        self.assertEqual("any", res.body)
+
+        res = c.handle("/", method="POST")
+        self.assertEqual(200, res.code)
+        self.assertEqual("any", res.body)
+
+        res = c.handle("/foo/bar")
+        self.assertEqual(404, res.code)
+
+    def test_any_2(self):
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def ANY(self, **kwargs):",
+            "        return 'any'",
+            "    def POST(self, **kwargs):",
+            "        return 'post'",
+        ])
+
+        res = c.handle("/")
+        self.assertEqual(200, res.code)
+        self.assertEqual("any", res.body)
+
+        res = c.handle("/", method="POST")
+        self.assertEqual(200, res.code)
+        self.assertEqual("post", res.body)
+
+    def test_unsupported_method_404(self):
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def POST(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar")
+        self.assertEqual(404, res.code)
+
+        res = c.handle("/foo")
+        self.assertEqual(404, res.code)
+
+        res = c.handle("/")
+        self.assertEqual(501, res.code)
+
     def test_cors(self):
         class Cors(Controller):
             def POST(self): pass

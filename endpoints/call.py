@@ -181,7 +181,12 @@ class Call(object):
         elif isinstance(e, TypeError):
             e_msg = String(e)
             controller_info = req.controller_info
-            if e_msg.startswith(req.method) and 'argument' in e_msg:
+
+            # filter out TypeErrors raised from non handler methods
+            correct_prefix = e_msg.startswith(controller_info["method_prefix"]) or \
+                e_msg.startswith(controller_info["method_fallback"])
+
+            if correct_prefix and 'argument' in e_msg:
                 # there are subtle messaging differences between py2 and py3
                 pos_errs = ["takes exactly", "takes no arguments", "positional argument"]
                 if (pos_errs[0] in e_msg) or (pos_errs[1] in e_msg) or (pos_errs[2] in e_msg):
@@ -356,6 +361,9 @@ class Router(object):
 
         ret['method_args'] = controller_method_args
         ret['method_kwargs'] = req.kwargs
+
+        ret["method_prefix"] = req.method.upper()
+        ret["method_fallback"] = "ANY"
 
         req.controller_info = ret
         return ret
@@ -655,7 +663,8 @@ class Controller(object):
         """
         methods = []
         req = self.request
-        method_name = req.method.upper()
+        controller_info = req.controller_info
+        method_name = controller_info["method_prefix"]
         method_names = set()
 
         members = inspect.getmembers(self)
@@ -666,11 +675,24 @@ class Controller(object):
                     method_names.add(member_name)
 
         if len(methods) == 0:
-            # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-            # and 501 (Not Implemented) if the method is unrecognized or not
-            # implemented by the origin server
-            self.logger.warning("No methods to handle {} found".format(method_name), exc_info=True)
-            raise CallError(501, "{} {} not implemented".format(req.method, req.path))
+            fallback_method_name = controller_info["method_fallback"]
+            any_method = getattr(self, fallback_method_name, "")
+            if any_method:
+                methods.append((fallback_method_name, any_method))
+
+            else:
+                if len(controller_info["method_args"]):
+                    # if we have method args and we don't have a method to even
+                    # answer the request it should be a 404 since the path is
+                    # invalid
+                    raise CallError(404)
+
+                else:
+                    # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+                    # and 501 (Not Implemented) if the method is unrecognized or not
+                    # implemented by the origin server
+                    self.logger.warning("No methods to handle {} found".format(method_name), exc_info=True)
+                    raise CallError(501, "{} {} not implemented".format(req.method, req.path))
 
         elif len(methods) > 1 and method_name in method_names:
             raise ValueError(
