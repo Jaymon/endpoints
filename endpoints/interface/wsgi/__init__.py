@@ -8,7 +8,7 @@ import json
 from ...compat.environ import *
 from ...compat.imports import socketserver
 from .. import BaseServer
-from ...http import Url, Host
+from ...http import Url, Host, Body
 from ...decorators import _property
 from ...utils import ByteString, String
 from ... import environ
@@ -47,10 +47,6 @@ class Application(BaseServer):
 
         return self.create_response_body(res)
 
-        # returning the Response, it needs to have an __iter__ for internal wsgi 
-        # methods to know how to handle the Response
-        return res
-
     def create_request(self, raw_request, **kwargs):
         """
         create instance of request
@@ -84,38 +80,93 @@ class Application(BaseServer):
         body = None
         if 'wsgi.input' in raw_request:
             body = raw_request['wsgi.input']
+            body = Body(raw_request['wsgi.input'], request)
+            body_kwargs = body.kwargs
+            body_args = body.args
 
-            content_length = int(request.get_header("CONTENT_LENGTH", -1))
 
-            if content_length > 0:
-                if request.get_header('transfer-encoding', "").lower().startswith('chunked'):
-                    raise IOError("Server does not support chunked requests")
 
-                else:
-                    if request.is_json():
-                        body = body.read(content_length)
-                        if body:
-                            body_args, body_kwargs = self.get_request_body_json(body, **kwargs)
+#             content_length = int(request.get_header("CONTENT_LENGTH", -1))
+#             if content_length > 0:
+#                 #pout.v(body.tell())
+#                 #body.seek(0)
+#                 body = Body(raw_request['wsgi.input'], request)
+#                 body_kwargs = {}
+#                 body_args = []
 
-                    else:
-                        body_fields = cgi.FieldStorage(
-                            fp=body,
-                            headers=request.headers,
-                            environ=request.environ,
-                            keep_blank_values=True
-                        )
+#                 if request.is_json():
+#                     body = body.read(content_length)
+#                     if body:
+#                         body_args, body_kwargs = self.get_request_body_json(body, **kwargs)
+# 
+#                 else:
+#                     from ...http import Body
+#                     body = Body(raw_request['wsgi.input'], request)
+# 
+#                     body_kwargs = {}
+#                     body_args = []
 
-                        for field_name in body_fields.keys():
-                            body_field = body_fields[field_name]
-                            if body_field.filename:
-                                body_kwargs[field_name] = {
-                                    "filename": body_field.filename,
-                                    "body": body_field.file.read(),
-                                    "content_type": body_field.type
-                                }
+#                     try:
+#                         for field_name in body_fields.keys():
+#                             body_field = body_fields[field_name]
+#                             if body_field.filename:
+#                                 body_kwargs[field_name] = {
+#                                     "filename": body_field.filename,
+#                                     "file": body_field.file,
+#                                     "content_type": body_field.type
+#                                 }
+# 
+#                             else:
+#                                 body_kwargs[field_name] = body_field.value
+# 
+#                     except TypeError:
+#                         # we've got a plaintext body that isn't in QUERY_STRING format
+#                         body = body_fields.file
+#                         #body.seek(0)
+# 
 
-                            else:
-                                body_kwargs[field_name] = body_field.value
+
+
+
+
+
+
+
+#                 if request.get_header('transfer-encoding', "").lower().startswith('chunked'):
+#                     raise IOError("Server does not support chunked requests")
+# 
+#                 else:
+#                     if request.is_json():
+#                         body = body.read(content_length)
+#                         if body:
+#                             body_args, body_kwargs = self.get_request_body_json(body, **kwargs)
+# 
+#                     else:
+#                         body_fields = cgi.FieldStorage(
+#                             fp=body,
+#                             headers=request.headers,
+#                             environ=request.environ,
+#                             keep_blank_values=True
+#                         )
+# 
+#                         try:
+#                             for field_name in body_fields.keys():
+#                                 body_field = body_fields[field_name]
+#                                 if body_field.filename:
+#                                     body_kwargs[field_name] = {
+#                                         "filename": body_field.filename,
+#                                         "body": body_field.file.read(),
+#                                         "content_type": body_field.type
+#                                     }
+# 
+#                                 else:
+#                                     body_kwargs[field_name] = body_field.value
+# 
+#                         except TypeError:
+#                             # we've got a plaintext body that isn't in QUERY_STRING format
+#                             body = body_fields.file
+#                             #body.seek(0)
+
 
         request.body_args = body_args
         request.body_kwargs = body_kwargs

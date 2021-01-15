@@ -79,4 +79,3 @@ class TestCase(testdata.TestCase):
     def get_host(self):
         return environ.HOST
 
-

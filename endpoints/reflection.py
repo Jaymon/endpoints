@@ -53,11 +53,6 @@ class ReflectDecorator(object):
 class ReflectMethod(object):
     """Reflects a method on a class"""
 
-    @property
-    def positionals(self):
-        """return True if this method accepts *args"""
-        return self.get_info().get("positionals", False)
-
     @_property
     def required_args(self):
         """return how many *args are needed to call the method"""
@@ -148,6 +143,14 @@ class ReflectMethod(object):
         info = self.reflect_class.get_info()
         return info[self.name][self.method_name]
 
+    def has_positionals(self):
+        """return True if this method accepts *args"""
+        return self.get_info().get("positionals", False)
+
+    def has_keywords(self):
+        """return True if this method accepts **kwargs"""
+        return self.get_info().get("keywords", False)
+
 
 class ReflectHTTPMethod(ReflectMethod):
     """This encompasses the http verbs like POST and GET"""
@@ -186,6 +189,10 @@ class ReflectHTTPMethod(ReflectMethod):
                 ret[args[0]] = {'required': is_required, 'other_names': args[1:], 'options': kwargs}
 
         return ret
+
+#     def positionals_count(self):
+#         for p in self.params:
+
 
 
 class ReflectClass(object):
@@ -261,6 +268,20 @@ class ReflectClass(object):
     def is_private(self):
         """return True if this class is considered private"""
         return self.class_name.startswith('_')
+
+    def method(self, method_name):
+        """Returns information about the method_name on this class
+
+        :param method_name: string, the name of the method
+        :returns: ReflectMethod, the reflection information about the method
+        """
+        info = self.get_info()
+        for http_method, methods in info.items():
+            if method_name in methods:
+                method_info = methods[method_name]
+                return self.method_class(method_name, method_info["method"], reflect_class=self)
+
+        raise ValueError("No {}.{} method".format(self.classpath, method_name))
 
     def get_info(self):
         """Get all the decorators of all the option methods in the class

@@ -1226,10 +1226,10 @@ class RouteTest(TestCase):
         self.assertEqual("bar", res.body)
 
         res = c.handle("/foo")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         res = c.handle("/foo/baz")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
     def test_param_route_keys(self):
         c = Server(contents=[
@@ -1350,20 +1350,21 @@ class RouteTest(TestCase):
             self.assertEqual(2, res._body)
 
         res = c.handle("/foo1/2")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         for path in ["/foo3/2/3", "/foo4/2/3"]:
             res = c.handle(path)
             self.assertEqual(3, res._body)
 
         res = c.handle("/foo1/2/3")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
+
         res = c.handle("/foo2/2/3")
         self.assertEqual(405, res.code)
 
         for path in ["/foo1/2/3/4", "/foo2/2/3/4", "/foo3/2/3/4"]:
             res = c.handle(path)
-            self.assertEqual(405, res.code)
+            self.assertTrue(res.code in set([404, 405]))
 
         res = c.handle("/foo4/2/3/4")
         self.assertEqual(4, res._body)
@@ -1450,11 +1451,10 @@ class VersionTest(TestCase):
         self.assertEqual(2, res._body)
 
         res = c.handle("/foo", version="v3")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
     def test_complex(self):
-        controller_prefix = "version_complex"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import version, route",
             "",
@@ -1493,8 +1493,7 @@ class VersionTest(TestCase):
 
 class CodeErrorTest(TestCase):
     def test_raise(self):
-        controller_prefix = "ce_raise"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import code_error, param",
             "",

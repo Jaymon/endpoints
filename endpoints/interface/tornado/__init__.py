@@ -1,10 +1,9 @@
 # -*- coding: utf-8 -*-
-""" Interface for Tornado webserver
-
-"""
+""" Interface for Tornado webserver"""
 from __future__ import unicode_literals, division, print_function, absolute_import
 import json
 import logging
+import io
 
 import tornado.web
 import tornado.websocket
@@ -15,9 +14,10 @@ import tornado.wsgi
 import tornado.httputil
 
 from .. import BaseServer, BaseWebsocketServer, Payload
+from ...compat import *
 from ...reflection import Reflect
 from ...http import Url, Host
-from ...utils import String, ByteString, JSONEncoder
+from ...utils import String, ByteString, JSONEncoder, FileWrapper
 from ... import environ
 
 
@@ -183,7 +183,13 @@ class Server(BaseServer):
 
         if raw_request.files:
             for k, vs in Url.normalize_query_kwargs(raw_request.files).items():
-                body_kwargs[k] = vs
+                body_kwargs[k] = FileWrapper(
+                    io.BytesIO(vs["body"]),
+                    name=vs["filename"],
+                    filename=vs["filename"],
+                    type=vs["content_type"],
+                    raw=vs,
+                )
 
         if raw_request.body:
             # tornado won't un-jsonify stuff automatically, so if there aren't
@@ -194,7 +200,7 @@ class Server(BaseServer):
                     **kwargs
                 )
 
-            body = raw_request.body
+            body = io.BytesIO(raw_request.body)
 
         #pout.v(r.body_kwargs)
         #pout.v(r)

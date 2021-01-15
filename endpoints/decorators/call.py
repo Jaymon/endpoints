@@ -32,6 +32,7 @@ class route(ControllerDecorator):
     """
     def definition(self, callback, *args, **kwargs):
         self.callback = callback
+        self.error_code = kwargs.pop("error_code", 405)
 
     def handle(self, request):
         return self.callback(request)
@@ -61,7 +62,7 @@ class route(ControllerDecorator):
         # An origin server SHOULD return the status code 405 (Method Not Allowed)
         # if the method is known by the origin server but not allowed for the
         # requested resource
-        raise CallError(405, "Could not find a method to satisfy {}".format(
+        raise CallError(self.error_code, "Could not find a method to satisfy {}".format(
             req.path
         ))
 
@@ -80,6 +81,7 @@ class route_path(route):
     """
     def definition(self, *paths, **kwargs):
         self.paths = paths
+        self.error_code = kwargs.pop("error_code", 404)
 
     def handle(self, request):
         ret = True
@@ -114,6 +116,9 @@ class route_param(route):
         self.keys = keys
         self.matches = matches
 
+        # we throw a 400 here to match @param failures
+        self.error_code = 400
+
     def handle(self, request):
         ret = True
         method_kwargs = request.controller_info["method_kwargs"]
@@ -135,12 +140,6 @@ class route_param(route):
 
         return ret
 
-    def handle_failure(self, controller):
-        # we throw a 400 here to match @param failures
-        raise CallError(400, "Could not find a method to satisfy {}".format(
-            controller.request.path
-        ))
-
 
 class version(route):
     """Used to provide versioning support to a Controller
@@ -160,8 +159,9 @@ class version(route):
     If this decorator is used then all GET methods in the controller have to have
     a unique name (ie, there can be no just GET method, they have to be GET_1, etc.)
     """
-    def definition(self, *versions):
+    def definition(self, *versions, **kwargs):
         self.versions = set(versions)
+        self.error_code = kwargs.pop("error_code", 404)
 
     def handle_args(self, controller, controller_args, controller_kwargs):
         return [controller]

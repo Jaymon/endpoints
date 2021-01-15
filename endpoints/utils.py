@@ -8,7 +8,7 @@ import json
 import types
 import copy
 from collections import Mapping
-from io import IOBase
+from io import IOBase, FileIO
 
 from datatypes import (
     ByteString,
@@ -20,6 +20,46 @@ from datatypes import (
 
 from .compat import *
 from . import environ
+
+
+class FileWrapper(FileIO):
+    def __init__(self, fp, name=None, **kwargs):
+        self.fp = fp
+        self.name = name
+
+        for k, v in kwargs.items():
+            setattr(self, k, v)
+
+    def close(self, *args, **kwargs):
+        return self.fp.close(*args, **kwargs)
+
+    def seekable(self):
+        return self.fp.seekable()
+
+    def seek(self, *args, **kwargs):
+        return self.fp.seek(*args, **kwargs)
+
+    def read(self, *args, **kwargs):
+        return self.fp.read(*args, **kwargs)
+
+    def readall(self):
+        return self.fp.readall()
+
+    def tell(self, *args, **kwargs):
+        return self.fp.tell(*args, **kwargs)
+
+    def readline(self, *args, **kwargs):
+        return self.fp.readline(*args, **kwargs)
+
+    def readlines(self, *args, **kwargs):
+        return self.fp.readlines(*args, **kwargs)
+
+    def __iter__(self):
+        for line in self.fp:
+            yield line
+
+    def writable(self):
+        return False
 
 
 class MimeType(object):

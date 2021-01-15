@@ -12,177 +12,253 @@ import inspect
 import copy
 from socket import gethostname
 
-from datatypes import Url as BaseUrl, Host
+from datatypes import Url as BaseUrl, Host, Headers, Environ
 
 from .compat import *
 from .decorators.utils import _property
-from .utils import AcceptHeader, ByteString, MimeType, String, Base64, Deepcopy
+from .utils import (
+    AcceptHeader,
+    MimeType,
+    Base64,
+    Deepcopy,
+    FileWrapper,
+)
 
 
 logger = logging.getLogger(__name__)
 
 
-class Headers(BaseHeaders, Mapping):
-    """handles headers, see wsgiref.Headers link for method and use information
 
-    Handles normalizing of header names, the problem with headers is they can
-    be in many different forms and cases and stuff (eg, CONTENT_TYPE and Content-Type),
-    so this handles normalizing the header names so you can request Content-Type
-    or CONTENT_TYPE and get the same value.
 
-    This has the same interface as Python's built-in wsgiref.Headers class but
-    makes it even more dict-like and will return titled header names when iterated
-    or anything (eg, Content-Type instead of all lowercase content-type)
 
-    http headers spec:
-        https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+import io
+import cgi
+from .decorators.utils import _propertyset
 
-    wsgiref class docs:
-        https://docs.python.org/2/library/wsgiref.html#module-wsgiref.headers
-        https://hg.python.org/cpython/file/2.7/Lib/wsgiref/headers.py
-    actual python3 code:
-        https://github.com/python/cpython/blob/master/Lib/wsgiref/headers.py
-    """
-    def __init__(self, headers=None, **kwargs):
-        super(Headers, self).__init__([])
-        self.update(headers, **kwargs)
 
-    def _convert_string_part(self, bit):
-        """each part of a header will go through this method, this allows further
-        normalization of each part, so a header like FOO_BAR would call this method
-        twice, once with foo and again with bar
+class Input(io.RawIOBase):
+    def __init__(self, fp):
+        self.fp = fp
+        self.buf = io.BytesIO()
 
-        :param bit: string, a part of a header all lowercase
-        :returns: string, the normalized bit
-        """
-        if bit == "websocket":
-            bit = "WebSocket"
-        else:
-            bit = bit.title()
-        return bit
+    def read(self, size=-1):
+        buf = self.fp.read(size)
+        if buf:
+            self.buf.write(buf)
+        return buf
 
-    def _convert_string_name(self, k):
-        """converts things like FOO_BAR to Foo-Bar which is the normal form"""
-        k = String(k, "iso-8859-1")
-        bits = k.lower().replace('_', '-').split('-')
-        return "-".join((self._convert_string_part(bit) for bit in bits))
 
-    def _convert_string_type(self, v):
-        """Override the internal method wsgiref.headers.Headers uses to check values
-        to make sure they are strings"""
-        # wsgiref.headers.Headers expects a str() (py3) or unicode (py2), it
-        # does not accept even a child of str, so we need to convert the String
-        # instance to the actual str, as does the python wsgi methods, so even
-        # though we override this method we still return raw() strings so we get
-        # passed all the type(v) == "str" checks
-        # sadly, this method is missing in 2.7
-        # https://github.com/python/cpython/blob/2.7/Lib/wsgiref/headers.py
-        return String(v).raw()
+    #def seek(self, *args, **kwargs):
 
-    def get_all(self, name):
-        name = self._convert_string_name(name)
-        return super(Headers, self).get_all(name)
 
-    def get(self, name, default=None):
-        name = self._convert_string_name(name)
-        return super(Headers, self).get(name, default)
 
-    def __delitem__(self, name):
-        name = self._convert_string_name(name)
-        return super(Headers, self).__delitem__(name)
 
-    def __setitem__(self, name, val):
-        name = self._convert_string_name(name)
-        if is_py2:
-            val = self._convert_string_type(val)
-        return super(Headers, self).__setitem__(name, val)
+class Body(cgi.FieldStorage, object):
+    FieldStorageClass = cgi.FieldStorage
 
-    def setdefault(self, name, val):
-        name = self._convert_string_name(name)
-        if is_py2:
-            val = self._convert_string_type(val)
-        return super(Headers, self).setdefault(name, val)
+    @_property
+    def args(self):
+        return getattr(self, "json_args", [])
 
-    def add_header(self, name, val, **params):
-        name = self._convert_string_name(name)
-        if is_py2:
-            val = self._convert_string_type(val)
-        return super(Headers, self).add_header(name, val, **params)
+    @_property
+    def kwargs(self):
+        body_kwargs = {}
+        body_kwargs.update(getattr(self, "json_kwargs", {}))
 
-    def keys(self):
-        return [k for k, v in self._headers]
+        # we only have a list when we had a multiport or data-form submission
+        if getattr(self, "list"):
+            for field_name in self.keys():
+                body_field = self[field_name]
+                if body_field.filename:
+                    body_kwargs[field_name] = FileWrapper(
+                        body_field.file,
+                        name=body_field.filename,
+                        filename=body_field.filename,
+                        type=body_field.type,
+                        raw=body_field,
+                    )
 
-    def items(self):
-        for k, v in self._headers:
-            yield k, v
+#                     body_kwargs[field_name] = {
+#                         "filename": body_field.filename,
+#                         "file": body_field.file,
+#                         "content_type": body_field.type
+#                     }
 
-    def iteritems(self):
-        return self.items()
+                else:
+                    body_kwargs[field_name] = body_field.value
 
-    def iterkeys(self):
-        for k in self.keys():
-            yield k
 
-    def __iter__(self):
-        for k, v in self._headers:
-            yield k
+        return body_kwargs
 
-    def pop(self, name, *args, **kwargs):
-        """remove and return the value at name if it is in the dict
 
-        This uses *args and **kwargs instead of default because this will raise
-        a KeyError if default is not supplied, and if it had a definition like
-        (name, default=None) you wouldn't be able to know if default was provided
-        or not
+    def __init__(self, fp, request, **kwargs):
+        if request.headers.get('transfer-encoding', "").lower().startswith("chunked"):
+            raise IOError("Chunked bodies are not supported")
 
-        :param name: string, the key we're looking for
-        :param default: mixed, the value that would be returned if name is not in
-            dict
-        :returns: the value at name if it's there
-        """
-        val = self.get(name)
-        if val is None:
-            if args:
-                val = args[0]
-            elif "default" in kwargs:
-                val = kwargs["default"]
+        self.request = request
+
+        # py3 compatibility
+        self.encoding = request.encoding
+        self.errors = "replace"
+        self.max_num_fields = None
+
+        self.name = self.filename = self.value = None
+        self.length = int(request.headers.get("CONTENT_LENGTH", -1))
+        self.fp = fp
+        self.list = None
+
+        if self.length > 0:
+            if request.is_json():
+                self.read_json()
+
             else:
-                raise KeyError(name)
+                kwargs.setdefault("keep_blank_values", True)
 
-        else:
-            del self[name]
+                # so FieldStorage parses the body in the constructor and if it fails
+                # then the body instance won't be created, so this is set to True and
+                # the error is handled in read_urlencoded
+                kwargs["strict_parsing"] = True
 
-        return val
-
-    def update(self, headers, **kwargs):
-        if not headers: headers = {}
-        if isinstance(headers, Mapping):
-            headers.update(kwargs)
-            headers = headers.items()
-
-        else:
-            if kwargs:
-                headers = itertools.chain(
-                    headers,
-                    kwargs.items()
+                super(Body, self).__init__(
+                    fp=fp,
+                    headers=request.headers,
+                    environ=request.environ,
+                    **kwargs
                 )
 
-        for k, v in headers:
-            self[k] = v
+    def is_plain(self):
+        """return True if body's content-type is text/plain"""
+        ct = self.request.headers.get("Content-Type", "")
+        return "plain" in ct
 
-    def copy(self):
-        return Deepcopy().copy(self)
+    def is_json(self):
+        """return True if body's content-type is application/json"""
+        ct = self.request.headers.get("Content-Type", "")
+        return "json" in ct
 
-    def list(self):
-        """Return all the headers as a list of headers instead of a dict"""
-        return [": ".join(h) for h in self.items() if h[1]]
+    def is_urlencoded(self):
+        """return True if body's content-type is application/x-www-form-urlencoded"""
+        ct = self.request.headers.get("Content-Type", "")
+        return ("form-urlencoded" in ct) or ("form-data" in ct)
+
+    def is_multipart(self):
+        """return True if body's content-type is multipart/form-data"""
+        ct = self.request.headers.get("Content-Type", "")
+        return "multipart" in ct
+
+    def read_json(self):
+        body = self.fp.read(self.length)
+        self.file = io.BytesIO(body)
+
+        body_args = []
+        body_kwargs = {}
+        b = json.loads(body)
+        if isinstance(b, list):
+            body_args = b
+
+        elif isinstance(b, dict):
+            body_kwargs = b
+
+        else:
+            body_args = [b]
+
+        self.json_args = body_args
+        self.json_kwargs = body_kwargs
+
+#     def read_single(self):
+#         if self.is_json():
+#             pass
+# 
+#         else:
+#             super(Body, self).read_single()
+
+    def read_urlencoded(self):
+        """Internal: read data in query string format."""
+        body = self.fp.read(self.length)
+        self.file = io.BytesIO(body)
+
+        qs = String(body, self.encoding, self.errors)
+
+        if self.qs_on_post:
+            qs += '&' + self.qs_on_post
+
+        try:
+            if is_py2:
+                query = parse.parse_qsl(
+                    qs,
+                    self.keep_blank_values,
+                    self.strict_parsing,
+                )
+
+            else:
+                query = parse.parse_qsl(
+                    qs,
+                    self.keep_blank_values,
+                    self.strict_parsing,
+                    encoding=self.encoding,
+                    errors=self.errors,
+                    max_num_fields=self.max_num_fields
+                )
+
+        except ValueError:
+            # if the right headers were sent then this should error
+            if self.is_urlencoded() or self.is_multipart():
+                raise
+
+        else:
+            self.list = [cgi.MiniFieldStorage(key, value) for key, value in query]
+            self.skip_lines()
+
+    def make_file(self, *args, **kwargs):
+        return io.BytesIO()
+#         if self._binary_file or self.is_plain():
+#             return io.BytesIO()
+#         else:
+#             return StringIO()
+
+    def seek(self, *args, **kwargs):
+        return self.file.seek(*args, **kwargs)
+
+    def read(self, *args, **kwargs):
+        return self.file.read(*args, **kwargs)
+
+    def tell(self, *args, **kwargs):
+        return self.file.tell(*args, **kwargs)
 
 
-class Environ(Headers):
-    """just like Headers but allows any values (headers converts everything to unicode
-    string)"""
-    def _convert_string_type(self, v):
-        return v
+# class Body(io.RawIOBase):
+#     def __init__(self, fp, request):
+#         self.fp = fp
+#         self.request = request
+# 
+#     def fileno(self):
+#         return self.fp.fileno()
+# 
+#     def readable():
+#         return True
+# 
+#     def read(self, size=-1):
+# 
+# 
+
+#     def readinto(self, buff):
+#         if not self.remaining: return 0
+# 
+#         remaining = 
+# 
+#         sz0 = min(len(buff), self.remaining)
+#         data = self.file.read(sz0)
+#         sz = len(data)
+#         self.remaining -= sz
+# 
+#         if sz < sz0 and self.remaining:
+#             raise DisconnectionError(
+#                 "The client disconnected while sending the body "
+#                 "(%d more bytes were expected)" % (self.remaining,)
+#             )
+#         buff[:sz] = data
+# 
+#         return sz
 
 
 class Url(BaseUrl):
@@ -258,6 +334,8 @@ class Url(BaseUrl):
 
 
 class Http(object):
+    header_class = Headers
+
     def __init__(self):
         self.headers = Headers()
 
@@ -326,8 +404,8 @@ class Http(object):
     def __deepcopy__(self, memodict=None):
         memodict = memodict or {}
 
-        if self.controller_info:
-            memodict.setdefault("controller_info", self.controller_info)
+        memodict.setdefault("controller_info", getattr(self, "controller_info", {}))
+        memodict.setdefault("body", getattr(self, "body", None))
 
         return Deepcopy(ignore_private=True).copy(self, memodict)
 

@@ -8,7 +8,7 @@ import logging
 
 from decorators import FuncDecorator
 
-from ..compat.environ import *
+from ..compat import *
 from ..exception import CallError
 from ..utils import String, ByteString
 
@@ -468,17 +468,20 @@ class param(FuncDecorator):
                         else:
                             val = ptype(val)
 
-                    elif issubclass(ptype, str):
+                    elif issubclass(ptype, basestring):
                         charset = request.encoding
-                        if is_py2:
-                            val = ptype(ByteString(val, charset))
-                        else:
-                            val = ptype(String(val, charset))
+                        val = String(val, charset)
 
-#                         if charset and isinstance(val, unicode):
-#                             val = val.encode(charset)
-#                         else:
-#                             val = ptype(val)
+                    elif issubclass(ptype, (bytes, bytearray)):
+                        charset = request.encoding
+                        val = ptype(ByteString(val, charset))
+
+                    #elif issubclass(ptype, str):
+                    #    charset = request.encoding
+                    #    if is_py2:
+                    #        val = ptype(ByteString(val, charset))
+                    #    else:
+                    #        val = ptype(String(val, charset))*/
 
                     else:
                         val = ptype(val)

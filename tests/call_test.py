@@ -42,8 +42,7 @@ class ControllerTest(TestCase):
 
     def test_bad_typeerror(self):
         """There is a bug that is making the controller method is throw a 404 when it should throw a 500"""
-        controller_prefix = "badtyperr"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
@@ -52,8 +51,7 @@ class ControllerTest(TestCase):
         res = c.handle('/')
         self.assertEqual(500, res.code)
 
-        controller_prefix = "badtyperr2"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "class Bogus(object):",
             "    def handle_controller(self, foo):",
@@ -335,8 +333,109 @@ class RouterTest(TestCase):
 
 
 class CallTest(TestCase):
-    def test_lowercase_method(self):
+    def test_routing_error_unexpected_args(self):
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar", query_kwargs=dict(foo=2))
+        self.assertEqual(404, res.code)
 
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar", query_kwargs=dict(che=2))
+        self.assertEqual(404, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(404, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(409, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo", query_kwargs=dict(bar=2))
+        self.assertEqual(405, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar")
+        self.assertEqual(404, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, foo, **kwargs):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(404, res.code)
+
+    def test_routing_error_no_args(self):
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar/che/baz/boom/bam/blah")
+        self.assertEqual(404, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, **kwargs):",
+            "        pass",
+        ])
+        res = c.handle("/foo/bar/che/baz/boom/bam/blah", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(404, res.code)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self, **kwargs):",
+            "        return kwargs",
+        ])
+        res = c.handle("/", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(200, res.code)
+        self.assertTrue("foo" in res._body)
+
+        c = Server(contents=[
+            "from endpoints import Controller, param",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        return kwargs",
+        ])
+        res = c.handle("/", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(405, res.code)
+
+    def test_lowercase_method(self):
         c = Server("controller2", {"foo2": [
             "from endpoints import Controller",
             "class Bar(Controller):",
@@ -360,8 +459,7 @@ class CallTest(TestCase):
 
     def test_handle_404_typeerror_1(self):
         """make sure not having a controller is correctly identified as a 404"""
-        controller_prefix = "h404te"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller, Redirect",
             "class NoFoo(Controller):",
             "    def GET(*args, **kwargs):",
@@ -406,11 +504,10 @@ class CallTest(TestCase):
         res = c.handle("/", "POST")
         self.assertEqual(405, res.code)
 
-    def test_handle_405_typeerror_3(self):
+    def test_handle_404_typeerror_3(self):
         """there was an error when there was only one expected argument, turns out
         the call was checking for "arguments" when the message just had "argument" """
-        controller_prefix = "h404te3"
-        c = Server(controller_prefix, [
+        c = Server(contents=[
             "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self): pass",
@@ -418,7 +515,7 @@ class CallTest(TestCase):
         ])
 
         res = c.handle("/foo/bar/baz", query='che=1&boo=2')
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct header"""

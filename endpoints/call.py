@@ -12,7 +12,7 @@ import traceback
 import inspect
 import pkgutil
 
-from .utils import AcceptHeader
+from .utils import AcceptHeader, String
 from .http import Response, Request
 from .exception import (
     CallError,
@@ -25,7 +25,7 @@ from .exception import (
 )
 from .decorators import _property
 from .compat import *
-from .reflection import ReflectModule
+from .reflection import ReflectModule, ReflectController, ReflectHTTPMethod
 
 
 logger = logging.getLogger(__name__)
@@ -156,65 +156,115 @@ class Call(object):
         res = self.response
         con = self.controller
 
+        res.body = e
+
         if isinstance(e, CallStop):
-            logger.info(str(e), exc_info=True)
+            logger.debug(String(e), exc_info=True)
             res.code = e.code
             res.add_headers(e.headers)
             res.body = e.body
 
         elif isinstance(e, Redirect):
-            logger.info(str(e), exc_info=True)
+            logger.debug(String(e), exc_info=True)
             res.code = e.code
             res.add_headers(e.headers)
             res.body = None
 
         elif isinstance(e, (AccessDenied, CallError)):
-            logger.warning(str(e), exc_info=True)
+            logger.warning(String(e), exc_info=True)
             res.code = e.code
             res.add_headers(e.headers)
-            res.body = e
 
         elif isinstance(e, NotImplementedError):
-            logger.warning(str(e), exc_info=True)
+            logger.warning(String(e), exc_info=True)
             res.code = 501
-            res.body = e
 
         elif isinstance(e, TypeError):
-            e_msg = unicode(e)
+            e_msg = String(e)
+            controller_info = req.controller_info
             if e_msg.startswith(req.method) and 'argument' in e_msg:
-                logger.debug(e_msg, exc_info=True)
-                logger.warning(
-                    " ".join([
-                        "Either the path arguments ({} args) or the keyword arguments",
-                        "({} kwargs) for {}.{} do not match the {} handling method's",
-                        "definition"
-                    ]).format(
-                        len(req.controller_info["method_args"]),
-                        len(req.controller_info["method_kwargs"]),
-                        req.controller_info['module_name'],
-                        req.controller_info['class_name'],
-                        req.method
-                    )
-                )
-                res.code = 405
+                # there are subtle messaging differences between py2 and py3
+                pos_errs = ["takes exactly", "takes no arguments", "positional argument"]
+                if (pos_errs[0] in e_msg) or (pos_errs[1] in e_msg) or (pos_errs[2] in e_msg):
+                    # TypeError: <METHOD>() takes exactly M argument (N given)
+                    # TypeError: <METHOD>() takes no arguments (N given)
+                    # TypeError: <METHOD>() takes M positional arguments but N were given
+                    # we shouldn't ever get the "takes no arguments" case because of self,
+                    # but just in case
+                    # check if there are path args, if there are then 404, if not then 405
+                    logger.debug(e_msg, exc_info=True)
+
+                    if len(controller_info["method_args"]):
+                        res.code = 404
+
+                    else:
+                        res.code = 405
+
+                elif "unexpected keyword argument" in e_msg:
+                    # TypeError: <METHOD>() got an unexpected keyword argument '<NAME>'
+
+                    try:
+                        # if the binding of just the *args works then the
+                        # problem is the **kwargs so a 405 is appropriate,
+                        # otherwise return a 404
+                        inspect.getcallargs(controller_info["method"], *controller_info["method_args"])
+                        res.code = 405
+
+                        logger.warning("Controller method {}.{}.{}".format(
+                            controller_info['module_name'],
+                            controller_info['class_name'],
+                            e_msg
+                        ), exc_info=True)
+
+                    except TypeError:
+                        res.code = 404
+
+                    # python3 messes this all up because unexpected kwargs takes
+                    # precedence over args, so in python2 the first if statement
+                    # always fires
+#                     if len(controller_info["method_args"]):
+#                         res.code = 404
+# 
+#                     else:
+#                         res.code = 405
+
+#                     logger.warning("Controller method {}.{}.{}".format(
+#                         controller_info['module_name'],
+#                         controller_info['class_name'],
+#                         e_msg
+#                     ), exc_info=True)
+
+                elif "multiple values" in e_msg:
+                    # TypeError: <METHOD>() got multiple values for keyword argument '<NAME>'
+                    try:
+                        inspect.getcallargs(controller_info["method"], *controller_info["method_args"])
+                        res.code = 409
+                        logger.warning(e)
+
+                    except TypeError:
+                        res.code = 404
+
+                else:
+                    res.code = 500
+                    logger.exception(e)
 
             else:
-                logger.exception(e)
                 res.code = 500
-
-            res.body = e
+                logger.exception(e)
 
         else:
-            logger.exception(e)
             res.code = 500
-            res.body = e
+            logger.exception(e)
 
         if con:
-            error_method = getattr(con, "handle_{}_error".format(req.method), None)
+            error_method = getattr(con, "handle_{}_error".format(res.code), None)
             if not error_method:
-                error_method = getattr(con, "handle_error")
+                error_method = getattr(con, "handle_{}_error".format(req.method), None)
+                if not error_method:
+                    error_method = getattr(con, "handle_error")
 
-            logger.debug("Using error method: {}.{}".format(
+            logger.debug("Handle {} error using method: {}.{}".format(
+                res.code,
                 con.__class__.__name__,
                 error_method.__name__
             ))
@@ -228,10 +278,10 @@ class Router(object):
 
     we always translate an HTTP request using this pattern: METHOD /module/class/args?kwargs
 
-    GET /foo -> controller_prefix.foo.Default.get
-    POST /foo/bar -> controller_prefix.foo.Bar.post
-    GET /foo/bar/che -> controller_prefix.foo.Bar.get(che)
-    POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.post(che, baz=foo)
+    GET /foo -> controller_prefix.foo.Default.GET
+    POST /foo/bar -> controller_prefix.foo.Bar.POST
+    GET /foo/bar/che -> controller_prefix.foo.Bar.GET(che)
+    POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.POST(che, baz=foo)
     """
     default_class_name = "Default"
 
@@ -272,9 +322,12 @@ class Router(object):
         ret = {}
         controller_path = []
 
-        module_name, module_path, controller_method_args = self.get_module_name(list(req.path_args))
+        controller_prefix, module_name, module_path, controller_method_args = self.get_module_name(
+            list(req.path_args)
+        )
         controller_module_name = module_name
-        controller_module = ReflectModule(module_name).module
+        controller_module_r = ReflectModule(module_name)
+        controller_module = controller_module_r.module
 
         controller_class = None
         if controller_method_args:
@@ -298,11 +351,18 @@ class Router(object):
                 )
             )
 
+        ret['controller_prefix'] = controller_prefix
         ret['module'] = controller_module
+        ret['module_reflection'] = controller_module_r
         ret['module_name'] = controller_module_name
         ret['module_path'] = "/".join(module_path)
 
         ret['class'] = controller_class
+        ret['class_reflection'] = ReflectController(
+            controller_module_r,
+            controller_class,
+            controller_prefix
+        )
         ret['class_name'] = controller_class_name
         ret['class_instance'] = self.get_class_instance(req, res, controller_class)
         ret['class_path'] = "/".join(controller_path)
@@ -324,7 +384,11 @@ class Router(object):
     def get_module_name(self, path_args):
         """returns the module_name and remaining path args.
 
-        :returns: tuple, (module_name, module_path, path_args)
+        :returns: tuple, (controller_prefix, module_name, module_path, path_args),
+            where controller_prefix is the prefix the module was found in and module_name
+            is the python module path (eg, foo.bar.che) and module_path is a list
+            of the different parts (eg, ["foo", "bar", "che"]) and path_args are
+            the remaining path_args after finding the module
         """
         module_name = ""
         module_path = []
@@ -371,6 +435,7 @@ class Router(object):
             if not module_name:
                 if default_module_name:
                     module_name = default_module_name
+                    controller_prefix = module_name
 
                 else:
                     raise TypeError(
@@ -381,7 +446,7 @@ class Router(object):
                     )
                     #module_name = self.controller_prefixes[0]
 
-        return module_name, module_path, path_args
+        return controller_prefix, module_name, module_path, path_args
 
     def get_class(self, module, class_name):
         """try and get the class_name from the module and make sure it is a valid
@@ -405,14 +470,13 @@ class Controller(object):
     that extends this class, and then defines at least one http method (like GET or POST), so if you
     wanted to create the endpoint /foo/bar (with controller_prefix che), you would just need to:
 
-    ---------------------------------------------------------------------------
-    # che/foo.py
-    import endpoints
+    :Example:
+        # che/foo.py
+        import endpoints
 
-    class Bar(endpoints.Controller):
-        def GET(self, *args, **kwargs):
-            return "you just made a GET request to /foo/bar"
-    ---------------------------------------------------------------------------
+        class Bar(endpoints.Controller):
+            def GET(self, *args, **kwargs):
+                return "you just made a GET request to /foo/bar"
 
     as you support more methods, like POST and PUT, you can just add POST() and PUT()
     methods to your Bar class and Bar will support those http methods. Although you can
@@ -424,13 +488,12 @@ class Controller(object):
     If you would like to create a base controller that other controllers will extend and don't
     want that controller to be picked up by reflection, just start the classname with an underscore:
 
-    ---------------------------------------------------------------------------
-    import endpoints
+    :Example:
+        import endpoints
 
-    class _BaseController(endpoints.Controller):
-        def GET(self, *args, **kwargs):
-            return "every controller that extends this will have this GET method"
-    ---------------------------------------------------------------------------
+        class _BaseController(endpoints.Controller):
+            def GET(self, *args, **kwargs):
+                return "every controller that extends this will have this GET method"
     """
     request = None
     """holds a Request() instance"""
@@ -536,10 +599,17 @@ class Controller(object):
         encoding = req.accept_encoding
         res.encoding = encoding if encoding else self.encoding
 
+        # the @route* and @version decorators have a catastrophic error handler
+        # that will be called if all if all found methods failed to resolve
         res_error_handler = None
+
         controller_methods = self.find_methods()
-        #controller_args, controller_kwargs = self.find_method_params()
         for controller_method_name, controller_method in controller_methods:
+            req.controller_info["method_name"] = controller_method_name
+            req.controller_info["method"] = controller_method
+            # VersionError and RouteError handling is here because they can be
+            # raised multiple times in this one request and handled each time,
+            # any exceptions that can't be handled are bubbled up
             try:
                 self.logger.debug("Request Controller method: {}.{}.{}".format(
                     req.controller_info['module_name'],
@@ -654,7 +724,11 @@ class Controller(object):
             if uuid:
                 uuid += " "
 
-            self.logger.info("Request {}method: {} {}?{}".format(uuid, req.method, req.path, req.query))
+            if req.query:
+                self.logger.info("Request {}method: {} {}?{}".format(uuid, req.method, req.path, req.query))
+            else:
+                self.logger.info("Request {}method: {} {}".format(uuid, req.method, req.path))
+
             self.logger.info("Request {}date: {}".format(
                 uuid,
                 datetime.datetime.utcfromtimestamp(start).strftime("%Y-%m-%dT%H:%M:%S.%f"),
@@ -712,10 +786,14 @@ class Controller(object):
         """log a summary line on how the request went"""
         if not self.logger.isEnabledFor(logging.INFO): return
 
+        res = self.response
         req = self.request
         uuid = getattr(req, "uuid", "")
         if uuid:
             uuid += " "
+
+        for k, v in res.headers.items():
+            self.logger.info("Request {}response header {}: {}".format(uuid, k, v))
 
         stop = time.time()
         get_elapsed = lambda start, stop, multiplier, rnd: round(abs(stop - start) * float(multiplier), rnd)
