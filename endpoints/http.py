@@ -5,7 +5,6 @@ import json
 import types
 import re
 from functools import partial
-from wsgiref.headers import Headers as BaseHeaders
 import itertools
 import logging
 import inspect
@@ -14,7 +13,7 @@ from socket import gethostname
 import cgi
 import io
 
-from datatypes import Url as BaseUrl, Host, Headers, Environ
+from datatypes import Url as BaseUrl, Host, Headers as BaseHeaders, Environ
 
 from .compat import *
 from .decorators.utils import _property
@@ -28,6 +27,28 @@ from .utils import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class Headers(BaseHeaders):
+    def is_plain(self):
+        """return True if body's content-type is text/plain"""
+        ct = self.get("Content-Type", "")
+        return "plain" in ct
+
+    def is_json(self):
+        """return True if body's content-type is application/json"""
+        ct = self.get("Content-Type", "")
+        return "json" in ct
+
+    def is_urlencoded(self):
+        """return True if body's content-type is application/x-www-form-urlencoded"""
+        ct = self.get("Content-Type", "")
+        return ("form-urlencoded" in ct) or ("form-data" in ct)
+
+    def is_multipart(self):
+        """return True if body's content-type is multipart/form-data"""
+        ct = self.get("Content-Type", "")
+        return "multipart" in ct
 
 
 class Body(cgi.FieldStorage, object):
@@ -104,23 +125,19 @@ class Body(cgi.FieldStorage, object):
 
     def is_plain(self):
         """return True if body's content-type is text/plain"""
-        ct = self.request.headers.get("Content-Type", "")
-        return "plain" in ct
+        return self.request.headers.is_plain()
 
     def is_json(self):
         """return True if body's content-type is application/json"""
-        ct = self.request.headers.get("Content-Type", "")
-        return "json" in ct
+        return self.request.headers.is_json()
 
     def is_urlencoded(self):
         """return True if body's content-type is application/x-www-form-urlencoded"""
-        ct = self.request.headers.get("Content-Type", "")
-        return ("form-urlencoded" in ct) or ("form-data" in ct)
+        return self.request.headers.is_urlencoded()
 
     def is_multipart(self):
         """return True if body's content-type is multipart/form-data"""
-        ct = self.request.headers.get("Content-Type", "")
-        return "multipart" in ct
+        return self.request.headers.is_multipart()
 
     def read_json(self):
         body = self.fp.read(self.length)
@@ -340,8 +357,7 @@ class Http(object):
         return Deepcopy(ignore_private=True).copy(self, memodict)
 
     def is_json(self):
-        ct = self.get_header('Content-Type')
-        return ct.lower().rfind("json") >= 0 if ct else False
+        return self.headers.is_json()
 
 
 class Request(Http):
