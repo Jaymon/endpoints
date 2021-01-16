@@ -311,6 +311,8 @@ class Router(object):
         ret = {}
         controller_path = []
 
+        logger.debug("Searching for Controller using path: {}".format(req.path))
+
         controller_prefix, module_name, module_path, controller_method_args = self.get_module_name(
             list(req.path_args)
         )

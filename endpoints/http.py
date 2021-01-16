@@ -579,7 +579,7 @@ class Request(Http):
         if query_kwargs: query = urlencode(query_kwargs, doseq=True)
         return query
 
-    @property(cached="query_kwargs")
+    @property(cached="_query_kwargs")
     def query_kwargs(self):
         """{foo: bar, baz: che}"""
         self._query_kwargs = query_kwargs = {}

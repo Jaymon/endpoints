@@ -341,6 +341,29 @@ class WebsocketTestCase(TestCase):
     client_class = WebsocketClient
     server_class = None
 
+    def test_bad_path(self):
+        """https://github.com/Jaymon/endpoints/issues/103"""
+        server = self.create_server(contents=[
+            "import os",
+            "from endpoints import Controller, decorators",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    def GET(self, foo, bar):",
+            "        return 'get'",
+            "",
+        ])
+        c = self.create_client()
+        c.connect()
+
+        r = c.get("http://example.com/foo/bar")
+        self.assertEqual(404, r.code)
+
+        r = c.get("/foo/bar")
+        self.assertEqual(200, r.code)
+
     def test_close_connection(self):
         server = self.create_server(contents=[
             "from endpoints import Controller, CloseConnection",
