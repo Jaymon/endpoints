@@ -969,6 +969,32 @@ class ParamTest(TestCase):
 
 
 class RouteTest(TestCase):
+    def test_issue94(self):
+        """https://github.com/Jaymon/endpoints/issues/94"""
+        c = Server(contents=[
+            "from endpoints import Controller",
+            "from endpoints.decorators import route, param",
+            "class Default(Controller):",
+            "    @route(lambda req: 'foo' in req.kwargs)",
+            "    @param('foo')",
+            "    def POST_foo(self, **kwargs):",
+            "        return 'foo'",
+            "",
+            "    @route(lambda req: 'foo' not in req.kwargs)",
+            "    @param('bar')",
+            "    @param('che')",
+            "    def POST_no_foo(self, **kwargs):",
+            "        return 'no foo'",
+        ])
+
+        res = c.handle("/", method="POST", body_kwargs={"bar": 1, "che": 2})
+        self.assertEqual(200, res.code)
+        self.assertEqual("no foo", res.body)
+
+        res = c.handle("/", method="POST", body_kwargs={"foo": 1})
+        self.assertEqual(200, res.code)
+        self.assertEqual("foo", res.body)
+
     def test_error(self):
         c = Server(contents=[
             "from endpoints import Controller",
