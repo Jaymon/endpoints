@@ -234,7 +234,27 @@ class WebClient(object):
         self.headers['authorization'] = 'Bearer {}'.format(access_token)
 
     def remove_auth(self):
-        self.headers.pop('authorization', None)
+        """Clear the authentication header and any authentication parameters"""
+        self.headers.pop("Authorization", None)
+        query = getattr(self, "query", {})
+        for k in ["client_id", "client_secret", "access_token"]:
+            query.pop(k, None)
+        self.query = query
+
+    def clear_auth(self):
+        return self.remove_auth()
+
+    def basic_oauth_query(self, client_id, client_secret):
+        self.remove_auth()
+        query = getattr(self, "query", {})
+        query.update({"client_id": client_id, "client_secret": client_secret})
+        self.query = query
+
+    def token_oauth_query(self, access_token):
+        self.remove_auth()
+        query = getattr(self, "query", {})
+        query.update({"access_token": access_token})
+        self.query = query
 
     def set_version(self, version):
         self.headers["accept"] = "{};version={}".format(
