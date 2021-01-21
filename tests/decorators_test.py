@@ -460,6 +460,28 @@ class AuthTest(TestCase):
 
 
 class ParamTest(TestCase):
+    def test_type_string_casting(self):
+        """I made a change in v4.0.0 that would encode a value to String when the 
+        param type was a str descendent, but my change was bad because it would 
+        just cast it to a String, not to the type, this makes sure that's fixed"""
+        c = Server(contents=[
+            "from endpoints.compat import String",
+            "from endpoints import Controller, param",
+            "",
+            "class Che(String):",
+            "    def __new__(cls, *args, **kwargs):",
+            "        return super(Che, cls).__new__(cls, *args, **kwargs)",
+            "",
+            "class Default(Controller):",
+            "    @param('che', type=Che)",
+            "    def POST_bar(self, **kwargs):",
+            "        t = kwargs['che']",
+            "        return t.__class__.__name__",
+        ])
+
+        r = c.post("/", {"che": "1234"})
+        self.assertEqual("Che", r._body)
+
     def test_type_issue_76(self):
         """
         https://github.com/Jaymon/endpoints/issues/76

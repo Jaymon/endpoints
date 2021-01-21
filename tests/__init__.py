@@ -67,6 +67,12 @@ class Server(BaseServer):
         c.handle()
         return c.response
 
+    def post(self, path, body_kwargs, **kwargs):
+        return self.handle(path, method="POST", body_kwargs=body_kwargs, **kwargs)
+
+    def get(self, path, query_kwargs, **kwargs):
+        return self.handle(path, method="GET", query_kwargs=query_kwargs, **kwargs)
+
     def path(self, *args):
         bits = [""]
         pout.v(self.controller.name)

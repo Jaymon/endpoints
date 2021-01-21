@@ -311,20 +311,13 @@ class param(FuncDecorator):
                         else:
                             val = ptype(val)
 
-                    elif issubclass(ptype, basestring):
-                        charset = request.encoding
-                        val = String(val, charset)
-
                     elif issubclass(ptype, (bytes, bytearray)):
                         charset = request.encoding
                         val = ptype(ByteString(val, charset))
 
-                    #elif issubclass(ptype, str):
-                    #    charset = request.encoding
-                    #    if is_py2:
-                    #        val = ptype(ByteString(val, charset))
-                    #    else:
-                    #        val = ptype(String(val, charset))*/
+                    elif issubclass(ptype, basestring):
+                        charset = request.encoding
+                        val = ptype(String(val, charset))
 
                     else:
                         val = ptype(val)
