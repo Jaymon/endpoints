@@ -25,6 +25,7 @@ from .exception import (
 )
 from .compat import *
 from .reflection import ReflectModule, ReflectController, ReflectHTTPMethod
+from . import environ
 
 
 logger = logging.getLogger(__name__)
@@ -508,26 +509,25 @@ class Controller(object):
     cors = True
     """Activates CORS support, http://www.w3.org/TR/cors/"""
 
-    content_type = "application/json"
-    """the response content type this controller will set"""
+    @property
+    def encoding(self):
+        """the response charset of this controller"""
+        req = self.request
+        encoding = req.accept_encoding
+        return encoding if encoding else environ.ENCODING
 
-    encoding = 'UTF-8'
-    """the response charset of this controller"""
+    @property
+    def content_type(self):
+        """the response content type this controller will use"""
+        req = self.request
+        content_type = req.accept_content_type
+        return content_type if content_type else environ.RESPONSE_CONTENT_TYPE
 
     def __init__(self, request, response, *args, **kwargs):
         self.request = request
         self.response = response
+        self.logger = self.create_logger(request, response)
         super(Controller, self).__init__(*args, **kwargs)
-        self.set_cors_common_headers()
-
-        # we use self.logger and set the name to endpoints.call.module.class so
-        # you can filter all controllers using endpoints.call, filter all
-        # controllers in a certain module using endpoints.call.module or just a
-        # specific controller using endpoints.call.module.class
-        logger_name = logger.name
-        class_name = self.__class__.__name__
-        module_name = self.__class__.__module__
-        self.logger = logging.getLogger("{}.{}.{}".format(logger_name, class_name, module_name))
 
     def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
@@ -560,6 +560,34 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
+    def create_logger(self, request, response):
+        # we use self.logger and set the name to endpoints.call.module.class so
+        # you can filter all controllers using endpoints.call, filter all
+        # controllers in a certain module using endpoints.call.module or just a
+        # specific controller using endpoints.call.module.class
+        logger_name = logger.name
+        class_name = self.__class__.__name__
+        module_name = self.__class__.__module__
+        return logging.getLogger("{}.{}.{}".format(logger_name, class_name, module_name))
+
+    def prepare_response(self):
+        """Called at the beginning of the handle() call, use to prepare the response
+        instance with defaults that can be overridden in the controller's actual
+        http handle method"""
+        self.set_cors_common_headers()
+
+        req = self.request
+        res = self.response
+
+        encoding = self.encoding
+        content_type = self.content_type
+
+        res.encoding = encoding
+        res.set_header('Content-Type', "{};charset={}".format(
+            content_type,
+            encoding
+        ))
+
     def set_cors_common_headers(self):
         """
         This will set the headers that are needed for any cors request (OPTIONS or real)
@@ -583,15 +611,10 @@ class Controller(object):
             the request handling method (eg, GET, POST)
         :param **controller_kwargs: dict, the query and body params merged together
         """
+        self.prepare_response()
+
         req = self.request
         res = self.response
-        res.set_header('Content-Type', "{};charset={}".format(
-            self.content_type,
-            self.encoding
-        ))
-
-        encoding = req.accept_encoding
-        res.encoding = encoding if encoding else self.encoding
 
         # the @route* and @version decorators have a catastrophic error handler
         # that will be called if all if all found methods failed to resolve

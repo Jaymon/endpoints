@@ -398,10 +398,21 @@ class ReflectClass(object):
                         "args": args,
                         "kwargs": kwargs
                     }
-                    m = self.reflect_module.module
-                    decor = getattr(m, name, None)
-                    if decor:
-                        d["decorator"] = decor
+
+                    # get the actual decorator from either the module (imported)
+                    # or from the global builtins
+                    decor = None
+                    if self.reflect_module:
+                        m = self.reflect_module.module
+                        decor = getattr(m, name, None)
+
+                    if not decor:
+                        decor = getattr(builtins, name, None)
+
+                    if not decor:
+                        raise RuntimeError("Could not find {} decorator class".format(name))
+
+                    d["decorator"] = decor
 
                     #res[node.name].append((name, args, kwargs))
                     res[node.name].append(self.decorator_class(**d))

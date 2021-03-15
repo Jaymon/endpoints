@@ -107,6 +107,11 @@ class AcceptHeaderTest(TestCase):
 
             self.assertEqual(t[2], count)
 
+#     def test_bad_split(self):
+#         a = AcceptHeader("application/json;version=v1")
+#         for mt in a.filter("application/json"):
+#             pout.v(mt)
+
 
 class JSONEncoderTest(TestCase):
     def test_string(self):

@@ -13,9 +13,15 @@ paths = environ.paths
 ENCODING = get("ENCODING", "UTF-8")
 """Default encoding"""
 
+
+RESPONSE_CONTENT_TYPE = get("RESPONSE_CONTENT_TYPE", "application/json")
+"""the response content type a controller will set"""
+
+
 HOST = get("HOST", "")
 """The host string, usually just domain or domain:port, this is used by the server
 classes and also the tests"""
+
 
 def set_host(host):
     global HOST

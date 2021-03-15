@@ -69,6 +69,9 @@ class ControllerTest(TestCase):
 
     def test_cors(self):
         class Cors(Controller):
+            def __init__(self, *args, **kwargs):
+                super(Cors, self).__init__(*args, **kwargs)
+                self.prepare_response()
             def POST(self): pass
 
         res = Response()

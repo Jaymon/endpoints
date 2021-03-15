@@ -393,6 +393,28 @@ class Request(Http):
     """see create_body()"""
 
     @property
+    def accept_content_type(self):
+        """Return the requested content type
+
+        https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+
+        :returns: string, empty if a suitable content type wasn't found, this will
+            only check the first accept content type and then only if that content
+            type has no wildcards
+        """
+        v = ""
+        accept_header = self.get_header('accept', "")
+        if accept_header:
+            a = AcceptHeader(accept_header)
+            for mt in a:
+                # we only care about the first value, and only if it has no wildcards
+                if "*" not in mt[0]:
+                    v = "/".join(mt[0])
+                break
+
+        return v
+
+    @property
     def accept_encoding(self):
         """The encoding the client requested the response to use"""
         # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Charset
@@ -605,9 +627,18 @@ class Request(Http):
         return self.body_class(body, self)
 
     def version(self, content_type="*/*"):
-        """
-        versioning is based off of this post 
+        """by default, versioning is based off of this post 
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
+        https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
+
+        This can be extended to implement versioning in any other way though, this
+        is used with the @version decorator
+
+        :param content_type: string, the content type you want to check version info,
+            by default this checks all content types, which is probably what most
+            want, since if you're doing accept header versioning you're probably
+            only passing up one content type
+        :returns: string, the found version
         """
         v = ""
         accept_header = self.get_header('accept', "")
