@@ -574,8 +574,6 @@ class Controller(object):
         """Called at the beginning of the handle() call, use to prepare the response
         instance with defaults that can be overridden in the controller's actual
         http handle method"""
-        self.set_cors_common_headers()
-
         req = self.request
         res = self.response
 
@@ -588,16 +586,35 @@ class Controller(object):
             encoding
         ))
 
-    def set_cors_common_headers(self):
-        """
-        This will set the headers that are needed for any cors request (OPTIONS or real)
-        """
-        if not self.cors: return
+    def handle_origin(self, origin):
+        """Check the origin and decide if it is valid
 
+        :param origin: string, this can be empty or None, so you'll need to handle
+            the empty case if you are overriding this
+        :returns: bool, True if the origin is acceptable, False otherwise
+        """
+        return True
+
+    def handle_cors(self):
+        """This will set the headers that are needed for any cors request (OPTIONS or real) """
         req = self.request
         origin = req.get_header('origin')
-        if origin:
-            self.response.set_header('Access-Control-Allow-Origin', origin)
+        if self.handle_origin(origin):
+            if origin:
+                # your server must read the value of the request's Origin header
+                # and use that value to set Access-Control-Allow-Origin, and must
+                # also set a Vary: Origin header to indicate that some headers
+                # are being set dynamically depending on the origin.
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+                self.response.set_header('Access-Control-Allow-Origin', origin)
+                self.response.set_header('Vary', "Origin")
+
+        else:
+            # RFC6455 - If the origin indicated is unacceptable to the server,
+            # then it SHOULD respond to the WebSocket handshake with a reply
+            # containing HTTP 403 Forbidden status code.
+            # https://stackoverflow.com/q/28553580/5006
+            raise CallError(403)
 
     def handle(self, *controller_args, **controller_kwargs):
         """handles the request and returns the response
@@ -611,6 +628,9 @@ class Controller(object):
             the request handling method (eg, GET, POST)
         :param **controller_kwargs: dict, the query and body params merged together
         """
+        if self.cors:
+            self.handle_cors()
+
         self.prepare_response()
 
         req = self.request
