@@ -606,6 +606,7 @@ class Controller(object):
                 # also set a Vary: Origin header to indicate that some headers
                 # are being set dynamically depending on the origin.
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
                 self.response.set_header('Access-Control-Allow-Origin', origin)
                 self.response.set_header('Vary', "Origin")
 
