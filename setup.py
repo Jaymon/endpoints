@@ -38,7 +38,7 @@ setup(
     keywords="wsgi wsgi-server api api-server server framework web-framework REST rest-api",
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
-    url='http://github.com/firstopinion/{}'.format(name),
+    url='http://github.com/jaymon/{}'.format(name),
     license="MIT",
     install_requires=['decorators', 'datatypes'],
     tests_require=['testdata', 'requests'],
