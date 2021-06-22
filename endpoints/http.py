@@ -13,7 +13,12 @@ from socket import gethostname
 import cgi
 import io
 
-from datatypes import Url as BaseUrl, Host, Headers as BaseHeaders, Environ
+from datatypes import (
+    Url as BaseUrl,
+    Host,
+    HTTPHeaders as BaseHeaders,
+    HTTPEnviron as Environ,
+)
 
 from .compat import *
 from .decorators.utils import property # must be .utils because circular dep
