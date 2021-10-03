@@ -54,7 +54,6 @@ setup(
         'License :: OSI Approved :: MIT License',
         'Operating System :: OS Independent',
         'Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries',
-        'Programming Language :: Python :: 2.7',
         'Programming Language :: Python :: 3',
     ],
     entry_points = {
