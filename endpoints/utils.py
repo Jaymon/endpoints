@@ -7,7 +7,6 @@ import base64
 import json
 import types
 import copy
-from collections import Mapping
 from io import IOBase, FileIO
 
 from datatypes import (
