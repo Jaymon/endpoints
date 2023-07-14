@@ -6,7 +6,7 @@ import cgi
 from functools import wraps
 import logging
 
-from decorators import FuncDecorator, property
+from datatypes import FuncDecorator, property
 
 from ..compat import *
 from ..exception import CallError

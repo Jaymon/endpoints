@@ -2,7 +2,7 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
 
-from decorators import FuncDecorator
+from datatypes import FuncDecorator
 
 from ..compat import *
 from ..exception import CallError

@@ -40,11 +40,11 @@ setup(
     author_email='jay@marcyes.com',
     url='http://github.com/jaymon/{}'.format(name),
     license="MIT",
-    install_requires=['decorators', 'datatypes'],
+    install_requires=['datatypes'],
     tests_require=['testdata', 'requests'],
     extras_require={
         'websockets': ["websocket-client", "gevent"],
-        'tornado': ["tornado"],
+        #'tornado': ["tornado"],
         'html': ['jinja2'],
     },
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
