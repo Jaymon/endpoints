@@ -8,6 +8,8 @@ import json
 import types
 import copy
 from io import IOBase, FileIO
+from functools import cmp_to_key
+
 
 from datatypes import (
     ByteString,
@@ -79,8 +81,8 @@ class MimeType(object):
     def find_type(cls, val):
         """return the mimetype from the given string value
 
-        if value is a path, then the extension will be found, if val is an extension then
-        that will be used to find the mimetype
+        if value is a path, then the extension will be found, if val is an
+        extension then that will be used to find the mimetype
         """
         mt = ""
         index = val.rfind(".")
@@ -135,8 +137,8 @@ class AcceptHeader(object):
 
     def _sort(self, a, b):
         '''
-        sort the headers according to rfc 2616 so when __iter__ is called, the accept media types are
-        in order from most preferred to least preferred
+        sort the headers according to rfc 2616 so when __iter__ is called, the
+        accept media types are in order from most preferred to least preferred
         '''
         ret = 0
 
@@ -169,15 +171,11 @@ class AcceptHeader(object):
         return ret
 
     def __iter__(self):
-        if is_py2:
-            sorted_media_types = sorted(self.media_types, self._sort, reverse=True)
-        else:
-            from functools import cmp_to_key
-            sorted_media_types = sorted(
-                self.media_types,
-                key=cmp_to_key(self._sort),
-                reverse=True
-            )
+        sorted_media_types = sorted(
+            self.media_types,
+            key=cmp_to_key(self._sort),
+            reverse=True
+        )
         for x in sorted_media_types:
             yield x
 
@@ -243,5 +241,6 @@ class JSONEncoder(json.JSONEncoder):
             return String(obj)
 
         else:
-            return json.JSONEncoder.default(self, obj)
+            #return json.JSONEncoder.default(self, obj)
+            return super().default(obj)
 

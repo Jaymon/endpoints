@@ -26,7 +26,7 @@ except ImportError:
 from .compat import *
 from .utils import String, ByteString, Base64
 from .http import Headers, Url, Host
-from .interface import Payload
+from .interface.base import Payload
 
 
 logger = logging.getLogger(__name__)

@@ -26,14 +26,20 @@ class TestCase(BaseTestCase):
             self.server.stop()
 
     def create_server(self, contents, config_contents='', **kwargs):
-        tdm = testdata.create_module(kwargs.get("controller_prefix", ""), contents)
+        tdm = testdata.create_module(
+            data=contents,
+            modpath=kwargs.get("controller_prefix", "")
+        )
 
         kwargs["controller_prefix"] = tdm
         kwargs["host"] = self.get_host()
         kwargs["cwd"] = tdm.basedir
 
         if config_contents:
-            config_path = testdata.create_file("{}.py".format(testdata.get_module_name()), config_contents)
+            config_path = testdata.create_file(
+                data=config_contents,
+                ext=".py",
+            )
             kwargs["config_path"] = config_path
 
         server = self.server_class(**kwargs)
@@ -49,40 +55,113 @@ class TestCase(BaseTestCase):
 
 
 class WebTestCase(TestCase):
-    def test_body_plain_with_content_type(self):
+    def test_get_request_url(self):
+        """make sure request url gets controller_path correctly"""
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Requrl(Controller):",
+            "    def GET(self):",
+            "        return self.request.url.controller()",
+            "",
+        ])
+
+        c = self.create_client()
+        r = c.get('/requrl')
+        self.assertTrue("/requrl" in r.body)
+
+    def test_get_list_param_decorator(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, decorators",
+            "class Listparamdec(Controller):",
+            "    @decorators.param(",
+            "        'user_ids',",
+            "        'user_ids[]',",
+            "        type=int,",
+            "        action='append_list'",
+            "    )",
+            "    def GET(self, **kwargs):",
+            "        return int(''.join(map(str, kwargs['user_ids'])))",
+            ""
+        ])
+
+        c = self.create_client()
+        r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
+        self.assertEqual("1234", r.body)
+
+    def test_get_404_request(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self, **kwargs): pass",
+            "",
+        ])
+
+        c = self.create_client()
+        r = c.get('/foo/bar/baz?che=1&boo=2')
+        self.assertEqual(404, r.code)
+
+    def test_get_response_headers(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
-            "    def POST(self, **kwargs):",
-            "        self.response.headers['content-type'] = 'text/plain'",
-            "        return self.request.body.read()",
+            "    def GET(self):",
+            "        self.response.set_header('FOO_BAR', 'check')",
+            "",
         ])
 
-        body = "plain text body"
-        c = self.create_client(headers={"content-type": "text/plain"})
-        r = c.post("/", body)
+        c = self.create_client()
+        r = c.get('/')
+        self.assertEqual(204, r.code)
+        self.assertTrue("foo-bar" in r.headers)
+
+    def test_get_file_stream(self):
+        content = "this is a text file to stream"
+        filepath = testdata.create_file(content)
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        f = open('{}')".format(filepath),
+            "        self.response.set_header('content-type', 'text/plain')",
+            "        return f",
+            "",
+        ])
+
+        c = self.create_client()
+        r = c.get('/')
         self.assertEqual(200, r.code)
-        self.assertEqual(body, r.body)
-        self.assertEqual(String(body), String(r._body))
+        self.assertEqual(content, r.body)
 
-    def test_body_plain_without_content_type(self):
+    def test_get_generators(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        for x in range(100):",
+            "            yield x",
+        ])
+
+        c = self.create_client()
+        r = c.get('/')
+        content = list(range(100))
+        self.assertEqual(200, r.code)
+        self.assertEqual(content, r._body)
+
+    def test_post_body_urlencoded(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, **kwargs):",
-            "        self.response.headers['content-type'] = 'text/plain'",
-            "        return self.request.body.read()",
+            "        return kwargs",
         ])
 
-        body = "plain text body"
-        #c = self.create_client(headers={"content-type": "text/plain"})
+        body = {"foo": "1", "bar": ["2", "3"], "che": "four"}
         c = self.create_client()
         r = c.post("/", body)
         self.assertEqual(200, r.code)
-        self.assertEqual(body, r.body)
-        self.assertEqual(String(body), String(r._body))
+        self.assertEqual(body, r._body)
 
-    def test_body_json_dict(self):
+    def test_post_body_json_dict(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
@@ -96,7 +175,7 @@ class WebTestCase(TestCase):
         self.assertEqual(body, r._body["kwargs"])
         self.assertEqual(0, len(r._body["args"]))
 
-    def test_body_json_list(self):
+    def test_post_body_json_list(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
@@ -115,24 +194,38 @@ class WebTestCase(TestCase):
         self.assertEqual(1, r._body["args"][0]["foo"])
         self.assertEqual(2, len(r._body["args"]))
 
-    def test_body_file_1(self):
-        filepath = testdata.create_file("filename.txt", "this is a text file to upload")
+    def test_post_body_file_1(self):
+        filepath = testdata.create_file(
+            "this is a text file to upload",
+            ext="txt"
+        )
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
-            "        return kwargs['file'].filename",
+            "        return {",
+            "            'filename': kwargs['file'].filename,",
+            "            'foo': kwargs['foo'],",
+            "            'baz': kwargs['baz'],",
+            "        }",
             "",
         ])
 
+        body = {"foo": "value-foo", "baz": "value-baz"}
         c = self.create_client()
-        r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
+        r = c.post_file(
+            '/',
+            body,
+            {"file": filepath}
+        )
         self.assertEqual(200, r.code)
-        self.assertTrue("filename.txt" in r.body)
+        self.assertTrue(filepath.name in r.body)
+        for k, v in body.items():
+            self.assertTrue(v in r.body)
 
-    def test_body_file_2(self):
+    def test_post_body_file_2(self):
         """make sure specifying a @param for the file upload works as expected"""
-        filepath = testdata.create_file("post_file_with_param.txt", "post_file_with_param")
+        filepath = testdata.create_file("post_file_with_param")
         server = self.create_server(contents=[
             "from endpoints import Controller, decorators",
             "class Default(Controller):",
@@ -144,39 +237,74 @@ class WebTestCase(TestCase):
         ])
 
         c = self.create_client()
-        r = c.post_file('/', {"foo": "bar", "baz": "che"}, {"file": filepath})
+        r = c.post_file(
+            '/',
+            {"foo": "value-foo", "baz": "value-baz"},
+            {"file": filepath}
+        )
         self.assertEqual(200, r.code)
-        self.assertTrue("post_file_with_param.txt" in r.body)
+        self.assertTrue(filepath.name in r.body)
 
-    def test_request_url(self):
-        """make sure request url gets controller_path correctly"""
+    def test_post_body_plain_with_content_type(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
-            "class Requrl(Controller):",
-            "    def GET(self):",
-            "        return self.request.url.controller()",
-            "",
+            "class Default(Controller):",
+            "    def POST(self, **kwargs):",
+            "        self.response.headers['content-type'] = 'text/plain'",
+            "        return self.request.body",
         ])
 
-        c = self.create_client()
-        r = c.get('/requrl')
-        self.assertTrue("/requrl" in r._body)
+        body = "plain text body"
+        c = self.create_client(headers={"content-type": "text/plain"})
+        r = c.post("/", body)
+        self.assertEqual(200, r.code)
+        self.assertEqual(body, r.body)
+        self.assertEqual(String(body), String(r._body))
 
-    def test_list_param_decorator(self):
+    def test_post_body_plain_without_content_type(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller, decorators",
-            "class Listparamdec(Controller):",
-            "    @decorators.param('user_ids', 'user_ids[]', type=int, action='append_list')",
-            "    def GET(self, **kwargs):",
-            "        return int(''.join(map(str, kwargs['user_ids'])))",
-            ""
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def POST(self, **kwargs):",
+            "        self.response.headers['content-type'] = 'text/plain'",
+            "        return self.request.body",
         ])
 
+        body = "plain text body"
+        #c = self.create_client(headers={"content-type": "text/plain"})
         c = self.create_client()
-        r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
-        self.assertEqual("1234", r.body)
+        r = c.post("/", body)
+        self.assertEqual(200, r.code)
+        self.assertEqual(body, r.body)
+        self.assertEqual(String(body), String(r._body))
 
-    def test_post_basic(self):
+    def test_response_body_1(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def POST(self, **kwargs):",
+            "        content_type = '{};charset={}'.format(",
+            "            kwargs['content_type'],",
+            "            self.encoding",
+            "        )",
+            "        self.response.set_header('content-type', content_type)",
+            "        return kwargs['body']",
+        ])
+
+        body = {'foo': testdata.get_words()}
+        c = self.create_client(json=True)
+
+        r = c.post('/', {'content_type': 'plain/text', 'body': body})
+        self.assertEqual(ByteString(body), r._body)
+        self.assertEqual(String(body), r.body)
+
+        r = c.post('/', {'content_type': 'application/json', 'body': body})
+        self.assertEqual(json.dumps(body), r.body)
+
+        r = c.post('/', {'content_type': 'application/json', 'body': {}})
+        self.assertEqual("{}", r.body)
+
+    def test_versioning(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import version",
@@ -213,128 +341,13 @@ class WebTestCase(TestCase):
         r = c.post('/', {}, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
-        r = c.post('/', {"foo": "bar"}, headers={"Accept": "application/json;version=v2"})
+        r = c.post(
+            '/',
+            {"foo": "bar"},
+            headers={"Accept": "application/json;version=v2"}
+        )
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
-
-    def test_404_request(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Foo(Controller):",
-            "    def GET(self, **kwargs): pass",
-            "",
-        ])
-
-        c = self.create_client()
-        r = c.get('/foo/bar/baz?che=1&boo=2')
-        self.assertEqual(404, r.code)
-
-    def test_response_headers(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        self.response.set_header('FOO_BAR', 'check')",
-            "",
-        ])
-
-        c = self.create_client()
-        r = c.get('/')
-        self.assertEqual(204, r.code)
-        self.assertTrue("foo-bar" in r.headers)
-
-    def test_file_stream(self):
-        content = "this is a text file to stream"
-        filepath = testdata.create_file("filename.txt", content)
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self, *args, **kwargs):",
-            "        f = open('{}')".format(filepath),
-            "        self.response.set_header('content-type', 'text/plain')",
-            "        return f",
-            "",
-        ])
-
-        c = self.create_client()
-        r = c.get('/')
-        self.assertEqual(200, r.code)
-        self.assertEqual(content, r.body)
-        #self.assertTrue(r.body)
-
-    def test_generators(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        for x in range(100):",
-            "            yield x",
-        ])
-
-        c = self.create_client()
-        r = c.get('/')
-        content = list(range(100))
-        self.assertEqual(200, r.code)
-        self.assertEqual(content, r._body)
-
-    def test_response_body_1(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def POST(self, **kwargs):",
-            "        content_type = '{};charset={}'.format(kwargs['content_type'], self.encoding)",
-            "        self.response.set_header('content-type', content_type)",
-            "        return kwargs['body']",
-        ])
-
-        body = {'foo': testdata.get_words()}
-        c = self.create_client(json=True)
-
-        r = c.post('/', {'content_type': 'plain/text', 'body': body})
-        self.assertEqual(ByteString(body), r._body)
-        self.assertEqual(String(body), r.body)
-
-        r = c.post('/', {'content_type': 'application/json', 'body': body})
-        self.assertEqual(json.dumps(body), r.body)
-
-        r = c.post('/', {'content_type': 'application/json', 'body': {}})
-        self.assertEqual("{}", r.body)
-
-    def test_response_body_json_error(self):
-        """I was originally going to have the body method smother the error, but
-        after thinking about it a little more, I think it is better to bubble up
-        the error and rely on the user to handle it in their code"""
-
-        # 1-13-2021 update, turns out response body is buried, an error is
-        # raised but the server returns a 200 because the headers are already
-        # sent before the body is encoded, so all the headers are sent but body
-        # is empty
-        self.skip_test("")
-
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        class Foo(object): pass",
-            "        return {'foo': Foo()}",
-        ])
-
-        c = self.create_client()
-        r = c.get('/')
-        pout.v(r.code, r.body)
-        return
-
-
-
-        self.skip_test("moved from http.ResponseTest, make this work at some point")
-        class Foo(object): pass
-        b = {'foo': Foo()}
-
-        r = Response()
-        r.headers['Content-Type'] = 'application/json'
-        r.body = b
-        with self.assertRaises(TypeError):
-            rb = r.body
 
 
 class WebsocketTestCase(TestCase):

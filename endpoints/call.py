@@ -184,20 +184,27 @@ class Call(object):
             controller_info = req.controller_info
 
             # filter out TypeErrors raised from non handler methods
-            correct_prefix = e_msg.startswith(controller_info["method_prefix"]) or \
-                e_msg.startswith(controller_info["method_fallback"])
+            correct_prefix = controller_info["method_name"] in e_msg
+#             correct_prefix = e_msg.startswith(controller_info["method_prefix"]) or \
+#                 e_msg.startswith(controller_info["method_fallback"])
 
             if correct_prefix and 'argument' in e_msg:
                 # there are subtle messaging differences between py2 and py3
-                pos_errs = ["takes exactly", "takes no arguments", "positional argument"]
-                if (pos_errs[0] in e_msg) or (pos_errs[1] in e_msg) or (pos_errs[2] in e_msg):
+                errs = [
+                    "takes exactly",
+                    "takes no arguments",
+                    "positional argument"
+                ]
+                if (errs[0] in e_msg) or (errs[1] in e_msg) or (errs[2] in e_msg):
                     # TypeError: <METHOD>() takes exactly M argument (N given)
                     # TypeError: <METHOD>() takes no arguments (N given)
                     # TypeError: <METHOD>() takes M positional arguments but N were given
+                    # TypeError: <METHOD>() takes 1 positional argument but N were given
                     # we shouldn't ever get the "takes no arguments" case because of self,
                     # but just in case
                     # check if there are path args, if there are then 404, if not then 405
-                    logger.debug(e_msg, exc_info=True)
+                    #logger.debug(e_msg, exc_info=True)
+                    logger.debug(e_msg)
 
                     if len(controller_info["method_args"]):
                         res.code = 404
@@ -212,14 +219,17 @@ class Call(object):
                         # if the binding of just the *args works then the
                         # problem is the **kwargs so a 405 is appropriate,
                         # otherwise return a 404
-                        inspect.getcallargs(controller_info["method"], *controller_info["method_args"])
+                        inspect.getcallargs(
+                            controller_info["method"],
+                            *controller_info["method_args"]
+                        )
                         res.code = 405
 
                         logger.warning("Controller method {}.{}.{}".format(
                             controller_info['module_name'],
                             controller_info['class_name'],
                             e_msg
-                        ), exc_info=True)
+                        ))
 
                     except TypeError:
                         res.code = 404
@@ -227,7 +237,10 @@ class Call(object):
                 elif "multiple values" in e_msg:
                     # TypeError: <METHOD>() got multiple values for keyword argument '<NAME>'
                     try:
-                        inspect.getcallargs(controller_info["method"], *controller_info["method_args"])
+                        inspect.getcallargs(
+                            controller_info["method"],
+                            *controller_info["method_args"]
+                        )
                         res.code = 409
                         logger.warning(e)
 
@@ -302,7 +315,7 @@ class Router(object):
 
         return ret
 
-    def __init__(self, controller_prefixes):
+    def __init__(self, controller_prefixes, **kwargs):
         if not controller_prefixes:
             raise ValueError("controller_prefixes is empty")
 

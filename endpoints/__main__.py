@@ -95,7 +95,7 @@ class Console(object):
 
     def create_parser(self):
         parser = argparse.ArgumentParser(
-            description='Start an endpoints WSGI server',
+            description='Start an endpoints server',
             add_help=True,
             # https://stackoverflow.com/a/12151325/5006
             formatter_class=argparse.ArgumentDefaultsHelpFormatter

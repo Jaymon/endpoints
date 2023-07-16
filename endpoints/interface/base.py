@@ -5,12 +5,28 @@ import logging
 import json
 import sys
 from functools import partial
+import io
+import email
+import time
+
+from datatypes import String
 
 from ..http import Request, Response
 from .. import environ
 from ..call import Router, Call
 from ..decorators import property
-from ..exception import CallError, Redirect, CallStop, AccessDenied
+#from ..exception import CallError, Redirect, CallStop, AccessDenied
+
+from ..exception import (
+    CallError,
+    Redirect,
+    CallStop,
+    AccessDenied,
+    RouteError,
+    VersionError,
+    CloseConnection,
+)
+
 from ..utils import ByteString, JSONEncoder
 
 
@@ -18,11 +34,8 @@ logger = logging.getLogger(__name__)
 
 
 class ApplicationABC(object):
-
-#     @property
-#     def hostloc(self):
-#         """Return host:port string that the server is using to answer requests"""
-#         raise NotImplementedError()
+    async def __call__(self, *args, **kwargs):
+        raise NotImplementedError()
 
     async def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints
@@ -35,6 +48,9 @@ class ApplicationABC(object):
         raise NotImplementedError()
 
     async def create_request_body(self, request, raw_request, **kwargs):
+        """
+        :returns: tuple[Any, list, dict], returns raw_body, body_args, body_kwargs
+        """
         raise NotImplementedError()
 
     async def handle_request(self):
@@ -57,11 +73,6 @@ class BaseApplication(ApplicationABC):
     """the controller prefixes (python module paths) you want to use to find your
     Controller subclasses"""
 
-#     backend_class = None
-    """the supported server's interface, there is no common interface for this class.
-    Basically it is the raw backend class that the BaseServer child is translating
-    for endpoints compatibility"""
-
     request_class = Request
     """the endpoints.http.Request compatible class that should be used to make
     Request() instances"""
@@ -78,15 +89,6 @@ class BaseApplication(ApplicationABC):
     """the endpoints.call.Call compatible class that should be used to make a
     Call() instance"""
 
-#     connection_class = None
-    """the endpoints.interface.BaseConnection compatible class that is used for long
-    running connections like websockets"""
-
-#     @property(cached="_backend")
-#     def backend(self):
-#         ret = self.create_backend()
-#         return ret
-
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             self.controller_prefixes = controller_prefixes
@@ -100,68 +102,146 @@ class BaseApplication(ApplicationABC):
             if k.endswith("_class"):
                 setattr(self, k, v)
 
-#     def create_connection(self, **kwargs):
-#         return self.connection_class(self, **kwargs)
+    async def set_request_body(self, request, body, **kwargs):
+        if request.headers.is_chunked():
+            raise IOError("Chunked bodies are not supported")
 
-#     def create_backend(self, **kwargs):
-#         """create instance of the backend class.
-# 
-#         Endpoints works by translating incoming requests from this instance to something
-#         endpoints understands in create_request() and then translating the response
-#         from endpoints back into something the backend understands in handle_request()
-# 
-#         :returns: mixed, an instance of the backend class
-#         """
-#         return self.backend_class(**kwargs)
+        args = []
+        kwargs = {}
+
+        if body:
+            if request.headers.is_json():
+                jb = json.loads(body)
+
+                if isinstance(jb, dict):
+                    kwargs = jb
+
+                elif isinstance(jb, list):
+                    args = jb
+
+                else:
+                    args = [jb]
+
+            elif request.headers.is_urlencoded():
+                kwargs = request._parse_query_str(body)
+
+            elif request.headers.is_multipart():
+                em = email.message_from_bytes(bytes(request.headers) + body)
+                for part in em.walk():
+                    if not part.is_multipart():
+                        data = part.get_payload(decode=True)
+                        params = {}
+                        for header_name in part:
+                            for k, v in part.get_params(header=header_name)[1:]:
+                                params[k] = v
+
+                        if "name" not in params:
+                            raise IOError("Bad body data")
+
+                        if "filename" in params:
+                            fp = io.BytesIO(data)
+                            fp.filename = params["filename"]
+                            kwargs[params["name"]] = fp
+
+                        else:
+                            kwargs[params["name"]] = String(data)
+
+            elif request.headers.is_plain():
+                body = String(body, encoding=request.encoding)
+
+        request.body = body
+        request.body_args = args
+        request.body_kwargs = kwargs
 
     async def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used to
         return output to the client"""
         return self.response_class()
 
-    async def create_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
+    async def get_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
         """usually when iterating this object it means we are returning the response
         of a wsgi request, so this will iterate the body and make sure it is a bytes
         string because wsgiref requires an actual bytes instance, a child class won't work
 
         :returns: a generator that yields bytes strings
         """
-        if not response.has_body(): return
+        if response.has_body():
 
-        body = response.body
+            body = response.body
 
-        if response.is_file():
-            if body.closed:
-                raise IOError("cannot read streaming body because pointer is closed")
+            if response.is_file():
+                if body.closed:
+                    raise IOError(
+                        "cannot read streaming body because pointer is closed"
+                    )
 
-            # http://stackoverflow.com/questions/15599639/whats-perfect-counterpart-in-python-for-while-not-eof
-            for chunk in iter(partial(body.read, 8192), ''):
-                yield ByteString(chunk, response.encoding).raw()
+                # http://stackoverflow.com/questions/15599639/
+                for chunk in iter(partial(body.read, 8192), ''):
+                    yield ByteString(chunk, response.encoding).raw()
 
-            # close the pointer since we've consumed it
-            body.close()
+                # close the pointer since we've consumed it
+                body.close()
 
-        elif response.is_json():
-            # TODO ???
-            # I don't like this, if we have a content type but it isn't one
-            # of the supported ones we were returning the exception, which threw
-            # Jarid off, but now it just returns a string, which is not best either
-            # my thought is we could have a body_type_subtype method that would 
-            # make it possible to easily handle custom types
-            # eg, "application/json" would become: self.body_application_json(b, is_error)
-            body = json.dumps(body, cls=json_encoder)
-            yield ByteString(body, response.encoding).raw()
+            elif response.is_json():
+                # TODO ???
+                # I don't like this, if we have a content type but it isn't one
+                # of the supported ones we were returning the exception, which threw
+                # Jarid off, but now it just returns a string, which is not best either
+                # my thought is we could have a body_type_subtype method that would 
+                # make it possible to easily handle custom types
+                # eg, "application/json" would become: self.body_application_json(b, is_error)
+                body = json.dumps(body, cls=json_encoder)
+                yield ByteString(body, response.encoding).raw()
+
+            else:
+                # just return a string representation of body if no content type
+                yield ByteString(body, response.encoding).raw()
+
+    async def create_controller(self, request, response, **kwargs):
+        """Create a controller to handle the request
+
+        :returns: Controller, this Controller instance should be able to handle
+            the request
+        """
+        rou = await self.create_router(**kwargs)
+        controller = None
+
+        controller_info = {}
+        try:
+            controller_info = rou.find(request, response)
+
+        except IOError as e:
+            logger.warning(str(e), exc_info=True)
+            raise CallError(
+                408,
+                "The client went away before the request body was retrieved."
+            )
+
+        except (ImportError, AttributeError, TypeError) as e:
+            exc_info = sys.exc_info()
+            logger.warning(str(e), exc_info=exc_info)
+            raise CallError(
+                404,
+                "{} not found because of {} \"{}\" on {}:{}".format(
+                    request.path,
+                    exc_info[0].__name__,
+                    str(e),
+                    os.path.basename(exc_info[2].tb_frame.f_code.co_filename),
+                    exc_info[2].tb_lineno
+                )
+            )
 
         else:
-            # just return a string representation of body if no content type
-            yield ByteString(body, response.encoding).raw()
+            controller = controller_info['class_instance']
+
+        return controller
 
     async def create_call(self, raw_request, request=None, response=None, router=None, **kwargs):
         """create a call object that has endpoints understandable request and response
         instances"""
-        req = request if request else self.create_request(raw_request, **kwargs)
-        res = response if response else self.create_response(**kwargs)
-        rou = router if router else self.create_router(**kwargs)
+        req = request if request else await self.create_request(raw_request, **kwargs)
+        res = response if response else await self.create_response(**kwargs)
+        rou = router if router else await self.create_router(**kwargs)
         c = self.call_class(req, res, rou)
         return c
 
@@ -170,42 +250,186 @@ class BaseApplication(ApplicationABC):
         r = self.router_class(**kwargs)
         return r
 
-#     def serve_forever(self):
-#         try:
-#             while True: self.handle_request()
-# 
-#         except Exception as e:
-#             logger.exception(e)
-#             raise
-# 
-#     def serve_count(self, count):
-#         try:
-#             handle_count = 0
-#             while handle_count < count:
-#                 self.handle_request()
-#                 handle_count += 1
-# 
-#         except Exception as e:
-#             logger.exception(e)
-#             raise
+    async def handle(self, controller, **kwargs):
+        """Called from the interface to actually handle the request."""
+        request = controller.request
+        response = controller.response
+        start = time.time()
+
+        try:
+            controller.log_start(start)
+
+            # the controller handle method will manipulate self.response, it first
+            # tries to find a handle_HTTP_METHOD method, if it can't find that it
+            # will default to the handle method (which is implemented on Controller).
+            # method arguments are passed in so child classes can add decorators
+            # just like the HTTP_METHOD that will actually handle the request
+            controller_args, controller_kwargs = controller.find_method_params()
+            controller_method = getattr(
+                controller,
+                "handle_{}".format(request.method),
+                None
+            )
+            if not controller_method:
+                controller_method = getattr(controller, "handle")
+
+            logger.debug("Request handle method: {}.{}.{}".format(
+                controller.__class__.__module__,
+                controller.__class__.__name__,
+                controller_method.__name__
+            ))
+            # TODO check for aysnc handle method
+            controller_method(*controller_args, **controller_kwargs)
+
+        except CloseConnection:
+            raise
+
+        except Exception as e:
+            await self.handle_error(e, controller)
+
+        finally:
+            if response.code == 204:
+                response.headers.pop('Content-Type', None)
+                response.body = None # just to be sure since body could've been ""
+
+            if controller:
+                controller.log_stop(start)
+
+    async def handle_error(self, e, controller, **kwargs):
+        """if an exception is raised while trying to handle the request it will
+        go through this method
+
+        This method will set the response body and then also call Controller.handle_error
+        for further customization if the Controller is available
+
+        :param e: Exception, the error that was raised
+        :param **kwargs: dict, any other information that might be handy
+        """
+        req = controller.request
+        res = controller.response
+        res.body = e
+
+        if isinstance(e, CallStop):
+            logger.debug(String(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = e.body
+
+        elif isinstance(e, Redirect):
+            logger.debug(String(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = None
+
+        elif isinstance(e, (AccessDenied, CallError)):
+            logger.warning(String(e), exc_info=True)
+            res.code = e.code
+            res.add_headers(e.headers)
+
+        elif isinstance(e, NotImplementedError):
+            logger.warning(String(e), exc_info=True)
+            res.code = 501
+
+        elif isinstance(e, TypeError):
+            e_msg = String(e)
+            controller_info = req.controller_info
+
+            # filter out TypeErrors raised from non handler methods
+            correct_prefix = controller_info["method_name"] in e_msg
+            if correct_prefix and 'argument' in e_msg:
+                # there are subtle messaging differences between py2 and py3
+                errs = [
+                    "takes exactly",
+                    "takes no arguments",
+                    "positional argument"
+                ]
+                if (errs[0] in e_msg) or (errs[1] in e_msg) or (errs[2] in e_msg):
+                    # TypeError: <METHOD>() takes exactly M argument (N given)
+                    # TypeError: <METHOD>() takes no arguments (N given)
+                    # TypeError: <METHOD>() takes M positional arguments but N were given
+                    # TypeError: <METHOD>() takes 1 positional argument but N were given
+                    # we shouldn't ever get the "takes no arguments" case because of self,
+                    # but just in case
+                    # check if there are path args, if there are then 404, if not then 405
+                    #logger.debug(e_msg, exc_info=True)
+                    logger.debug(e_msg)
+
+                    if len(controller_info["method_args"]):
+                        res.code = 404
+
+                    else:
+                        res.code = 405
+
+                elif "unexpected keyword argument" in e_msg:
+                    # TypeError: <METHOD>() got an unexpected keyword argument '<NAME>'
+
+                    try:
+                        # if the binding of just the *args works then the
+                        # problem is the **kwargs so a 405 is appropriate,
+                        # otherwise return a 404
+                        inspect.getcallargs(
+                            controller_info["method"],
+                            *controller_info["method_args"]
+                        )
+                        res.code = 405
+
+                        logger.warning("Controller method {}.{}.{}".format(
+                            controller_info['module_name'],
+                            controller_info['class_name'],
+                            e_msg
+                        ))
+
+                    except TypeError:
+                        res.code = 404
+
+                elif "multiple values" in e_msg:
+                    # TypeError: <METHOD>() got multiple values for keyword argument '<NAME>'
+                    try:
+                        inspect.getcallargs(
+                            controller_info["method"],
+                            *controller_info["method_args"]
+                        )
+                        res.code = 409
+                        logger.warning(e)
+
+                    except TypeError:
+                        res.code = 404
+
+                else:
+                    res.code = 500
+                    logger.exception(e)
+
+            else:
+                res.code = 500
+                logger.exception(e)
+
+        else:
+            res.code = 500
+            logger.exception(e)
+
+        if controller:
+            error_method = getattr(
+                controller,
+                "handle_{}_error".format(res.code),
+                None
+            )
+            if not error_method:
+                error_method = getattr(
+                    controller,
+                    "handle_{}_error".format(req.method),
+                    None
+                )
+                if not error_method:
+                    error_method = getattr(controller, "handle_error")
+
+            logger.debug("Handle {} error using method: {}.{}".format(
+                res.code,
+                controller.__class__.__name__,
+                error_method.__name__
+            ))
+            error_method(e, **kwargs)
 
 
-# class BaseApplication(BaseServer):
-#     def __call__(self, *args, **kwargs):
-#         raise NotImplementedError()
-# 
-#     def create_backend(self, **kwargs):
-#         raise NotImplementedError()
-# 
-#     def handle_request(self):
-#         raise NotImplementedError()
-# 
-#     def serve_forever(self):
-#         raise NotImplementedError()
-# 
-#     def serve_count(self, count):
-#         raise NotImplementedError()
-# 
 
 
 
@@ -213,14 +437,7 @@ class BaseApplication(ApplicationABC):
 
 
 
-
-
-
-
-
-
-
-
+# TODO -- this is used by client.WebSocketClient
 class Payload(object):
     """We have a problem with generic websocket support, websockets don't have an
     easy way to decide how they will send stuff back and forth like http (where you
@@ -246,7 +463,7 @@ class Payload(object):
         return json.dumps(kwargs, cls=JSONEncoder)
 
 
-class BaseWebsocketServer(BaseServer):
+class BaseWebsocketServer(BaseApplication):
 
     payload_class = Payload
 

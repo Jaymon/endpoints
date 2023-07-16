@@ -16,7 +16,7 @@ import io
 from datatypes import (
     Url as BaseUrl,
     Host,
-    HTTPHeaders as BaseHeaders,
+    HTTPHeaders as Headers,
     HTTPEnviron as Environ,
 )
 
@@ -34,37 +34,13 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-class Headers(BaseHeaders):
-    def is_plain(self):
-        """return True if body's content-type is text/plain"""
-        ct = self.get("Content-Type", "")
-        return "plain" in ct
-
-    def is_json(self):
-        """return True if body's content-type is application/json"""
-        ct = self.get("Content-Type", "")
-        return "json" in ct
-
-    def is_urlencoded(self):
-        """return True if body's content-type is application/x-www-form-urlencoded"""
-        ct = self.get("Content-Type", "")
-        return ("form-urlencoded" in ct) or ("form-data" in ct)
-
-    def is_multipart(self):
-        """return True if body's content-type is multipart/form-data"""
-        ct = self.get("Content-Type", "")
-        return "multipart" in ct
-
-
-class Body(cgi.FieldStorage, object):
+class Body(cgi.FieldStorage):
     """Wraps the default FieldStorage to handle json and also recovers when the
     input fails to parse correctly
 
     https://github.com/python/cpython/blob/2.7/Lib/cgi.py
     https://github.com/python/cpython/blob/3.8/Lib/cgi.py
     """
-    FieldStorageClass = cgi.FieldStorage
-
     @property(cached="_args")
     def args(self):
         return getattr(self, "json_args", [])
@@ -89,7 +65,6 @@ class Body(cgi.FieldStorage, object):
 
                 else:
                     body_kwargs[field_name] = body_field.value
-
 
         return body_kwargs
 

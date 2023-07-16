@@ -8,7 +8,7 @@ import logging
 import testdata
 
 from endpoints import environ
-from endpoints.interface import BaseServer
+#from endpoints.interface import BaseServer
 
 
 testdata.basic_logging()
@@ -17,7 +17,9 @@ testdata.basic_logging()
 #logger = logging.getLogger(__name__)
 
 
-class Server(BaseServer):
+# TODO make this work with new Application focus code
+class Server(object):
+#class Server(BaseServer):
     """This is just a wrapper to get access to the Interface handling code"""
     def __init__(self, controller_prefix="", contents=""):
         if not controller_prefix:
