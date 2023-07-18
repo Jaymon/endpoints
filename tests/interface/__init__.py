@@ -9,13 +9,15 @@ from unittest import TestSuite
 
 from endpoints.compat import *
 from endpoints.client import WebClient, WebsocketClient
+from endpoints.interface.base import BaseApplication
 from .. import TestCase as BaseTestCase
 
 
 class TestCase(BaseTestCase):
-    server = None
-    server_class = None # this should be a client.Server class
+    #server = None
+    #server_class = None # this should be a client.Server class
     client_class = WebClient
+    #application_class = BaseApplication
 
     def setUp(self):
         if self.server:
@@ -24,29 +26,6 @@ class TestCase(BaseTestCase):
     def tearDown(self):
         if self.server:
             self.server.stop()
-
-    def create_server(self, contents, config_contents='', **kwargs):
-        tdm = testdata.create_module(
-            data=contents,
-            modpath=kwargs.get("controller_prefix", "")
-        )
-
-        kwargs["controller_prefix"] = tdm
-        kwargs["host"] = self.get_host()
-        kwargs["cwd"] = tdm.basedir
-
-        if config_contents:
-            config_path = testdata.create_file(
-                data=config_contents,
-                ext=".py",
-            )
-            kwargs["config_path"] = config_path
-
-        server = self.server_class(**kwargs)
-        server.stop()
-        server.start()
-        self.server = server
-        return server
 
     def create_client(self, **kwargs):
         kwargs.setdefault("host", self.server.host)
@@ -348,6 +327,10 @@ class WebTestCase(TestCase):
         )
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
+
+
+
+
 
 
 class WebsocketTestCase(TestCase):

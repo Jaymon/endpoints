@@ -18,11 +18,7 @@ class Application(BaseApplication):
 
         request = await self.create_request(scope, receive=receive)
         response = await self.create_response()
-        controller = await self.create_controller(request, response)
-        await self.handle(controller)
-
-#         c = await self.create_call(scope, receive=receive)
-#         res = c.handle() # TODO this should be async
+        await self.handle(request, response)
 
         await send({
             "type": "http.response.start",
@@ -60,8 +56,6 @@ class Application(BaseApplication):
         request.scheme = raw_request["scheme"]
         request.host, request.port = raw_request["server"]
 
-        #pout.v(request.headers)
-
         d = await receive()
         body = d["body"]
         while d["more_body"]:
@@ -72,25 +66,6 @@ class Application(BaseApplication):
 
         request.raw_request = raw_request
         return request
-
-
-#     async def create_request_body(self, request, receive, **kwargs):
-#         d = await receive()
-#         body = d["body"]
-#         while d["more_body"]:
-#             d = await receive()
-#             body += d["body"]
-# 
-#         return await super().create_request_body(
-#             request,
-#             body,
-#             **kwargs
-#         )
-
-#         request.body = request.create_body(io.BytesIO(body))
-#         body_kwargs = request.body.kwargs
-#         body_args = request.body.args
-#         return request
 
 
 class ApplicationFactory(object):

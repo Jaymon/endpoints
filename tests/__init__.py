@@ -4,11 +4,13 @@ from unittest import skipIf, SkipTest
 import os
 import sys
 import logging
+import asyncio
 
 import testdata
 
 from endpoints import environ
-#from endpoints.interface import BaseServer
+from endpoints.interface.base import BaseApplication
+from endpoints.http import Request
 
 
 testdata.basic_logging()
@@ -17,39 +19,20 @@ testdata.basic_logging()
 #logger = logging.getLogger(__name__)
 
 
-# TODO make this work with new Application focus code
 class Server(object):
-#class Server(BaseServer):
     """This is just a wrapper to get access to the Interface handling code"""
-    def __init__(self, controller_prefix="", contents=""):
-        if not controller_prefix:
-            controller_prefix = testdata.get_module_name()
+    def __init__(self, *args, **kwargs):
+        self.application = BaseApplication(*args, **kwargs)
 
-        super(Server, self).__init__(
-            controller_prefixes=[controller_prefix]
-        )
+    def create_request(self, path, method, **kwargs):
+        req = asyncio.run(self.application.create_request(None))
+        req.method = method.upper()
 
-        if isinstance(contents, dict):
-            d = {}
-            for k, v in contents.items():
-                if k:
-                    d[".".join([controller_prefix, k])] = v
-                else:
-                    d[controller_prefix] = v
-            self.controllers = testdata.create_modules(d)
-
-        else:
-            self.controller = testdata.create_module(controller_prefix, contents=contents)
-
-    def create_request(self, path):
-        req = self.request_class()
-        req.method = self.method.upper()
-
-        version = self.kwargs.pop("version", None)
+        version = kwargs.pop("version", None)
         if version is not None:
             req.set_header('Accept', '*/*;version={}'.format(version))
 
-        d = dict(self.kwargs)
+        d = dict(kwargs)
         d.setdefault("host", "endpoints.fake")
         for k, v in d.items():
             setattr(req, k, v)
@@ -57,17 +40,30 @@ class Server(object):
         req.path = path
         return req
 
-    def handle(self, path, method="GET", **kwargs):
+    def start(self):
+        pass
+
+    def stop(self):
+        pass
+
+#     def create_response(self):
+#         return asyncio.run(self.application.create_response())
+# 
+#     def create_controller(self, path, method, **kwargs):
+#         request = self.create_request(path, method, **kwargs)
+#         response = asyncio.run(self.application.create_response())
+#         return asyncio.run(self.application.create_controller(request, response))
+
+    def handle(self, path="", method="GET", **kwargs):
         """This isn't technically needed but just makes it explicit you pass in the
         path you want and this will translate that and handle the request
 
         :param path: string, full URI you are requesting (eg, /foo/bar)
         """
-        self.method = method
-        self.kwargs = kwargs
-        c = self.create_call(path)
-        c.handle()
-        return c.response
+        request = self.create_request(path, method, **kwargs)
+        response = asyncio.run(self.application.create_response())
+        asyncio.run(self.application.handle(request, response))
+        return response
 
     def post(self, path, body_kwargs, **kwargs):
         return self.handle(path, method="POST", body_kwargs=body_kwargs, **kwargs)
@@ -75,15 +71,75 @@ class Server(object):
     def get(self, path, query_kwargs, **kwargs):
         return self.handle(path, method="GET", query_kwargs=query_kwargs, **kwargs)
 
-    def path(self, *args):
-        bits = [""]
-        pout.v(self.controller.name)
-        bits.append(self.controller.name)
-        bits.extend(args)
-        return "/".join(bits)
+    def find(self, path="", method="GET", **kwargs):
+        request = self.create_request(path, method, **kwargs)
+        return asyncio.run(
+            self.application.find_controller_info(request, **kwargs)
+        )
+
+
+#     def path(self, *args):
+#         bits = [""]
+#         pout.v(self.controller.name)
+#         bits.append(self.controller.name)
+#         bits.extend(args)
+#         return "/".join(bits)
 
 
 class TestCase(testdata.TestCase):
+    server = None
+
+    server_class = Server
+
+    application_class = BaseApplication
+
     def get_host(self):
         return environ.HOST
+
+    def create_server(self, contents="", config_contents="", **kwargs):
+        if contents:
+            tdm = self.create_controller_module(contents, **kwargs)
+            kwargs["cwd"] = tdm.basedir
+            kwargs["controller_prefix"] = tdm
+
+        kwargs["host"] = self.get_host()
+
+        if config_contents:
+            config_path = testdata.create_file(
+                data=config_contents,
+                ext=".py",
+            )
+            kwargs["config_path"] = config_path
+
+        server = self.server_class(**kwargs)
+        server.stop()
+        server.start()
+        self.server = server
+        return server
+
+    def create_controller_module(self, contents, **kwargs):
+        if isinstance(contents, dict):
+            controller_prefix = kwargs.get("controller_prefix", "")
+            if not controller_prefix:
+                controller_prefix = testdata.get_module_name()
+
+            basedir = testdata.create_modules({controller_prefix: contents})
+            controller_prefix = basedir.modpath(controller_prefix)
+
+        else:
+            controller_prefix = testdata.create_module(
+                data=contents,
+                modpath=kwargs.get("controller_prefix", "")
+            )
+
+        return controller_prefix
+
+    def create_application(self, *args, **kwargs):
+        return self.application_class(*args, **kwargs)
+
+#     def create_request(self, path="", method="GET"):
+#         request = Request()
+#         request.method = method
+#         request.path = path
+#         return request
 

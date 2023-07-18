@@ -21,7 +21,7 @@ from .exception import (
 )
 from .http import Request, Response, Url
 from .utils import AcceptHeader
-from .call import Controller, Router, Call
+from .call import Controller, Router
 from . import decorators
 from .decorators import param, route, version # this is for fluidity/convenience
 

@@ -231,6 +231,37 @@ class RequestTest(TestCase):
         v = r.get_header('happy-days')
         self.assertEqual('are-here-again', v)
 
+    def test_get_version(self):
+        r = Request()
+        r.set_header('accept', 'application/json;version=v1')
+
+        v = r.version()
+        self.assertEqual("v1", v)
+
+        v = r.version("application/json")
+        self.assertEqual("v1", v)
+
+        v = r.version("plain/text")
+        self.assertEqual("", v)
+
+    def test_get_version_default(self):
+        """turns out, calls were failing if there was no accept header even if there were defaults set"""
+        r = Request()
+        r.headers = {}
+        self.assertEqual("", r.version('application/json'))
+
+        r = Request()
+        r.set_header('accept', 'application/json;version=v1')
+        self.assertEqual('v1', r.version())
+
+        r = Request()
+        r.set_header('accept', '*/*')
+        self.assertEqual("", r.version('application/json'))
+
+        r = Request()
+        r.set_header('accept', '*/*;version=v8')
+        self.assertEqual('v8', r.version('application/json'))
+
 
 class ResponseTest(TestCase):
     def test_headers(self):

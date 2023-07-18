@@ -4,16 +4,17 @@ import os
 import logging
 import json
 import sys
-from functools import partial
+import functools
 import io
 import email
 import time
+import inspect
 
-from datatypes import String
+from datatypes import String, ReflectModule
 
 from ..http import Request, Response
 from .. import environ
-from ..call import Router, Call
+from ..call import Router, Controller
 from ..decorators import property
 #from ..exception import CallError, Redirect, CallStop, AccessDenied
 
@@ -37,29 +38,6 @@ class ApplicationABC(object):
     async def __call__(self, *args, **kwargs):
         raise NotImplementedError()
 
-    async def create_request(self, raw_request, **kwargs):
-        """convert the raw interface raw_request to a request that endpoints
-        understands
-
-        :params raw_request: mixed, this is the request given by backend
-        :params **kwargs:
-            :returns: an http.Request instance that endpoints understands
-        """
-        raise NotImplementedError()
-
-    async def create_request_body(self, request, raw_request, **kwargs):
-        """
-        :returns: tuple[Any, list, dict], returns raw_body, body_args, body_kwargs
-        """
-        raise NotImplementedError()
-
-    async def handle_request(self):
-        """this should be able to get a raw_request, pass it to create_call(),
-        then use the Call instance to handle the request, and then send a response
-        back to the backend
-        """
-        raise NotImplementedError()
-
 
 class BaseApplication(ApplicationABC):
     """all servers should extend this and implemented the NotImplemented methods,
@@ -81,28 +59,48 @@ class BaseApplication(ApplicationABC):
     """the endpoints.http.Response compatible class that should be used to make
     Response() instances"""
 
-    router_class = Router
+#     router_class = Router
     """the endpoints.call.Router compatible class that handles translating a request
     into the Controller class and method that will actual run"""
 
-    call_class = Call
-    """the endpoints.call.Call compatible class that should be used to make a
-    Call() instance"""
+    controller_class = Controller
 
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             self.controller_prefixes = controller_prefixes
+
         else:
             if "controller_prefix" in kwargs:
                 self.controller_prefixes = [kwargs["controller_prefix"]]
+
             else:
                 self.controller_prefixes = environ.get_controller_prefixes()
+
+#         self.controller_modpaths = set()
+#         for controller_prefix in self.controller_prefixes:
+#             rm = ReflectModule(controller_prefix)
+#             self.controller_modpaths.update(rm.module_names())
 
         for k, v in kwargs.items():
             if k.endswith("_class"):
                 setattr(self, k, v)
 
+    async def create_request(self, raw_request, **kwargs):
+        """convert the raw interface raw_request to a request that endpoints
+        understands
+
+        :params raw_request: mixed, this is the request given by backend
+        :params **kwargs:
+            :returns: an http.Request instance that endpoints understands
+        """
+        request = self.request_class()
+        request.raw_request = raw_request
+        return request
+
     async def set_request_body(self, request, body, **kwargs):
+        """
+        :returns: tuple[Any, list, dict], returns raw_body, body_args, body_kwargs
+        """
         if request.headers.is_chunked():
             raise IOError("Chunked bodies are not supported")
 
@@ -161,7 +159,8 @@ class BaseApplication(ApplicationABC):
     async def get_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
         """usually when iterating this object it means we are returning the response
         of a wsgi request, so this will iterate the body and make sure it is a bytes
-        string because wsgiref requires an actual bytes instance, a child class won't work
+        string because wsgiref requires an actual bytes instance, a child class
+        won't work
 
         :returns: a generator that yields bytes strings
         """
@@ -176,7 +175,7 @@ class BaseApplication(ApplicationABC):
                     )
 
                 # http://stackoverflow.com/questions/15599639/
-                for chunk in iter(partial(body.read, 8192), ''):
+                for chunk in iter(functools.partial(body.read, 8192), ''):
                     yield ByteString(chunk, response.encoding).raw()
 
                 # close the pointer since we've consumed it
@@ -185,11 +184,12 @@ class BaseApplication(ApplicationABC):
             elif response.is_json():
                 # TODO ???
                 # I don't like this, if we have a content type but it isn't one
-                # of the supported ones we were returning the exception, which threw
-                # Jarid off, but now it just returns a string, which is not best either
-                # my thought is we could have a body_type_subtype method that would 
-                # make it possible to easily handle custom types
-                # eg, "application/json" would become: self.body_application_json(b, is_error)
+                # of the supported ones we were returning the exception, which
+                # threw Jarid off, but now it just returns a string, which is not
+                # best either my thought is we could have a body_type_subtype
+                # method that would make it possible to easily handle custom
+                # types, eg, "application/json" would become:
+                #    self.body_application_json(b, is_error)
                 body = json.dumps(body, cls=json_encoder)
                 yield ByteString(body, response.encoding).raw()
 
@@ -197,66 +197,235 @@ class BaseApplication(ApplicationABC):
                 # just return a string representation of body if no content type
                 yield ByteString(body, response.encoding).raw()
 
+    @functools.cache
+    def get_controller_module_paths(self):
+        controller_modpaths = set()
+        for controller_prefix in self.controller_prefixes:
+            rm = ReflectModule(controller_prefix)
+            controller_modpaths.update(rm.module_names())
+
+        return controller_modpaths
+
+    async def get_controller_class(self, module, class_name):
+        """try and get the class_name from the module and make sure it is a valid
+        controller"""
+        # let's get the class
+        class_name = class_name.capitalize()
+        class_object = getattr(module, class_name, None)
+        if not class_object or not issubclass(class_object, Controller):
+            class_object = None
+
+        return class_object
+
+    async def find_controller_class(self, module, path_args, **kwargs):
+        named_class = None
+        default_class = None
+
+        class_fallback = kwargs.get("class_fallback", "Default")
+
+        if path_args:
+            named_class = await self.get_controller_class(
+                module,
+                path_args[0]
+            )
+
+        if not named_class:
+            default_class = await self.get_controller_class(
+                module,
+                class_fallback,
+            )
+
+        return named_class, default_class
+
+    async def find_controller_info(self, request, **kwargs):
+        """returns the module_name and remaining path args.
+
+        :returns: tuple, (controller_prefix, module_name, module_path, path_args),
+            where controller_prefix is the prefix the module was found in and module_name
+            is the python module path (eg, foo.bar.che) and module_path is a list
+            of the different parts (eg, ["foo", "bar", "che"]) and path_args are
+            the remaining path_args after finding the module
+        """
+        logger.debug("Compiling Controller info using path: {}".format(
+            request.path
+        ))
+
+        ret = {
+            "module_name": "",
+            "module_path_args": [],
+            "controller_path_args": [],
+        }
+        default_ret = {}
+        named_ret = {}
+
+        path_args = list(request.path_args)
+        class_fallback = kwargs.get("class_fallback", "Default")
+
+        controller_modpaths = self.get_controller_module_paths()
+        for controller_prefix in self.controller_prefixes:
+            modpath = controller_prefix
+            # using the path_args we are going to try and find the best module
+            # path for the request
+            while path_args:
+                modpath += "." + path_args[0]
+                if modpath in controller_modpaths:
+                    ret["module_name"] = modpath
+                    ret["module_path_args"].append(path_args[0])
+                    ret["controller_path_args"].append(path_args.pop(0))
+                    ret["controller_prefix"] = controller_prefix
+
+                else:
+                    break
+
+            if ret["module_name"]:
+                # TODO -- this maybe could be broken out into a
+                # find_controller_class method that takes the controller and
+                # looks for class with path args and Default, returns class
+                # and method args. That would simplify this section and
+                # the next section which does basically the same thing
+                ret["module"] = ReflectModule(ret["module_name"]).module()
+
+                if path_args:
+                    controller_class = await self.get_controller_class(
+                        ret["module"],
+                        path_args[0]
+                    )
+
+                    if controller_class:
+                        ret["controller_path_args"].append(path_args.pop(0))
+
+                if not controller_class:
+                    controller_class = await self.get_controller_class(
+                        ret["module"],
+                        class_fallback,
+                    )
+
+                if controller_class:
+                    ret["class"] = controller_class
+
+                else:
+                    raise TypeError(
+                        " ".join([
+                            "Could not find a valid module and Controller",
+                            f"class for {request.path}"
+                        ])
+                    )
+
+                break
+
+            else:
+                # we didn't find the correct module using module paths, so now let's
+                # try class paths, first found class path wins
+                if not named_ret:
+                    # look for a class name with the first path arg, this will be
+                    # used if a matching module isn't found
+                    if path_args:
+                        controller_module = ReflectModule(
+                            controller_prefix
+                        ).module()
+                        controller_class = await self.get_controller_class(
+                            controller_module,
+                            path_args[0]
+                        )
+                        if controller_class:
+                            named_ret["class"] = controller_class
+                            named_ret["module"] = controller_module
+                            named_ret["module_name"] = controller_prefix
+                            named_ret["controller_prefix"] = controller_prefix
+                            named_ret["controller_path_args"] = [path_args.pop(0)]
+
+                if not default_ret:
+                    # look for the default class just in case, this is a first
+                    # match wins scenario. Basically, the first controller default
+                    # class found will be the class that answers the call unless
+                    # a class matching a path arg is found
+                    controller_module = ReflectModule(
+                        controller_prefix
+                    ).module()
+                    controller_class = await self.get_controller_class(
+                        controller_module,
+                        class_fallback,
+                    )
+                    if controller_class:
+                        default_ret["class"] = controller_class
+                        default_ret["module"] = controller_module
+                        default_ret["module_name"] = controller_prefix
+                        default_ret["controller_prefix"] = controller_prefix
+
+        if not ret["module_name"]:
+            if named_ret:
+                ret.update(named_ret)
+
+            elif default_ret:
+                ret.update(default_ret)
+
+            else:
+                raise TypeError(
+                    " ".join([
+                        "Could not find a valid module with path",
+                        "{} and controller_prefixes {}".format(
+                            request.path,
+                            self.controller_prefixes
+                        )
+                    ])
+                )
+
+        ret["method_args"] = path_args
+        # we merge the leftover path args with the body kwargs
+        ret['method_args'].extend(request.body_args)
+
+        ret['method_kwargs'] = request.kwargs
+
+        ret["method_prefix"] = request.method.upper()
+        ret["method_fallback"] = kwargs.get("method_fallback", "ANY")
+
+        ret['module_path'] = "/".join(ret["module_path_args"])
+        ret['class_name'] = ret["class"].__name__
+        ret['class_path'] = "/".join(ret["controller_path_args"])
+
+        return ret
+
     async def create_controller(self, request, response, **kwargs):
         """Create a controller to handle the request
 
         :returns: Controller, this Controller instance should be able to handle
             the request
         """
-        rou = await self.create_router(**kwargs)
-        controller = None
-
-        controller_info = {}
         try:
-            controller_info = rou.find(request, response)
-
-        except IOError as e:
-            logger.warning(str(e), exc_info=True)
-            raise CallError(
-                408,
-                "The client went away before the request body was retrieved."
+            request.controller_info = await self.find_controller_info(
+                request,
+                **kwargs
             )
 
         except (ImportError, AttributeError, TypeError) as e:
-            exc_info = sys.exc_info()
-            logger.warning(str(e), exc_info=exc_info)
             raise CallError(
                 404,
-                "{} not found because of {} \"{}\" on {}:{}".format(
+                "Path {} could not resolve to a controller".format(
                     request.path,
-                    exc_info[0].__name__,
-                    str(e),
-                    os.path.basename(exc_info[2].tb_frame.f_code.co_filename),
-                    exc_info[2].tb_lineno
-                )
-            )
+                ) 
+            ) from e
 
         else:
-            controller = controller_info['class_instance']
+            controller = request.controller_info['class'](
+                request,
+                response,
+                **kwargs
+            )
 
         return controller
 
-    async def create_call(self, raw_request, request=None, response=None, router=None, **kwargs):
-        """create a call object that has endpoints understandable request and response
-        instances"""
-        req = request if request else await self.create_request(raw_request, **kwargs)
-        res = response if response else await self.create_response(**kwargs)
-        rou = router if router else await self.create_router(**kwargs)
-        c = self.call_class(req, res, rou)
-        return c
+#     async def create_router(self, **kwargs):
+#         kwargs.setdefault('controller_prefixes', self.controller_prefixes)
+#         r = self.router_class(**kwargs)
+#         return r
 
-    async def create_router(self, **kwargs):
-        kwargs.setdefault('controller_prefixes', self.controller_prefixes)
-        r = self.router_class(**kwargs)
-        return r
-
-    async def handle(self, controller, **kwargs):
+    async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
-        request = controller.request
-        response = controller.response
+        controller = None
         start = time.time()
 
         try:
+            controller = await self.create_controller(request, response)
             controller.log_start(start)
 
             # the controller handle method will manipulate self.response, it first
@@ -285,7 +454,7 @@ class BaseApplication(ApplicationABC):
             raise
 
         except Exception as e:
-            await self.handle_error(e, controller)
+            await self.handle_error(request, response, e, controller=controller)
 
         finally:
             if response.code == 204:
@@ -295,7 +464,7 @@ class BaseApplication(ApplicationABC):
             if controller:
                 controller.log_stop(start)
 
-    async def handle_error(self, e, controller, **kwargs):
+    async def handle_error(self, req, res, e, controller, **kwargs):
         """if an exception is raised while trying to handle the request it will
         go through this method
 
@@ -305,29 +474,27 @@ class BaseApplication(ApplicationABC):
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
         """
-        req = controller.request
-        res = controller.response
         res.body = e
 
         if isinstance(e, CallStop):
-            logger.debug(String(e), exc_info=True)
+            logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
             res.body = e.body
 
         elif isinstance(e, Redirect):
-            logger.debug(String(e), exc_info=True)
+            logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
             res.body = None
 
         elif isinstance(e, (AccessDenied, CallError)):
-            logger.warning(String(e), exc_info=True)
+            logger.warning(String(e))
             res.code = e.code
             res.add_headers(e.headers)
 
         elif isinstance(e, NotImplementedError):
-            logger.warning(String(e), exc_info=True)
+            logger.warning(String(e))
             res.code = 501
 
         elif isinstance(e, TypeError):
