@@ -10,13 +10,22 @@ import testdata
 
 from endpoints import environ
 from endpoints.interface.base import BaseApplication
-from endpoints.http import Request
+from endpoints.call import Request
 
 
-testdata.basic_logging()
-#testdata.basic_logging(format='[%(levelname).1s|%(asctime)s|%(filename)s:%(lineno)s] %(message)s')
-#logging.basicConfig(format="[%(levelname).1s] %(message)s", level=logging.DEBUG, stream=sys.stdout)
-#logger = logging.getLogger(__name__)
+testdata.basic_logging(
+    levels={
+        "datatypes": "WARNING",
+        "asyncio": "WARNING",
+    },
+#     format="|".join([
+#         '[%(levelname).1s',
+#         '%(asctime)s',
+#         '%(process)d.%(thread)d',
+#         '%(name)s', # logger name
+#         '%(pathname)s:%(lineno)s] %(message)s',
+#     ]),
+)
 
 
 class Server(object):

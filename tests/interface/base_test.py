@@ -307,30 +307,33 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(None, res._body)
         self.assertEqual(204, res.code)
 
-    def test_nice_error_405(self):
-        c = self.create_server(contents=[
+    def test_path_errors(self):
+        c = self.create_server([
             "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self, bar): pass",
             "",
         ])
 
-        # TODO -- capture stdout to make sure the error printed out, until then
-        # you will just have to manually check to make sure the warning was raised
-        # correctly
-        res = c.handle("/foo/bar/che")
+        # this path is technically valid but is missing required arguments
+        res = c.handle("/foo", "GET")
+        self.assertEqual(405, res.code)
+
+        # there is no POST method for this path
+        res = c.handle("/foo/bar", "POST")
+        self.assertEqual(404, res.code)
+
+        # there is no GET method that has this path
+        res = c.handle("/foo/bar/che", "GET")
+        self.assertEqual(404, res.code)
 
     def test_handle_method_chain(self):
         c = self.create_server(contents=[
             "from endpoints import Controller",
             "class Foo(Controller):",
-            "    def handle_GET(self, *args, **kwargs):",
-            "        self.response.handle_GET_called = True",
-            "        self.handle(*args, **kwargs)",
-            "",
-            "    def handle(self, *args, **kwargs):",
+            "    async def handle(self, *args, **kwargs):",
             "        self.response.handle_called = True",
-            "        super(Foo, self).handle(*args, **kwargs)",
+            "        await super().handle(*args, **kwargs)",
             "",
             "    def GET(self, *args, **kwargs):",
             "        self.response.GET_called = True",
@@ -338,11 +341,8 @@ class BaseApplicationTest(TestCase):
         ])
 
         res = c.handle("/foo")
-        self.assertTrue(res.handle_GET_called)
         self.assertTrue(res.handle_called)
         self.assertTrue(res.GET_called)
-
-
 
     def test_multiple_controller_prefixes_1(self):
         self.create_modules({

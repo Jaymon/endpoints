@@ -17,55 +17,84 @@ from datatypes import (
     Base64,
     Path,
     Deepcopy,
+    Url as BaseUrl,
 )
 
 from .compat import *
 from . import environ
 
 
-class FileWrapper(FileIO):
-    """Wraps a file descriptor.
+class Url(BaseUrl):
+    """a url object on steroids, this is here to make it easy to manipulate urls
+    we try to map the supported fields to their urlparse equivalents, with some
+    additions
 
-    Honestly, this exists because Python2 won't allow you to add properties to a
-    descriptor (because it doesn't extend object), this is currently used for any
-    uploaded files"""
-    def __init__(self, fp, name=None, **kwargs):
-        self.fp = fp
-        self.name = name
+    https://tools.ietf.org/html/rfc3986.html
 
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+    with a controller: Bar
 
-    def close(self, *args, **kwargs):
-        return self.fp.close(*args, **kwargs)
+    .scheme = http
+    .netloc = user:pass@foo.com:1000
+    .hostloc = foo.com:1000
+    .hostname = foo.com
+    .host() = http://foo.com
+    .port = 1000
+    .base = http://user:pass@foo.com:1000/bar/che
+    .fragment = anchor
+    .anchor = fragment
+    .uri = /bar/che?baz=boom#anchor
+    .host(...) = http://foo.com/...
+    .base(...) = http://foo.com/bar/che/...
+    .controller(...) = http://foo.com/bar/...
+    """
+    class_path = ""
 
-    def seekable(self):
-        return self.fp.seekable()
+    module_path = ""
 
-    def seek(self, *args, **kwargs):
-        return self.fp.seek(*args, **kwargs)
+    def module(self, *paths, **query_kwargs):
+        """create a new Url instance using the module path as a base
 
-    def read(self, *args, **kwargs):
-        return self.fp.read(*args, **kwargs)
+        :param *paths: list, the paths to append to the module path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        if self.module_path:
+            if "path" in kwargs:
+                paths = self.normalize_paths(self.module_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
+            else:
+                kwargs["path"] = self.module_path
+        return self.create(self.root, **kwargs)
 
-    def readall(self):
-        return self.fp.readall()
+    def controller(self, *paths, **query_kwargs):
+        """create a new url object using the controller path as a base
 
-    def tell(self, *args, **kwargs):
-        return self.fp.tell(*args, **kwargs)
+        if you have a controller `foo.BarController` then this would create a new
+        Url instance with `host/foo/bar` as the base path, so any *paths will be
+        appended to `/foo/bar`
 
-    def readline(self, *args, **kwargs):
-        return self.fp.readline(*args, **kwargs)
+        :example:
+            # controller foo.Bar(Controller)
 
-    def readlines(self, *args, **kwargs):
-        return self.fp.readlines(*args, **kwargs)
+            print url # http://host.com/foo/bar/some_random_path
 
-    def __iter__(self):
-        for line in self.fp:
-            yield line
+            print url.controller() # http://host.com/foo/bar
+            print url.controller("che", boom="bam") # http://host/foo/bar/che?boom=bam
 
-    def writable(self):
-        return False
+        :param *paths: list, the paths to append to the controller path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        if self.class_path:
+            if "path" in kwargs:
+                paths = self.normalize_paths(self.class_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
+            else:
+                kwargs["path"] = self.class_path
+        return self.create(self.root, **kwargs)
 
 
 class MimeType(object):

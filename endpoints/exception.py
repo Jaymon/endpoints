@@ -19,6 +19,11 @@ class CallError(Exception):
         self.headers = kwargs.pop('headers', {})
         super(CallError, self).__init__(msg, *args, **kwargs)
 
+    def __str__(self):
+        if not (s := super().__str__()):
+            s = f"{self.__class__.__name__}({self.code})"
+        return s
+
 
 class Redirect(CallError):
     """controllers can raise this to redirect to the new location"""

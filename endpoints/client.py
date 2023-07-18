@@ -23,10 +23,12 @@ try:
 except ImportError:
     websocket = None
 
+from datatypes import Host
+
 from .compat import *
-from .utils import String, ByteString, Base64
-from .http import Headers, Url, Host
+from .utils import String, ByteString, Base64, Url
 from .interface.base import Payload
+from .call import Headers
 
 
 logger = logging.getLogger(__name__)

@@ -12,9 +12,8 @@ import inspect
 
 from datatypes import String, ReflectModule
 
-from ..http import Request, Response
 from .. import environ
-from ..call import Router, Controller
+from ..call import Controller, Request, Response
 from ..decorators import property
 #from ..exception import CallError, Redirect, CallStop, AccessDenied
 
@@ -59,11 +58,8 @@ class BaseApplication(ApplicationABC):
     """the endpoints.http.Response compatible class that should be used to make
     Response() instances"""
 
-#     router_class = Router
-    """the endpoints.call.Router compatible class that handles translating a request
-    into the Controller class and method that will actual run"""
-
     controller_class = Controller
+    """Every defined controller has to be a child of this class"""
 
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
@@ -75,11 +71,6 @@ class BaseApplication(ApplicationABC):
 
             else:
                 self.controller_prefixes = environ.get_controller_prefixes()
-
-#         self.controller_modpaths = set()
-#         for controller_prefix in self.controller_prefixes:
-#             rm = ReflectModule(controller_prefix)
-#             self.controller_modpaths.update(rm.module_names())
 
         for k, v in kwargs.items():
             if k.endswith("_class"):
@@ -199,6 +190,10 @@ class BaseApplication(ApplicationABC):
 
     @functools.cache
     def get_controller_module_paths(self):
+        """get all the modules in the controller_prefixes
+
+        :returns: set, a set of string module names (eg foo.bar, foo.che)
+        """
         controller_modpaths = set()
         for controller_prefix in self.controller_prefixes:
             rm = ReflectModule(controller_prefix)
@@ -246,6 +241,18 @@ class BaseApplication(ApplicationABC):
     async def find_controller_info(self, request, **kwargs):
         """returns all the information needed to create a controller and handle
         the request
+
+        This is where all the routing magic happens, this takes the request.path
+        and gathers the information needed to turn that path into a Controller
+
+        we always translate an HTTP request using this pattern:
+
+            METHOD /module/class/args?kwargs
+
+        GET /foo -> controller_prefix.foo.Default.GET
+        POST /foo/bar -> controller_prefix.foo.Bar.POST
+        GET /foo/bar/che -> controller_prefix.foo.Bar.GET(che)
+        POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.POST(che, baz=foo)
 
         :param request: Request
         :param **kwargs:
@@ -398,11 +405,6 @@ class BaseApplication(ApplicationABC):
 
         return controller
 
-#     async def create_router(self, **kwargs):
-#         kwargs.setdefault('controller_prefixes', self.controller_prefixes)
-#         r = self.router_class(**kwargs)
-#         return r
-
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
         controller = None
@@ -412,19 +414,9 @@ class BaseApplication(ApplicationABC):
             controller = await self.create_controller(request, response)
             controller.log_start(start)
 
-            # the controller handle method will manipulate self.response, it first
-            # tries to find a handle_HTTP_METHOD method, if it can't find that it
-            # will default to the handle method (which is implemented on Controller).
-            # method arguments are passed in so child classes can add decorators
-            # just like the HTTP_METHOD that will actually handle the request
-            controller_args, controller_kwargs = controller.find_method_params()
-            controller_method = getattr(
-                controller,
-                "handle_{}".format(request.method),
-                None
-            )
-            if not controller_method:
-                controller_method = getattr(controller, "handle")
+            controller_args = request.controller_info["method_args"]
+            controller_kwargs = request.controller_info["method_kwargs"]
+            controller_method = getattr(controller, "handle")
 
             logger.debug("Request handle method: {}.{}.{}".format(
                 controller.__class__.__module__,
@@ -432,13 +424,19 @@ class BaseApplication(ApplicationABC):
                 controller_method.__name__
             ))
             # TODO check for aysnc handle method
-            controller_method(*controller_args, **controller_kwargs)
+            await controller_method(*controller_args, **controller_kwargs)
 
         except CloseConnection:
             raise
 
         except Exception as e:
-            await self.handle_error(request, response, e, controller=controller)
+            await self.handle_error(
+                request,
+                response,
+                e,
+                controller,
+                **kwargs
+            )
 
         finally:
             if response.code == 204:
@@ -452,8 +450,9 @@ class BaseApplication(ApplicationABC):
         """if an exception is raised while trying to handle the request it will
         go through this method
 
-        This method will set the response body and then also call Controller.handle_error
-        for further customization if the Controller is available
+        This method will set the response body and then also calls
+        Controller.handle_error for further customization if the Controller is
+        available
 
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
@@ -578,7 +577,7 @@ class BaseApplication(ApplicationABC):
                 controller.__class__.__name__,
                 error_method.__name__
             ))
-            error_method(e, **kwargs)
+            await error_method(e, **kwargs)
 
 
 

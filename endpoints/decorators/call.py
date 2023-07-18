@@ -5,7 +5,7 @@ import inspect
 import re
 
 from ..exception import CallError, RouteError, VersionError
-from ..http import Url
+from ..utils import Url
 from .base import ControllerDecorator
 
 
