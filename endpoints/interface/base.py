@@ -224,12 +224,18 @@ class BaseApplication(ApplicationABC):
         class_fallback = kwargs.get("class_fallback", "Default")
 
         if path_args:
+            # look for a class name with the first path arg, this will be
+            # used if a matching module isn't found
             named_class = await self.get_controller_class(
                 module,
                 path_args[0]
             )
 
         if not named_class:
+            # look for the default class just in case, this is a first
+            # match wins scenario. Basically, the first controller default
+            # class found will be the class that answers the call unless
+            # a class matching a path arg is found
             default_class = await self.get_controller_class(
                 module,
                 class_fallback,
@@ -238,13 +244,16 @@ class BaseApplication(ApplicationABC):
         return named_class, default_class
 
     async def find_controller_info(self, request, **kwargs):
-        """returns the module_name and remaining path args.
+        """returns all the information needed to create a controller and handle
+        the request
 
-        :returns: tuple, (controller_prefix, module_name, module_path, path_args),
-            where controller_prefix is the prefix the module was found in and module_name
-            is the python module path (eg, foo.bar.che) and module_path is a list
-            of the different parts (eg, ["foo", "bar", "che"]) and path_args are
-            the remaining path_args after finding the module
+        :param request: Request
+        :param **kwargs:
+            * class_fallback: str, the name of the default controller class, it
+                defaults to Default and should probably never be changed
+            * method_fallback: str, the name of the fallback controller method,
+                it defaults to ANY and should probably never be changed
+        :returns: dict
         """
         logger.debug("Compiling Controller info using path: {}".format(
             request.path
@@ -259,7 +268,6 @@ class BaseApplication(ApplicationABC):
         named_ret = {}
 
         path_args = list(request.path_args)
-        class_fallback = kwargs.get("class_fallback", "Default")
 
         controller_modpaths = self.get_controller_module_paths()
         for controller_prefix in self.controller_prefixes:
@@ -278,30 +286,19 @@ class BaseApplication(ApplicationABC):
                     break
 
             if ret["module_name"]:
-                # TODO -- this maybe could be broken out into a
-                # find_controller_class method that takes the controller and
-                # looks for class with path args and Default, returns class
-                # and method args. That would simplify this section and
-                # the next section which does basically the same thing
                 ret["module"] = ReflectModule(ret["module_name"]).module()
 
-                if path_args:
-                    controller_class = await self.get_controller_class(
-                        ret["module"],
-                        path_args[0]
-                    )
+                named_class, default_class = await self.find_controller_class(
+                    ret["module"],
+                    path_args,
+                )
 
-                    if controller_class:
-                        ret["controller_path_args"].append(path_args.pop(0))
+                if named_class:
+                    ret["class"] = named_class
+                    ret["controller_path_args"].append(path_args.pop(0))
 
-                if not controller_class:
-                    controller_class = await self.get_controller_class(
-                        ret["module"],
-                        class_fallback,
-                    )
-
-                if controller_class:
-                    ret["class"] = controller_class
+                elif default_class:
+                    ret["class"] = default_class
 
                 else:
                     raise TypeError(
@@ -314,40 +311,27 @@ class BaseApplication(ApplicationABC):
                 break
 
             else:
-                # we didn't find the correct module using module paths, so now let's
-                # try class paths, first found class path wins
-                if not named_ret:
-                    # look for a class name with the first path arg, this will be
-                    # used if a matching module isn't found
-                    if path_args:
-                        controller_module = ReflectModule(
-                            controller_prefix
-                        ).module()
-                        controller_class = await self.get_controller_class(
-                            controller_module,
-                            path_args[0]
-                        )
-                        if controller_class:
-                            named_ret["class"] = controller_class
-                            named_ret["module"] = controller_module
-                            named_ret["module_name"] = controller_prefix
-                            named_ret["controller_prefix"] = controller_prefix
-                            named_ret["controller_path_args"] = [path_args.pop(0)]
-
-                if not default_ret:
-                    # look for the default class just in case, this is a first
-                    # match wins scenario. Basically, the first controller default
-                    # class found will be the class that answers the call unless
-                    # a class matching a path arg is found
+                # we didn't find the correct module using module paths, so now
+                # let's try class paths, first found class path wins
+                if not named_ret or not default_ret:
                     controller_module = ReflectModule(
                         controller_prefix
                     ).module()
-                    controller_class = await self.get_controller_class(
+
+                    named_class, default_class = await self.find_controller_class(
                         controller_module,
-                        class_fallback,
+                        path_args,
                     )
-                    if controller_class:
-                        default_ret["class"] = controller_class
+
+                    if named_class and not named_ret:
+                        named_ret["class"] = named_class
+                        named_ret["module"] = controller_module
+                        named_ret["module_name"] = controller_prefix
+                        named_ret["controller_prefix"] = controller_prefix
+                        named_ret["controller_path_args"] = [path_args.pop(0)]
+
+                    if default_class and not default_ret:
+                        default_ret["class"] = default_class
                         default_ret["module"] = controller_module
                         default_ret["module_name"] = controller_prefix
                         default_ret["controller_prefix"] = controller_prefix

@@ -21,12 +21,18 @@ testdata.basic_logging()
 
 class Server(object):
     """This is just a wrapper to get access to the Interface handling code"""
+    @property
+    def controller_prefix(self):
+        return self.application.controller_prefixes[0]
+
     def __init__(self, *args, **kwargs):
         self.application = BaseApplication(*args, **kwargs)
 
     def create_request(self, path, method, **kwargs):
-        req = asyncio.run(self.application.create_request(None))
-        req.method = method.upper()
+        if not (req := kwargs.pop("request", None)):
+            req = asyncio.run(self.application.create_request(None))
+            req.method = method.upper()
+            req.path = path
 
         version = kwargs.pop("version", None)
         if version is not None:
@@ -37,7 +43,6 @@ class Server(object):
         for k, v in d.items():
             setattr(req, k, v)
 
-        req.path = path
         return req
 
     def start(self):
@@ -72,9 +77,9 @@ class Server(object):
         return self.handle(path, method="GET", query_kwargs=query_kwargs, **kwargs)
 
     def find(self, path="", method="GET", **kwargs):
-        request = self.create_request(path, method, **kwargs)
+        kwargs["request"] = self.create_request(path, method, **kwargs)
         return asyncio.run(
-            self.application.find_controller_info(request, **kwargs)
+            self.application.find_controller_info(**kwargs)
         )
 
 
