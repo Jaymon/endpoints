@@ -334,7 +334,8 @@ class RequestTest(TestCase):
         self.assertEqual("", v)
 
     def test_get_version_default(self):
-        """turns out, calls were failing if there was no accept header even if there were defaults set"""
+        """turns out, calls were failing if there was no accept header even if
+        there were defaults set"""
         r = Request()
         r.headers = {}
         self.assertEqual("", r.version('application/json'))

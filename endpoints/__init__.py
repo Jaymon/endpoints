@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 
-from .reflection import Reflect, ReflectController, ReflectMethod
 from .exception import (
     CallError,
     Redirect,

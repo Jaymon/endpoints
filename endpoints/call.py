@@ -611,6 +611,25 @@ class Request(Call):
     controller_info = None
     """will hold the controller information for the request, populated from the Call"""
 
+    @cachedproperty(cached="_uuid")
+    def uuid(self):
+        # if there is an X-uuid header then set uuid and send it down
+        # with every request using that header
+        # https://stackoverflow.com/questions/18265128/what-is-sec-websocket-key-for
+        uuid = None
+
+        # first try and get the uuid from the body since javascript has limited
+        # capability of setting headers for websockets
+        kwargs = self.kwargs
+        if "uuid" in kwargs:
+            uuid = kwargs["uuid"]
+
+        # next use X-UUID header, then the websocket key
+        if not uuid:
+            uuid = self.find_header(["X-UUID", "Sec-Websocket-Key"])
+
+        return uuid
+
     @cachedproperty(cached="_accept_content_type")
     def accept_content_type(self):
         """Return the requested content type

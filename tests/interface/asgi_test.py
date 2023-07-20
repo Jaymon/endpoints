@@ -3,14 +3,15 @@
 from endpoints.interface.asgi.server import Server
 from endpoints.interface.asgi import Application
 #from endpoints.interface.asgi
-from . import WebTestCase
+from . import HTTPTestCase, WebSocketTestCase
 
 
-class ApplicationTest(WebTestCase):
+class HTTPApplicationTest(HTTPTestCase):
     server_class = Server
     application_class = Application
 
 
-# class WebServerTest(WebServerTestCase):
-#     server_class = WebServer
+class WebSocketApplicationTest(WebSocketTestCase):
+    server_class = Server
+    application_class = Application
 

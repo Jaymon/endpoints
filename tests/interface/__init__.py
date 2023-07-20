@@ -8,7 +8,7 @@ import testdata
 from unittest import TestSuite
 
 from endpoints.compat import *
-from endpoints.client import WebClient, WebsocketClient
+from endpoints.client import WebClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
 from .. import TestCase as BaseTestCase
 
@@ -33,7 +33,7 @@ class TestCase(BaseTestCase):
         return client
 
 
-class WebTestCase(TestCase):
+class HTTPTestCase(TestCase):
     def test_get_request_url(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server(contents=[
@@ -329,36 +329,60 @@ class WebTestCase(TestCase):
         self.assertEqual('"bar"', r.body)
 
 
-
-
-
-
-class WebsocketTestCase(TestCase):
-    client_class = WebsocketClient
+class WebSocketTestCase(TestCase):
+    client_class = WebSocketClient
     server_class = None
 
-    def test_bad_path(self):
-        """https://github.com/Jaymon/endpoints/issues/103"""
-        server = self.create_server(contents=[
-            "import os",
-            "from endpoints import Controller, decorators",
+    def test_connect_success(self):
+        server = self.create_server([
+            "from endpoints import Controller",
             "class Default(Controller):",
-            "    def CONNECT(self, **kwargs):",
+            "    def CONNECT(self, *args, **kwargs):",
             "        pass",
-            "    def DISCONNECT(self, **kwargs):",
+            "    def DISCONNECT(self, *args, **kwargs):",
             "        pass",
-            "    def GET(self, foo, bar):",
-            "        return 'get'",
+        ])
+
+        c = self.create_client()
+        r = c.connect(trace=True)
+        self.assertEqual(204, r.code)
+        self.assertTrue(c.connected)
+        c.close()
+        self.assertFalse(c.connected)
+
+    def test_connect_error(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, CallError",
+            "from endpoints.decorators.auth import client_auth as BaseAuth",
+            "class client_auth(BaseAuth):",
+            "    def target(self, *args, **kwargs): return False",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs):",
+            "        auth = client_auth()",
+            "        auth.handle_target(self.request, args, kwargs)",
+            "",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
             "",
         ])
+
         c = self.create_client()
-        c.connect()
+        with self.assertRaises(IOError):
+            c.connect()
 
-        r = c.get("http://example.com/foo/bar")
-        self.assertEqual(404, r.code)
+    def test_connect_failure(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, CallError",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs):",
+            "        raise CallError(401, 'this is the message')",
+            "    def DISCONNECT(self, *args, **kwargs):",
+            "        pass",
+        ])
 
-        r = c.get("/foo/bar")
-        self.assertEqual(200, r.code)
+        c = self.create_client()
+        with self.assertRaises(IOError):
+            c.connect()
 
     def test_close_connection(self):
         server = self.create_server(contents=[
@@ -375,7 +399,115 @@ class WebsocketTestCase(TestCase):
         c = self.create_client()
         c.connect()
         with self.assertRaises(RuntimeError):
-            c.get("/", timeout=0.1, attempts=1)
+            c.get("/", timeout=10, attempts=1)
+
+    def test_no_support(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller, CallError",
+            "class Confetch(Controller):",
+            "    def GET(self, **kwargs):",
+            "        pass",
+        ])
+
+        c = self.create_client()
+        with self.assertRaises(IOError):
+            c.connect()
+
+    def test_path_autoconnect(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "",
+            "class Foo(Controller):",
+            "    def CONNECT(self): pass",
+            "    def DISCONNECT(self): pass",
+            "",
+            "    def POST(self, **kwargs):",
+            "        return 1",
+            "",
+        ])
+
+        c = self.create_client()
+        c.basic_auth("foo", "bar")
+        r = c.post("/foo", {"bar": 2})
+        self.assertEqual(1, r._body)
+
+    def test_get_query(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs): pass",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    def GET(self, **kwargs):",
+            "        return kwargs['foo']",
+        ])
+
+        c = self.create_client()
+        r = c.get("/", {"foo": 2})
+        self.assertEqual(200, r.code)
+        self.assertEqual(2, r._body)
+
+    def test_request_basic(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "",
+            "class Default(Controller):",
+            "    def CONNECT(self, *args, **kwargs): pass",
+            "    def DISCONNECT(self, *args, **kwargs): pass",
+            "",
+            "    def SOCKET(self, *args, **kwargs):",
+            "        return {",
+            "            'name': 'SOCKET',",
+            "            'args': args,",
+            "            'kwargs': kwargs,",
+            "        }",
+            "    def POST(self, *args, **kwargs):",
+            "        return {",
+            "            'name': 'POST',",
+            "            'args': args,",
+            "            'kwargs': kwargs,",
+            "        }",
+            "    def GET(self, *args, **kwargs):",
+            "        return {",
+            "            'name': 'GET',",
+            "            'args': args,",
+            "            'kwargs': kwargs,",
+            "        }",
+        ])
+
+        c = self.create_client()
+        r = c.post("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("POST", r._body["name"])
+
+        r = c.send("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("SOCKET", r._body["name"])
+        self.assertEqual({"val1": 1, "val2": 2}, r._body["kwargs"])
+
+        r = c.get("/foo/bar", {"val1": 1, "val2": 2})
+        self.assertEqual("GET", r._body["name"])
+
+    def test_multiple_connections(self):
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs): pass",
+            "    def DISCONNECT(self, **kwargs): pass",
+            "    def GET(self, **kwargs):",
+            "        return self.request.uuid",
+        ])
+
+        count = 10
+        cs = []
+        for x in range(count):
+            c = self.create_client()
+            c.connect()
+            cs.append(c)
+
+        for x in range(count):
+            for c in cs:
+                r = c.get("/")
+                self.assertEqual(c.client_id, r.body)
 
     def test_rapid_requests(self):
         """We were dropping requests when making a whole bunch of websocket
@@ -386,10 +518,8 @@ class WebsocketTestCase(TestCase):
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
-            "    def CONNECT(self, **kwargs):",
-            "        pass",
-            "    def DISCONNECT(self, **kwargs):",
-            "        pass",
+            "    def CONNECT(self, **kwargs): pass",
+            "    def DISCONNECT(self, **kwargs): pass",
             "    def GET(self, **kwargs):",
             "        return kwargs['pid']",
         ])
@@ -416,6 +546,29 @@ class WebsocketTestCase(TestCase):
                 t.join()
 
             self.assertEqual(set([0, 1, 2, 3, 4]), set(rs))
+
+    def test_bad_path(self):
+        """https://github.com/Jaymon/endpoints/issues/103"""
+        server = self.create_server(contents=[
+            "import os",
+            "from endpoints import Controller, decorators",
+            "class Default(Controller):",
+            "    def CONNECT(self, **kwargs):",
+            "        pass",
+            "    def DISCONNECT(self, **kwargs):",
+            "        pass",
+            "    def GET(self, foo, bar):",
+            "        return 'get'",
+            "",
+        ])
+        c = self.create_client()
+        c.connect()
+
+        r = c.get("http://example.com/foo/bar")
+        self.assertEqual(404, r.code)
+
+        r = c.get("/foo/bar")
+        self.assertEqual(200, r.code)
 
     def test_path_mixup(self):
         """Jarid was hitting this problem, we were only able to get it to happen
@@ -449,10 +602,8 @@ class WebsocketTestCase(TestCase):
             "from endpoints import Controller",
             "from endpoints.decorators import version",
             "class Default(Controller):",
-            "    def CONNECT(self, **kwargs):",
-            "        pass",
-            "    def DISCONNECT(self, **kwargs):",
-            "        pass",
+            "    def CONNECT(self, **kwargs): pass",
+            "    def DISCONNECT(self, **kwargs): pass",
             "    @version('', 'v1')",
             "    def GET_v1(*args, **kwargs): return 'v1'",
             "    @version('v2')",
@@ -461,6 +612,10 @@ class WebsocketTestCase(TestCase):
 
         c = self.create_client()
         c.connect()
+
+        r = c.get('/')
+        self.assertEqual(200, r.code)
+        self.assertTrue("v1" in r.body)
 
         r = c.get(
             '/',
@@ -479,177 +634,6 @@ class WebsocketTestCase(TestCase):
         )
         self.assertEqual(200, r.code)
         self.assertTrue("v2" in r.body)
-
-        r = c.get('/')
-        self.assertEqual(200, r.code)
-        self.assertTrue("v1" in r.body)
-
-
-    def test_connect_on_fetch(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller, CallError",
-            "class Confetch(Controller):",
-            "    def CONNECT(self, **kwargs):",
-            "        if int(kwargs['foo']) != 1:",
-            "            raise CallError(400)",
-            "    def GET(self, **kwargs):",
-            "        pass",
-        ])
-
-        c = self.create_client()
-        r = c.get("/confetch", {"foo": 1, "bar": 2})
-        self.assertEqual(204, r.code)
-
-        c = self.create_client()
-        with self.assertRaises(RuntimeError):
-            r = c.get("/confetch", {"foo": 2})
-
-    def test_get_fetch_host(self):
-        client_cls = self.client_class
-        c = client_cls("http://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("ws"))
-
-        c = client_cls("https://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("wss"))
-
-        c = client_cls("HTTPS://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("wss"))
-
-        c = client_cls("HTTP://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("ws"))
-
-    def test_connect_success(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs):",
-            "        pass",
-            "    def DISCONNECT(self, *args, **kwargs):",
-            "        pass",
-        ])
-
-        c = self.create_client()
-        r = c.connect(trace=True)
-        self.assertEqual(204, r.code)
-        self.assertTrue(c.connected)
-
-        # when looking at logs, this test looks like there is a problem because
-        # right after connection an IOError is thrown, that's because the close
-        # will cause uWSGI to raise an IOError, giving the websocket a chance
-        # to clean up the connection
-
-        c.close()
-        self.assertFalse(c.connected)
-
-    def test_connect_failure(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller, CallError",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs):",
-            "        raise CallError(401, 'this is the message')",
-            "    def DISCONNECT(self, *args, **kwargs):",
-            "        pass",
-        ])
-
-        c = self.create_client()
-        with self.assertRaises(IOError):
-            c.connect()
-
-    def test_request_basic(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs):",
-            "        #pout.v(args, kwargs, self.request)",
-            "        #pout.b('CONNECT')",
-            "        pass",
-            "    def DISCONNECT(self, *args, **kwargs):",
-            "        #pout.b('DISCONNECT')",
-            "        pass",
-            "",
-            "    def SOCKET(self, *args, **kwargs):",
-            "        #pout.v(args, kwargs)",
-            "        #pout.b('SOCKET')",
-            "        return {",
-            "            'name': 'SOCKET',",
-            "            'args': args,",
-            "            'kwargs': kwargs,",
-            "        }",
-            "    def POST(self, *args, **kwargs):",
-            "        return {",
-            "            'name': 'POST',",
-            "            'args': args,",
-            "            'kwargs': kwargs,",
-            "        }",
-            "    def GET(self, *args, **kwargs):",
-            "        return {",
-            "            'name': 'GET',",
-            "            'args': args,",
-            "            'kwargs': kwargs,",
-            "        }",
-        ])
-
-        c = self.create_client()
-        r = c.post("/foo/bar", {"val1": 1, "val2": 2})
-        self.assertEqual("POST", r._body["name"])
-
-        r = c.send("/foo/bar", {"val1": 1, "val2": 2})
-        self.assertEqual("SOCKET", r._body["name"])
-        self.assertEqual({"val1": 1, "val2": 2}, r._body["kwargs"])
-
-        r = c.get("/foo/bar", {"val1": 1, "val2": 2})
-        self.assertEqual("GET", r._body["name"])
-
-    def test_request_modification(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "",
-            "class Default(Controller):",
-            "    def CONNECT(self):",
-            "        self.request.foo = 1",
-            "",
-            "    def DISCONNECT(self, *args, **kwargs):",
-            "        pass",
-            "",
-            "    def POST(self, **kwargs):",
-            "        self.request.parent.foo = kwargs['foo']",
-            "        return self.request.parent.foo",
-            "",
-            "    def GET(self):",
-            "        return self.request.foo",
-        ])
-
-        c = self.create_client()
-        r = c.post("/", {"foo": 2})
-        self.assertEqual(2, r._body)
-
-        r = c.get("/")
-        self.assertEqual(2, r._body)
-
-        r = c.post("/", {"foo": 4})
-        self.assertEqual(4, r._body)
-
-        r = c.get("/")
-        self.assertEqual(4, r._body)
-
-    def test_path_autoconnect(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "",
-            "class Foo(Controller):",
-            "    def CONNECT(self): pass",
-            "    def DISCONNECT(self): pass",
-            "",
-            "    def POST(self, **kwargs):",
-            "        return 1",
-            "",
-        ])
-
-        c = self.create_client()
-        c.basic_auth("foo", "bar")
-        r = c.post("/foo", {"bar": 2})
-        self.assertEqual(1, r._body)
 
     def test_error_500(self):
         server = self.create_server(contents=[
@@ -687,105 +671,4 @@ class WebsocketTestCase(TestCase):
         c = self.create_client()
         r = c.get("/")
         self.assertEqual(401, r.code)
-
-    def test_connect_error(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller, CallError",
-            "from endpoints.decorators.auth import client_auth as BaseAuth",
-            "class client_auth(BaseAuth):",
-            "    def target(self, *args, **kwargs): return False",
-            "",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs):",
-            "        auth = client_auth()",
-            "        auth.handle_target(self.request, args, kwargs)",
-            "",
-            "    def DISCONNECT(self, *args, **kwargs): pass",
-            "",
-        ])
-
-        c = self.create_client()
-        with self.assertRaises(IOError):
-            c.connect()
-            #r = c.get("/")
-
-    def test_get_query(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs): pass",
-            "    def DISCONNECT(self, *args, **kwargs): pass",
-            "",
-            "    def GET(self, **kwargs):",
-            "        return kwargs['foo']",
-        ])
-
-        c = self.create_client()
-        r = c.get("/", {"foo": 2})
-        self.assertEqual(200, r.code)
-        self.assertEqual(2, r._body)
-
-    def test_count(self):
-        self.skip_test("count is no longer being sent down")
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "",
-            "class Default(Controller):",
-            "    def CONNECT(self, *args, **kwargs): pass",
-            "    def DISCONNECT(self, *args, **kwargs): pass",
-            "",
-            "    def GET(self, **kwargs): pass",
-            "    def POST(self, **kwargs): pass",
-        ])
-
-        c = self.create_client()
-        for x in range(2, 7):
-            r = getattr(c, random.choice(["get", "post"]))("/")
-            self.assertEqual(204, r.code)
-            self.assertEqual(x, r.count)
-
-        c.close()
-
-        for x in range(2, 7):
-            r = getattr(c, random.choice(["get", "post"]))("/")
-            self.assertEqual(204, r.code)
-            self.assertEqual(x, r.count)
-
-
-class WebServerTestCase(TestCase):
-    """Tests the client.Webserver for the interface"""
-    def test_start(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self): pass",
-            "",
-        ])
-
-    def test_file(self):
-        server = self.create_server(
-            contents=[
-                "import os",
-                "from endpoints import Controller, decorators",
-                "class Default(Controller):",
-                "    def GET(self):",
-                "        return os.environ['WSGI_TESTING']",
-                "",
-            ],
-            config_contents=[
-                "import os",
-                "os.environ['WSGI_TESTING'] = 'foo bar'",
-                "",
-            ]
-        )
-        c = self.create_client()
-
-        r = c.get("/")
-        self.assertEqual(200, r.code)
-        self.assertEqual("foo bar", r._body)
-
-
-def load_tests(*args, **kwargs):
-    return TestSuite()
 

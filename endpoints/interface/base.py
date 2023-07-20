@@ -99,7 +99,13 @@ class BaseApplication(ApplicationABC):
         kwargs = {}
 
         if body:
-            if request.headers.is_json():
+            if isinstance(body, dict):
+                kwargs = body
+
+            elif isinstance(body, list):
+                args = body
+
+            elif request.headers.is_json():
                 jb = json.loads(body)
 
                 if isinstance(jb, dict):
@@ -426,9 +432,6 @@ class BaseApplication(ApplicationABC):
             # TODO check for aysnc handle method
             await controller_method(*controller_args, **controller_kwargs)
 
-        except CloseConnection:
-            raise
-
         except Exception as e:
             await self.handle_error(
                 request,
@@ -457,6 +460,9 @@ class BaseApplication(ApplicationABC):
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
         """
+        if isinstance(e, CloseConnection):
+            raise
+
         res.body = e
 
         if isinstance(e, CallStop):
@@ -579,8 +585,62 @@ class BaseApplication(ApplicationABC):
             ))
             await error_method(e, **kwargs)
 
+    @classmethod
+    def get_websocket_dumps(cls, **kwargs):
+        """Similar to create_response_body it prepares a response to be sent back
+        down the wire using the payload_class variable
 
+        :param request: the call's Request instance, this needs the request because
+            of how websockets are sent back and forth
+        :param response: the call's Response instance
+        :returns: a generator that yields bytes strings
+        """
+        d = {}
 
+        d["path"] = kwargs["path"]
+
+        if uuid := kwargs.get("uuid", ""):
+            d["uuid"] = uuid
+
+        if code := kwargs.get("code", 0):
+            d["code"] = code
+
+        if method := kwargs.get("method", ""):
+            d["method"] = method
+
+        if "code" not in d and "method" not in d:
+            raise ValueError("A websocket payload needs a method or code")
+
+        if headers := kwargs.get("headers", {}):
+            d["headers"] = headers
+
+        body = kwargs.get("body", None)
+        if body is not None:
+            d["body"] = body
+
+        body = json.dumps(
+            d,
+            cls=kwargs.get("json_encoder", JSONEncoder),
+        )
+        return body
+
+    @classmethod
+    def get_websocket_loads(cls, body):
+        d = json.loads(body)
+
+        if "code" not in d and "method" not in d:
+            raise ValueError("A websocket payload needs a method or code")
+
+        if "path" not in d:
+            raise ValueError("A websocket payload must have a path")
+
+        if "body" not in d:
+            d["body"] = None
+
+        if "headers" not in d:
+            d["headers"] = {}
+
+        return d
 
 
 
