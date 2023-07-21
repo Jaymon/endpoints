@@ -41,9 +41,9 @@ setup(
     url='http://github.com/jaymon/{}'.format(name),
     license="MIT",
     install_requires=['datatypes'],
-    tests_require=['testdata', 'requests'],
+    tests_require=['testdata', 'requests', "daphne"],
     extras_require={
-        'websockets': ["websocket-client", "gevent"],
+        'websockets': ["websocket-client"],
         #'tornado': ["tornado"],
         'html': ['jinja2'],
     },

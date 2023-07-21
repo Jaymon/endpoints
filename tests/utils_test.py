@@ -8,6 +8,7 @@ from endpoints.utils import (
     AcceptHeader,
     JSONEncoder,
     Url,
+    Status,
 )
 
 from . import TestCase, testdata
@@ -152,4 +153,13 @@ class UrlTest(TestCase):
         u = Url("http://example.com/foo/bar/che", class_path="foo")
         u2 = u.controller(che=4)
         self.assertEqual("http://example.com/foo?che=4", u2)
+
+
+class StatusTest(TestCase):
+    def test_codes(self):
+        s = Status(401)
+        self.assertEqual("Unauthorized", s)
+
+        s = Status(1001)
+        self.assertEqual("Close Going Away", s)
 

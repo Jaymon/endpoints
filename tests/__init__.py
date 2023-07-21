@@ -8,7 +8,7 @@ import asyncio
 
 import testdata
 
-from endpoints import environ
+from endpoints.config import environ
 from endpoints.interface.base import BaseApplication
 from endpoints.call import Request
 

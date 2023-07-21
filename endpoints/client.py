@@ -28,7 +28,7 @@ from datatypes import Host
 
 from .compat import *
 from .utils import String, ByteString, Base64, Url
-from .interface.base import Payload, BaseApplication
+from .interface.base import BaseApplication
 from .call import Headers
 
 
@@ -272,10 +272,7 @@ class WebSocketClient(WebClient):
     pretty much every method of this client can accept a timeout argument, if you
     don't include the timeout then self.timeout will be used instead
     """
-
     application_class = BaseApplication
-
-    payload_class = Payload
 
     attempts = 3
     """how many times the client should attempt to connect/re-connect"""

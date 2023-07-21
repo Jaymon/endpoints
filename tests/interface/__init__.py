@@ -427,7 +427,6 @@ class WebSocketTestCase(TestCase):
         ])
 
         c = self.create_client()
-        c.basic_auth("foo", "bar")
         r = c.post("/foo", {"bar": 2})
         self.assertEqual(1, r._body)
 
@@ -563,6 +562,8 @@ class WebSocketTestCase(TestCase):
         ])
         c = self.create_client()
         c.connect()
+
+        pout.b()
 
         r = c.get("http://example.com/foo/bar")
         self.assertEqual(404, r.code)

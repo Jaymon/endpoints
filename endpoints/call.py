@@ -24,7 +24,7 @@ from .exception import (
     CloseConnection,
 )
 from .compat import *
-from . import environ
+from .config import environ
 
 from datatypes import (
     HTTPHeaders as Headers,
@@ -476,19 +476,18 @@ class Controller(object):
 
         res = self.response
         req = self.request
-        uuid = getattr(req, "uuid", "")
-        if uuid:
+        if uuid := getattr(req, "uuid", ""):
             uuid += " "
 
         for k, v in res.headers.items():
-            self.logger.info("Request {}response header {}: {}".format(uuid, k, v))
+            self.logger.info("Response {}header {}: {}".format(uuid, k, v))
 
         stop = time.time()
         def get_elapsed(start, stop, multiplier, rnd):
             return round(abs(stop - start) * float(multiplier), rnd)
         elapsed = get_elapsed(start, stop, 1000.00, 1)
         total = "%0.1f ms" % (elapsed)
-        self.logger.info("Request {}response {} {} in {}".format(
+        self.logger.info("Response {}{} {} in {}".format(
             uuid,
             self.response.code,
             self.response.status,
@@ -628,7 +627,7 @@ class Request(Call):
         if not uuid:
             uuid = self.find_header(["X-UUID", "Sec-Websocket-Key"])
 
-        return uuid
+        return uuid or ""
 
     @cachedproperty(cached="_accept_content_type")
     def accept_content_type(self):
@@ -1015,11 +1014,7 @@ class Response(Call):
     def status(self):
         """The full http status (the first line of the headers in a server
         response)"""
-        msg = "UNKNOWN"
-        status_tuple = BaseHTTPRequestHandler.responses.get(self.code)
-        if status_tuple:
-            msg = status_tuple[0]
-        return msg
+        return Status(self.code)
 
     @cachedproperty(setter="_body")
     def body(self, v):

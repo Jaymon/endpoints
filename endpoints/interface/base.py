@@ -12,7 +12,7 @@ import inspect
 
 from datatypes import String, ReflectModule
 
-from .. import environ
+from ..config import environ
 from ..call import Controller, Request, Response
 from ..decorators import property
 #from ..exception import CallError, Redirect, CallStop, AccessDenied
@@ -34,7 +34,43 @@ logger = logging.getLogger(__name__)
 
 
 class ApplicationABC(object):
-    async def __call__(self, *args, **kwargs):
+    def normalize_call_kwargs(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def is_http_call(self, *args, **kwargs):
+        return True
+
+    def is_websocket_call(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    async def handle_http(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    def is_websocket_recv(self, data, **kwargs):
+        raise NotImplementedError()
+
+    def is_websocket_close(self, data, **kwargs):
+        raise NotImplementedError()
+
+    async def handle_websocket_recv(self, data, **kwargs):
+        raise NotImplementedError()
+
+    async def send_websocket(self, request, response, **kwargs):
+        raise NotImplementedError()
+
+    async def handle_websocket_connect(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    async def send_websocket_connect(self, request, response, **kwargs):
+        raise NotImplementedError()
+
+    async def handle_websocket_disconnect(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    async def send_websocket_disconnect(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    async def recv_websocket(self, *args, **kwargs):
         raise NotImplementedError()
 
 
@@ -42,9 +78,10 @@ class BaseApplication(ApplicationABC):
     """all servers should extend this and implemented the NotImplemented methods,
     this ensures a similar interface among all the different servers
 
-    A server is different from the interface because the server is actually responsible
-    for serving the requests, while the interface will translate the requests to
-    and from endpoints itself into something the server backend can understand
+    A server is different from the interface because the server is actually
+    responsible for serving the requests, while the interface will translate the
+    requests to and from endpoints itself into something the server backend can
+    understand
     """
     controller_prefixes = None
     """the controller prefixes (python module paths) you want to use to find your
@@ -75,6 +112,20 @@ class BaseApplication(ApplicationABC):
         for k, v in kwargs.items():
             if k.endswith("_class"):
                 setattr(self, k, v)
+
+    async def __call__(self, *args, **kwargs):
+        """this is what will be called for each request that that ASGI server
+        handles"""
+        call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
+
+        if self.is_http_call(**call_kwargs):
+            await self.handle_http(**call_kwargs)
+
+        elif self.is_websocket_call(**call_kwargs):
+            await self.handle_websocket(**call_kwargs)
+
+        else:
+            logger.warning("Request was not HTTP or WebSocket")
 
     async def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints
@@ -642,161 +693,53 @@ class BaseApplication(ApplicationABC):
 
         return d
 
+    async def handle_websocket_connect(self, **kwargs):
+        request = await self.create_request(**kwargs)
+        response = await self.create_response(**kwargs)
 
+        request.method = "CONNECT"
 
+        await self.handle(request, response, **kwargs)
+        await self.send_websocket_connect(request, response, **kwargs)
 
+    async def handle_websocket_disconnect(self, **kwargs):
+        request = await self.create_request(**kwargs)
+        response = await self.create_response(**kwargs)
 
-
-# TODO -- this is used by client.WebSocketClient
-class Payload(object):
-    """We have a problem with generic websocket support, websockets don't have an
-    easy way to decide how they will send stuff back and forth like http (where you
-    can set a content type header and things like that) so Payload solves that problem,
-    the websocket client and the default interface of the servers will use Payload but
-    it could be overridden and completely changed and then you would just need to set
-    the class in the client and server interfaces and you could completely change the
-    way the websockets interact with each other
-
-    I thought about doing something with the accept header or content-type on a Request
-    object, which maybe would work but you can also override the Request and Response
-    objects and that would mean you would need to put the loads/dumps code in possibly
-    two different places, which I don't love because I like DRY solutions so it would
-    still be great to have a class like this that all the other interfaces wrap
-    in order to send/receive data via websockets
-    """
-    @classmethod
-    def loads(cls, raw):
-        return json.loads(raw)
-
-    @classmethod
-    def dumps(cls, kwargs):
-        return json.dumps(kwargs, cls=JSONEncoder)
-
-
-class BaseWebsocketServer(BaseApplication):
-
-    payload_class = Payload
-
-    def create_websocket_request(self, request, raw_request=None):
-        """create the websocket Request for this call using the original Request
-        instance from the initial ws connection
-
-        :param request: the original Request instance from the initial connection
-        :param raw_request: this will be passed to self.payload_class to be 
-            interpretted
-        :returns: a new Request instance to be used for this specific call
-        """
-        ws_req = request.copy()
-        ws_req.controller_info = None
-
-        # just in case we need access to the original request object or the raw info
-        ws_req.parent = request
-        ws_req.raw_request = raw_request
-
-        if raw_request:
-            # path, body, method, uuid
-            kwargs = self.payload_class.loads(raw_request)
-            #kwargs.setdefault("body", None)
-            kwargs.setdefault("path", request.path)
-            kwargs.setdefault("headers", {})
-            kwargs.setdefault("body", {})
-
-            ws_req.environ["REQUEST_METHOD"] = kwargs["method"]
-            ws_req.method = kwargs["method"]
-
-            ws_req.environ["PATH_INFO"] = kwargs["path"]
-            ws_req.path = kwargs["path"]
-
-            ws_req.environ.pop("wsgi.input", None)
-
-            ws_req.body = kwargs["body"]
-            ws_req.body_kwargs = kwargs["body"]
-
-            #ws_req.uuid = kwargs["uuid"] if "uuid" in kwargs else None
-            ws_req.uuid = kwargs.get("uuid", request.uuid)
-
-            ws_req.headers.update(kwargs["headers"])
-
-        return ws_req
-
-    def create_websocket_response_body(self, request, response, json_encoder=JSONEncoder, **kwargs):
-        """Similar to create_response_body it prepares a response to be sent back
-        down the wire using the payload_class variable
-
-        :param request: the call's Request instance, this needs the request because
-            of how websockets are sent back and forth
-        :param response: the call's Response instance
-        :returns: a generator that yields bytes strings
-        """
-        raw_response = {}
-
-        raw_response["path"] = request.path
-        if request.uuid:
-            raw_response["uuid"] = request.uuid
-
-        raw_response["code"] = response.code
-        raw_response["body"] = response.body
-
-        body = self.payload_class.dumps(raw_response)
-        yield ByteString(body, response.encoding).raw()
-
-    def connect_websocket_call(self, raw_request):
-        """called during websocket handshake
-
-        this should modify the request instance to use the CONNECT method so you
-        can customize functionality in your controller using a CONNECT method
-
-        NOTE -- this does not call create_websocket_request, it does call create_request
-
-        :param raw_request: the raw request from the backend
-        :returns: Call instance that can handle the request
-        """
-        c = self.create_call(raw_request)
-        req = c.request
-
-        # if there is an X-uuid header then set uuid and send it down
-        # with every request using that header
-        # https://stackoverflow.com/questions/18265128/what-is-sec-websocket-key-for
-        uuid = None
-
-        # first try and get the uuid from the body since javascript has limited
-        # capability of setting headers for websockets
-        kwargs = req.kwargs
-        if "uuid" in kwargs:
-            uuid = kwargs["uuid"]
-
-        # next use X-UUID header, then the websocket key
-        if not uuid:
-            uuid = req.find_header(["X-UUID", "Sec-Websocket-Key"])
-
-        req.uuid = uuid
-        req.method = "CONNECT"
-        return c
-
-    def create_websocket_call(self, request, raw_request=None):
-        """for every message sent back and forth over the websocket this should be
-        called
-
-        :param request: Request, the main request from the initial ws connection
-        :param raw_request: mixed, the raw request pulled from some backend that
-            should be acted on
-        :returns: Call instance
-        """
-        req = self.create_websocket_request(request, raw_request)
-        c = self.create_call(raw_request, request=req)
-        return c
-
-    def disconnect_websocket_call(self, request):
-        """This handles a websocket disconnection
-
-        this should modify the request instance to use the DISCONNECT method so you
-        can customize functionality in your controller using a DISCONNECT method
-
-        :param request: Request, the main request from the initial ws connection
-        :returns: Call instance
-        """
-        #req = self.create_websocket_request(request)
+        response.code = kwargs.get("code", 1000)
         request.method = "DISCONNECT"
-        c = self.create_call(None, request=request)
-        return c
+
+        await self.handle(request, response)
+        await self.send_websocket_disconnect(request, response, **kwargs)
+
+    async def handle_websocket(self, **kwargs):
+        await self.handle_websocket_connect(**kwargs)
+        disconnect = True
+
+        try:
+            while True:
+                data = await self.recv_websocket(**kwargs)
+
+                if self.is_websocket_recv(data, **kwargs):
+                    await self.handle_websocket_recv(data, **kwargs)
+
+                elif self.is_websocket_close(data, **kwargs):
+                    disconnect = False
+                    break
+
+                else:
+                    logger.warning("Websocket data was unrecognized")
+
+        except CloseConnection as e:
+            disconnect = True
+
+        except Exception as e:
+            # daphne was buring the error and I'm not sure why, so I'm going to
+            # leave this here for right now just in case
+            logger.exception(e)
+            raise
+
+        finally:
+            if disconnect:
+                await self.handle_websocket_disconnect(**kwargs)
 

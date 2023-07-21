@@ -9,7 +9,7 @@ from ..base import BaseApplication
 #from ...http import Host
 #from ...decorators import property
 from ...utils import ByteString, String
-from ... import environ
+from ...config import environ
 
 
 import json
@@ -33,136 +33,85 @@ class Application(BaseApplication):
     WebSocket lifecycle:
         https://asgi.readthedocs.io/en/latest/specs/www.html#websocket-connection-scope
     """
+    def normalize_call_kwargs(self, scope, receive, send, **kwargs):
+        return {
+            "scope": scope,
+            "receive": receive,
+            "send": send,
+            **kwargs
+        }
 
-    def is_http_call(self, scope):
+    def is_http_call(self, scope, **kwargs):
         return scope["type"] == "http"
 
-    def is_websocket_call(self, scope):
+    def is_websocket_call(self, scope, **kwargs):
         return scope["type"] == "websocket"
 
+    async def handle_http(self, **kwargs):
+        request = await self.create_request(**kwargs)
 
-    async def handle_websocket(self, scope, receive, send):
+        d = await self.recv_websocket(**kwargs)
+        body = d["body"]
+        while d["more_body"]:
+            d = await self.recv_websocket(**kwargs)
+            body += d["body"]
 
-        await self.handle_websocket_connect(scope, receive, send)
-        disconnect = True
+        await self.set_request_body(request, body, **kwargs)
 
-        try:
-            while True:
-                ws_raw = await receive()
-
-                if ws_raw["type"] == "websocket.receive":
-                    # https://asgi.readthedocs.io/en/latest/specs/www.html#receive-receive-event
-                    request = await self.create_request(scope)
-                    response = await self.create_response()
-
-                    d = self.get_websocket_loads(ws_raw["text"])
-
-                    for k in ["path", "uuid", "method"]:
-                        if k in d:
-                            setattr(request, k, d[k])
-
-                    if "body" in d:
-                        await self.set_request_body(request, d["body"])
-
-                    if d["headers"]:
-                        request.add_headers(d["headers"])
-
-                    await self.handle(request, response)
-
-                    await self.send_websocket(request, response, send)
-
-                elif ws_raw["type"] == "websocket.disconnect":
-                    # https://asgi.readthedocs.io/en/latest/specs/www.html#disconnect-receive-event-ws
-                    #pout.v(ws_raw)
-                    disconnect = False
-                    break
-
-#                 elif ws_raw["type"] == "websocket.close":
-#                     # https://asgi.readthedocs.io/en/latest/specs/www.html#close-send-event
-#                     pout.v(ws_raw)
-#                     await send({
-#                         "type": "websocket.close",
-#                         "status": ws_raw.get("code", 1000),
-#                         "reason": ws_raw.get(
-#                             "reason",
-#                             "Websocket closed by client"
-#                         ),
-#                     })
-
-                    break
-
-        except CloseConnection as e:
-            disconnect = True
-
-        finally:
-            if disconnect:
-                await self.handle_websocket_disconnect(scope, receive, send)
-
-    async def handle_websocket_connect(self, scope, receive, send):
-        d = await receive()
-        if d["type"] == "websocket.connect":
-            request = await self.create_request(scope)
-            response = await self.create_response()
-
-            request.method = "CONNECT"
-
-            await self.handle(request, response)
-
-            if response.is_success():
-                await send({
-                    "type": "websocket.accept",
-                })
-
-                await self.send_websocket(request, response, send)
-
-            else:
-                await send({
-                    "type": "websocket.close",
-                    "code": response.code,
-                })
-
-#                 pout.v(response.code)
-#                 # TODO -- this should be consolidated into an HTTP send method
-#                 await send({
-#                     "type": "http.response.start",
-#                     #"status": response.code,
-#                     "status": 403,
-#                     "headers": list(response.headers.asgi()),
-#                 })
-# 
-#                 await send({
-#                     "type": "http.response.body",
-#                     "body": b"",
-#                     "more_body": False,
-#                 })
-
-        else:
-            await send({
-                "type": "websocket.close",
-                "code": 1002,
-                "reason": "WebSocket connect got an unexpected asgi type",
-            })
-
-    async def handle_websocket_disconnect(self, scope, receive, send):
-        request = await self.create_request(scope)
         response = await self.create_response()
-
-        response.code = 1000
-        request.method = "DISCONNECT"
-
         await self.handle(request, response)
 
-        body = b""
-        async for part in self.get_response_body(response):
-            body += part
-
-        r = await send({
-            "type": "websocket.close",
-            "code": response.code,
-            "reason": String(body),
+        await kwargs["send"]({
+            "type": "http.response.start",
+            "status": response.code,
+            "headers": list(response.headers.asgi()),
         })
 
-    async def send_websocket(self, request, response, send, **kwargs):
+        # https://peps.python.org/pep-0525/
+        # https://stackoverflow.com/a/37550568
+        async for body in self.get_response_body(response):
+            await kwargs["send"]({
+                "type": "http.response.body",
+                "body": body,
+                "more_body": True,
+            })
+
+        await kwargs["send"]({
+            "type": "http.response.body",
+            "body": b"",
+            "more_body": False,
+        })
+
+    def is_websocket_recv(self, data, **kwargs):
+        return data["type"] == "websocket.receive"
+
+    def is_websocket_close(self, data, **kwargs):
+        return data["type"] == "websocket.disconnect"
+
+    async def handle_websocket_recv(self, data, **kwargs):
+        # https://asgi.readthedocs.io/en/latest/specs/www.html#receive-receive-event
+        request = await self.create_request(**kwargs)
+        response = await self.create_response()
+
+        d = self.get_websocket_loads(data["text"])
+
+        for k in ["path", "uuid", "method"]:
+            if k in d:
+                setattr(request, k, d[k])
+
+        if "body" in d:
+            await self.set_request_body(request, d["body"])
+
+        if d["headers"]:
+            request.add_headers(d["headers"])
+
+        await self.handle(request, response, **kwargs)
+        await self.send_websocket(request, response, **kwargs)
+
+    async def recv_websocket(self, **kwargs):
+        return await kwargs["receive"]()
+
+    async def send_websocket(self, request, response, **kwargs):
         d = {
             "type": "websocket.send",
             "text": self.get_websocket_dumps(
@@ -172,59 +121,41 @@ class Application(BaseApplication):
                 body=response.body,
             )
         }
-        await send(d)
+        await kwargs["send"](d)
 
-    async def __call__(self, scope, receive, send):
-        """this is what will be called for each request that that ASGI server
-        handles"""
+    async def handle_websocket_connect(self, **kwargs):
+        d = await self.recv_websocket(**kwargs)
+        if d["type"] == "websocket.connect":
+            await super().handle_websocket_connect(**kwargs)
 
-        #pout.v(scope)
+        else:
+            response = await self.create_response(**kwargs)
+            response.code = 1002
+            await self.send_websocket_connect(None, response, **kwargs)
 
-        if self.is_http_call(scope):
-            request = await self.create_request(scope)
-
-            d = await receive()
-            body = d["body"]
-            while d["more_body"]:
-                d = await receive()
-                body += d["body"]
-
-            await self.set_request_body(request, body, **kwargs)
-
-
-            response = await self.create_response()
-            await self.handle(request, response)
-
-            await send({
-                "type": "http.response.start",
-                "status": response.code,
-                "headers": list(response.headers.asgi()),
+    async def send_websocket_connect(self, request, response, **kwargs):
+        if response.is_success():
+            await kwargs["send"]({
+                "type": "websocket.accept",
             })
+            await self.send_websocket(request, response, **kwargs)
 
-            # https://peps.python.org/pep-0525/
-            # https://stackoverflow.com/a/37550568
-            async for body in self.get_response_body(response):
-                await send({
-                    "type": "http.response.body",
-                    "body": body,
-                    "more_body": True,
-                })
+        else:
+            await self.send_websocket_disconnect(request, response, **kwargs)
 
-            await send({
-                "type": "http.response.body",
-                "body": b"",
-                "more_body": False,
-            })
+    async def send_websocket_disconnect(self, request, response, **kwargs):
+        body = b""
+        async for part in self.get_response_body(response):
+            body += part
 
-        elif self.is_websocket_call(scope):
-            await self.handle_websocket(scope, receive, send)
+        r = await kwargs["send"]({
+            "type": "websocket.close",
+            "code": response.code,
+            "reason": String(body),
+        })
 
-    async def create_request(self, raw_request, **kwargs):
-        """
-        create instance of request
-
-        raw_request -- the raw request object retrieved from a WSGI server
-        """
+    async def create_request(self, **kwargs):
+        raw_request = kwargs["scope"]
         request = self.request_class()
         request.add_headers(raw_request.get("headers", []))
 

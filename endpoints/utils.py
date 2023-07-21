@@ -21,7 +21,6 @@ from datatypes import (
 )
 
 from .compat import *
-from . import environ
 
 
 class Url(BaseUrl):
@@ -272,4 +271,104 @@ class JSONEncoder(json.JSONEncoder):
         else:
             #return json.JSONEncoder.default(self, obj)
             return super().default(obj)
+
+
+class Status(String):
+    def __new__(cls, code, **kwargs):
+        if code < 1000:
+            status = cls.get_http_status(code)
+
+        else:
+            status = cls.get_websocket_status(code)
+
+        if not status:
+            status = "UNKNOWN"
+
+        instance = super().__new__(cls, status)
+        instance.code = code
+        return instance
+
+    @classmethod
+    def get_http_status(cls, code, **kwargs):
+        status = ""
+        status_tuple = BaseHTTPRequestHandler.responses.get(code)
+        if status_tuple:
+            status = status_tuple[0]
+
+        return status
+
+    @classmethod
+    def get_websocket_status(cls, code, **kwargs):
+        """Get the websocket status code
+
+        https://github.com/Luka967/websocket-close-codes
+        """
+        status = ""
+
+        codes = {
+            # Successful operation / regular socket shutdown
+            1000: "Close Normal",
+
+            # Client is leaving (browser tab closing)
+            1001: "Close Going Away",
+
+            # Endpoint received a malformed frame
+            1002: "Close Protocol Error",
+
+            # Endpoint received an unsupported frame (e.g. binary-only endpoint
+            # received text frame)
+            1003: "Close Unsupported",
+
+            1004: "Reserved",
+
+            # Expected close status, received none
+            1005: "Closed No Status",
+
+            # No close code frame has been receieved
+            1006: "Close Abnormal",
+
+            # Endpoint received inconsistent message (e.g. malformed UTF-8)
+            1007: "Unsupported Payload",
+
+            # Generic code used for situations other than 1003 and 1009
+            1008: "Policy Violation",
+
+            # Endpoint won't process large frame
+            1009: "Close Too Large",
+
+            # Client wanted an extension which server did not negotiate
+            1010: "Mandatory Extension",
+
+            # Internal server error while operating
+            1011: "Server Error",
+
+            # Server/service is restarting
+            1012: "Service Restart",
+
+            # Temporary server condition forced blocking client's request
+            1013: "Try Again Later",
+
+            # Server acting as gateway received an invalid response
+            1014: "Bad Gateway",
+
+            # Transport Layer Security handshake failure
+            1015: "TLS Handshake Fail",
+        }
+
+        if code in codes:
+            status = codes[code]
+
+        elif code >= 1016 and code <= 1999:
+            status = "Reserved For Later"
+
+        elif code >= 2000 and code <= 2999:
+            status = "Reserved For WebSocket Extensions"
+
+        elif code >= 3000 and code <= 3999:
+            status = "Registered First Come First Serve at IANA"
+
+        elif code >= 4000 and code <= 4999:
+            status = "Available For Applications"
+
+        return status
 

@@ -4,7 +4,7 @@ from __future__ import unicode_literals, division, print_function, absolute_impo
 from jinja2 import Environment, FileSystemLoader
 
 from ...compat import *
-from ... import environ
+from ...config import environ
 from ...utils import Path, String
 
 
