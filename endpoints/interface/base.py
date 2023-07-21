@@ -82,6 +82,9 @@ class BaseApplication(ApplicationABC):
     responsible for serving the requests, while the interface will translate the
     requests to and from endpoints itself into something the server backend can
     understand
+
+    webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
+
     """
     controller_prefixes = None
     """the controller prefixes (python module paths) you want to use to find your

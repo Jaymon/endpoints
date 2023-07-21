@@ -14,9 +14,11 @@ import socket
 import logging
 import uuid
 
-import requests
-#from requests.auth import HTTPBasicAuth
-from requests.auth import _basic_auth_str
+try:
+    import requests
+    from requests.auth import _basic_auth_str
+except ImportError:
+    requests = None
 
 try:
     # https://github.com/websocket-client/websocket-client
@@ -36,10 +38,16 @@ logger = logging.getLogger(__name__)
 
 
 class WebClient(object):
-    """A generic test client that can make endpoint requests"""
+    """A generic test client that can make endpoints requests"""
     timeout = 10
 
     def __init__(self, host, *args, **kwargs):
+        if not requests:
+            logger.error("You need to install requests to use {}".format(
+                type(self).__name__
+            ))
+            raise ImportError("requests is not installed")
+
         self.host = Url(host, hostname=Host(host).client())
 
         # these are the common headers that usually don't change all that much
@@ -413,12 +421,6 @@ class WebSocketClient(WebClient):
             **kwargs
         )
 
-        #         p = self.payload_class.dumps(dict(
-#             method=method.upper(),
-#             path=path,
-#             body=payload_body,
-#             **kwargs
-#         ))
         return p
 
     def send(self, path, body, **kwargs):
@@ -486,9 +488,6 @@ class WebSocketClient(WebClient):
 
                 except websocket.WebSocketConnectionClosedException as e:
                     self.ws.shutdown()
-                    #                     raise IOError(
-#                         f"connection is not open but reported it was open: {e}"
-#                     )
 
             except (IOError, TypeError) as e:
                 logger.debug('{} error on send attempt {}: {}'.format(
@@ -560,7 +559,11 @@ class WebSocketClient(WebClient):
 
     def recv_raw(self, timeout, opcodes, **kwargs):
         """this is very internal, it will return the raw opcode and data if they
-        match the passed in opcodes"""
+        match the passed in opcodes
+
+        You can find the opcode values here:
+            https://github.com/websocket-client/websocket-client/blob/master/websocket/_abnf.py
+        """
         orig_timeout = self.get_timeout(timeout)
         timeout = orig_timeout
 
@@ -614,7 +617,6 @@ class WebSocketClient(WebClient):
         """This just makes the payload instance more HTTPClient like"""
         class Return(object): pass
         ret = Return()
-        #p = self.payload_class.loads(raw)
         p = self.application_class.get_websocket_loads(raw)
 
         for k, v in p.items():
@@ -654,9 +656,6 @@ class WebSocketClient(WebClient):
             raise IOError("recv_callback timed out in {}".format(full_timeout))
 
         return payload
-
-#     def has_connection(self):
-#         return self.connected
 
     def close(self):
         if self.connected:

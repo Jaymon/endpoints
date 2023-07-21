@@ -1,34 +1,18 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import os
-import io
-import logging
 
 from ...compat import *
 from ..base import BaseApplication
-#from ...http import Host
-#from ...decorators import property
-from ...utils import ByteString, String
-from ...config import environ
-
-
-import json
-from ...utils import JSONEncoder
-from ...exception import (
-    CallStop,
-    CloseConnection,
-)
-
-
-logger = logging.getLogger(__name__)
+from ...utils import String
 
 
 class Application(BaseApplication):
-    """
+    """ASGI HTTP and WebSocket Interface support
+
+    Good intro tutorial:
+        https://www.encode.io/articles/asgi-http
 
     HTTP lifecycle:
         https://asgi.readthedocs.io/en/latest/specs/www.html#http-connection-scope
-
 
     WebSocket lifecycle:
         https://asgi.readthedocs.io/en/latest/specs/www.html#websocket-connection-scope
