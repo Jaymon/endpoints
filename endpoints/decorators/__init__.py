@@ -1,7 +1,10 @@
 # -*- coding: utf-8 -*-
+<<<<<<< Updated upstream
 from __future__ import unicode_literals, division, print_function, absolute_import
 
 from datatypes import FuncDecorator
+=======
+>>>>>>> Stashed changes
 
 from .auth import (
     auth,
@@ -34,7 +37,6 @@ from .call import (
 from .utils import (
     httpcache,
     nohttpcache,
-    property,
     param,
     param_query,
     param_body,

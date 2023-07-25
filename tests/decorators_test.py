@@ -7,6 +7,11 @@ import re
 import testdata
 
 import endpoints
+from endpoints.call import (
+    Controller,
+    Request,
+    Response,
+)
 from endpoints import CallError
 from endpoints import decorators
 from endpoints.utils import ByteString, Base64, String
@@ -24,22 +29,27 @@ from endpoints.decorators.limit import (
     ratelimit_param_ip,
 )
 
-
-def create_controller():
-    class FakeController(endpoints.Controller):
-        def POST(self): pass
-        def GET(self): pass
-
-    res = endpoints.Response()
-
-    req = endpoints.Request()
-    req.method = 'GET'
-
-    c = FakeController(req, res)
-    return c
+from . import (
+    TestCase as BaseTestCase,
+    testdata,
+)
 
 
-class RatelimitTest(TestCase):
+class TestCase(BaseTestCase):
+    def create_controller(self):
+        class FakeController(Controller):
+            def POST(self): pass
+            def GET(self): pass
+
+        res = Response()
+        req = Request()
+        req.method = 'GET'
+
+        c = FakeController(req, res)
+        return c
+
+
+class RateLimitTest(TestCase):
     def set_bearer_auth_header(self, request, access_token):
         request.set_header("authorization", 'Bearer {}'.format(access_token))
 
@@ -258,6 +268,43 @@ class RatelimitTest(TestCase):
 
             with self.assertRaises(CallError):
                 o.rl_access_token()
+
+    def test_async(self):
+        import asyncio
+
+        class Backend(object):
+            def handle(self, *args, **kwargs):
+                return False
+
+        with testdata.environment(RateLimitDecorator, backend_class=Backend):
+            class MockObject(object):
+                request = Request()
+
+                @ratelimit_ip()
+                async def rl_ip(self): return 2
+
+                @ratelimit_param_ip("bar")
+                async def rl_param_ip(self, **kwargs): return 3
+
+                @ratelimit_param("bar")
+                async def rl_param(self, **kwargs): return 4
+
+                @ratelimit_access_token()
+                async def rl_access_token(self): return 5
+
+            o = MockObject()
+
+            with self.assertRaises(CallError):
+                asyncio.run(o.rl_param_ip(bar=1))
+
+            with self.assertRaises(CallError):
+                asyncio.run(o.rl_ip())
+
+            with self.assertRaises(CallError):
+                asyncio.run(o.rl_param(bar=1))
+
+            with self.assertRaises(CallError):
+                asyncio.run(o.rl_access_token())
 
 
 class AuthTest(TestCase):

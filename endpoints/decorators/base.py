@@ -2,7 +2,11 @@
 from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
 
+<<<<<<< Updated upstream
 from datatypes import FuncDecorator
+=======
+from datatypes.decorators import FuncDecorator
+>>>>>>> Stashed changes
 
 from ..compat import *
 from ..exception import CallError
@@ -12,8 +16,8 @@ logger = logging.getLogger(__name__)
 
 
 class ControllerDecorator(FuncDecorator):
-    """Base decorator providing common functionality to run .handle() when a decorated
-    function is called, this class is meant to be extended by a child
+    """Base decorator providing common functionality to run .handle() when a
+    decorated function is called, this class is meant to be extended by a child
 
     This also is Controller specific, it's meant to be used in decorators that
     decorate Controller methods
