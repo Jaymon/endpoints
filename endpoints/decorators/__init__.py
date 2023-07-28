@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from .auth import (
-    AuthBackend,
-    AuthDecorator,
-    auth_basic,
-    auth_client,
-    auth_token,
+from .base import (
+    BackendDecorator,
+    ControllerDecorator,
 )
 
 from .limit import (
@@ -17,17 +14,12 @@ from .limit import (
     ratelimit_param_ip,
 )
 
-from .base import (
-    TargetDecorator,
-    BackendDecorator,
-    ControllerDecorator,
-)
-
-from .call import (
-    route,
-    route_path,
-    route_param,
-    version
+from .auth import (
+    AuthBackend,
+    AuthDecorator,
+    auth_basic,
+    auth_client,
+    auth_token,
 )
 
 from .utils import (
@@ -37,5 +29,12 @@ from .utils import (
     param,
     param_query,
     param_body,
+)
+
+from .call import (
+    route,
+    route_path,
+    route_param,
+    version
 )
 

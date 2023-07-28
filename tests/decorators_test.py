@@ -18,7 +18,6 @@ from endpoints.utils import ByteString, Base64, String
 from endpoints.decorators.base import (
     ControllerDecorator,
     BackendDecorator,
-    TargetDecorator,
 )
 from endpoints.decorators.limit import (
     RateLimitDecorator,
@@ -86,32 +85,6 @@ class ControllerDecoratorTest(TestCase):
 
         c = self.create_controller()
         @Dec()
-        async def afunc(self):
-            return 1
-        func = self.mock_async(afunc)
-
-        self.assertEqual(1, func(c))
-
-
-class TargetDecoratorTest(TestCase):
-    def test_async_handle(self):
-        async def atarget(*args, **kwargs):
-            return True
-
-        c = self.create_controller()
-        @TargetDecorator(atarget)
-        async def afunc(self):
-            return 1
-        func = self.mock_async(afunc)
-
-        self.assertEqual(1, func(c))
-
-    def test_sync_handle(self):
-        def target(*args, **kwargs):
-            return True
-
-        c = self.create_controller()
-        @TargetDecorator(target)
         async def afunc(self):
             return 1
         func = self.mock_async(afunc)

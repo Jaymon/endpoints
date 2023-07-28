@@ -149,28 +149,6 @@ class ControllerDecorator(FuncDecorator):
         return True
 
 
-class TargetDecorator(ControllerDecorator):
-    """Base decorator providing common functionality to run a target when
-    decorated function is called, this class is meant to be extended by a child
-
-    This also is very Controller specific, it's meant to be used in decorators
-    that decorate Controller methods
-
-    .. seealso:: decorators.auth
-    """
-    def definition(self, target, *args, **kwargs):
-        if target:
-            self.target = target
-
-        super().definition(*args, **kwargs)
-
-    async def handle(self, *args, **kwargs):
-        return self.target(*args, **kwargs)
-#         if asyncio.iscoroutine(ret):
-#             ret = await ret
-#         return ret
-
-
 class BackendDecorator(ControllerDecorator):
 
     backend_class = None
@@ -203,9 +181,4 @@ class BackendDecorator(ControllerDecorator):
             **self.decorator_kwargs,
         )
         return backend.handle(*args, **kwargs)
-#         ret = backend.handle(*args, **kwargs)
-#         while asyncio.iscoroutine(ret):
-#             ret = await ret
-# 
-#         return ret
 

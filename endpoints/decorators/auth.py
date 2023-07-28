@@ -4,7 +4,7 @@ import logging
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
-from .base import TargetDecorator, BackendDecorator
+from .base import BackendDecorator
 
 
 logger = logging.getLogger(__name__)
