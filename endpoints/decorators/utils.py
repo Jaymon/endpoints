@@ -7,6 +7,7 @@ from functools import wraps
 import logging
 
 from datatypes.decorators import FuncDecorator
+from .base import ControllerDecorator
 
 from ..compat import *
 from ..exception import CallError
@@ -15,7 +16,7 @@ from ..exception import CallError
 logger = logging.getLogger(__name__)
 
 
-class httpcache(FuncDecorator):
+class httpcache(ControllerDecorator):
     """
     sets the cache headers so the response can be cached by the client
 
@@ -23,44 +24,67 @@ class httpcache(FuncDecorator):
 
     ttl -- integer -- how many seconds to have the client cache the request
     """
-    def decorate(self, func, ttl):
-        def decorated(self, *args, **kwargs):
-            self.response.add_headers({
-                "Cache-Control": "max-age={}".format(ttl),
-            })
-            return func(self, *args, **kwargs)
-            # TODO -- figure out how to set ETag
-            #if not self.response.has_header('ETag')
+    def definition(self, ttl, **kwargs):
+        self.ttl = int(ttl)
+        super().definition(**kwargs)
 
-        return decorated
+    async def handle(self, controller, *args, **kwargs):
+        controller.response.add_headers({
+            "Cache-Control": "max-age={}".format(self.ttl),
+        })
+        # TODO -- figure out how to set ETag
+        #if not self.response.has_header('ETag')
 
 
-class nohttpcache(FuncDecorator):
+class nohttpcache(ControllerDecorator):
     """
     sets all the no cache headers so the response won't be cached by the client
 
     https://devcenter.heroku.com/articles/increasing-application-performance-with-http-cache-headers#cache-prevention
     """
-    def decorate(self, func):
-        def decorated(self, *args, **kwargs):
-            self.response.add_headers({
-                "Cache-Control": "no-cache, no-store, must-revalidate",
-                "Pragma": "no-cache", 
-                "Expires": "0"
-            })
-            return func(self, *args, **kwargs)
-
-        return decorated
+    async def handle(self, controller, *args, **kwargs):
+        controller.response.add_headers({
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache", 
+            "Expires": "0"
+        })
 
 
-class param(FuncDecorator):
+class code_error(ControllerDecorator):
+    """
+    When placed on HTTPMETHOD methods (eg, GET) this will allow you to easily
+    map raised exceptions to http status codes
+
+    :example:
+        class Foo(Controller):
+            @code_error(406, AttributeError, IndexError)
+            def GET(self): raise AttributeError()
+
+    :param code: integer, an http status code
+        https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+    :param **exc_classes: tuple, one or more exception classes that will be
+        checked against the raised error
+    """
+    def definition(self, code, *exc_classes):
+        self.code = code
+        self.exc_classes = exc_classes
+
+    async def handle_controller(self, *args, **kwargs):
+        try:
+            return await super().handle_controller(*args, **kwargs)
+
+        except self.exc_classes as e:
+            raise CallError(self.code, e) from e
+
+
+class param(ControllerDecorator):
     """
     decorator to allow setting certain expected query/body values and options
 
     this tries to be as similar to python's built-in argparse as possible
 
-    This checks both POST and GET query args, if you would like to only check POST,
-    use post_param, if you only want to check GET, then use get_param
+    This checks both POST and GET query args, if you would like to only check
+    POST, use post_param, if you only want to check GET, then use get_param
 
     example --
 
@@ -72,30 +96,51 @@ class param(FuncDecorator):
         type -- type -- a python type like int or float
         action -- string --
             store -- default
-            store_false -- set if you want default to be true, and false if param is
-                passed in
+            store_false -- set if you want default to be true, and false if
+                param is passed in
             store_true -- opposite of store_false
-            store_list -- set to have a value like 1,2,3 be blown up to ['1', '2', '3']
+            store_list -- set to have a value like 1,2,3 be blown up to
+                ['1', '2', '3']
             append -- if multiple param values should be turned into an array
                 eg, foo=1&foo=2 would become foo=[1, 2]
-            append_list -- it's store_list + append, so foo=1&foo=2,3 would be foo=[1, 2, 3]
-        default -- mixed -- the value that should be set if query param isn't there, if this is
-            callable (eg, time.time or datetime.utcnow) then it will be called every time the
-            decorated method is called
+            append_list -- it's store_list + append, so foo=1&foo=2,3 would be
+                foo=[1, 2, 3]
+        default -- mixed -- the value that should be set if query param isn't
+            there, if this is callable (eg, time.time or datetime.utcnow) then
+            it will be called every time the decorated method is called
         required -- boolean -- True if param is required, default is true
-        choices -- set() -- a set of values to be in tested against (eg, val in choices)
+        choices -- set() -- a set of values to be in tested against (eg, val in
+            choices)
         allow_empty -- boolean -- True allows values like False, 0, '' through,
-            default False, this will also let through any empty value that was set
-            via the default flag
+            default False, this will also let through any empty value that was
+            set via the default flag
         max_size -- int -- the maximum size of the param
         min_size -- int -- the minimum size of the param
-        regex -- regexObject -- if you would like the param to be validated with a regular
-            exception, uses the re.search() method
+        regex -- regexObject -- if you would like the param to be validated with
+            a regular exception, uses the re.search() method
         help -- string -- a helpful description for this param
 
     raises -- 
         CallError -- with 400 status code on any param validation failures
     """
+    def definition(self, *names, **flags):
+        self.normalize_type(names)
+        self.normalize_flags(flags)
+
+    async def handle_controller(self, func, controller, controller_args, controller_kwargs):
+        controller, cargs, ckwargs = self.normalize_param(
+            controller,
+            controller_args,
+            controller_kwargs,
+        )
+
+        return await super().handle_controller(
+            func,
+            controller,
+            cargs,
+            ckwargs,
+        )
+
     def normalize_flags(self, flags):
         """normalize the flags to make sure needed values are there
 
@@ -120,15 +165,16 @@ class param(FuncDecorator):
         self.flags = flags
 
     def normalize_type(self, names):
-        """Decide if this param is an arg or a kwarg and set appropriate internal flags"""
+        """Decide if this param is an arg or a kwarg and set appropriate
+        internal flags"""
         self.name = names[0]
         self.is_kwarg = False
         self.is_arg = False
         self.names = []
 
         try:
-            # http://stackoverflow.com/a/16488383/5006 uses ask forgiveness because
-            # of py2/3 differences of integer check
+            # http://stackoverflow.com/a/16488383/5006 uses ask forgiveness
+            # because of py2/3 differences of integer check
             self.index = int(self.name)
             self.name = ""
             self.is_arg = True
@@ -152,8 +198,8 @@ class param(FuncDecorator):
         return ret
 
     def normalize_param(self, slf, args, kwargs):
-        """this is where all the magic happens, this will try and find the param and
-        put its value in kwargs if it has a default and stuff"""
+        """this is where all the magic happens, this will try and find the
+        param and put its value in kwargs if it has a default and stuff"""
         if self.is_kwarg:
             kwargs = self.normalize_kwarg(slf.request, kwargs)
         else:
@@ -167,7 +213,9 @@ class param(FuncDecorator):
 
         paction = flags['action']
         if paction not in set(['store', 'store_false', 'store_true']):
-            raise RuntimeError('unsupported positional param action {}'.format(paction))
+            raise RuntimeError('unsupported positional param action {}'.format(
+                paction
+            ))
 
         if 'dest' in flags:
             logger.warn("dest is ignored in positional param")
@@ -177,7 +225,10 @@ class param(FuncDecorator):
 
         except IndexError:
             if flags["required"]:
-                raise CallError(400, "required positional param at index {} does not exist".format(index))
+                raise CallError(
+                    400,
+                    f"required positional param at index {index} does not exist"
+                )
 
             else:
                 val = self.normalize_default(flags.get('default', None))
@@ -186,7 +237,10 @@ class param(FuncDecorator):
             val = self.normalize_val(request, val)
 
         except ValueError as e:
-            raise CallError(400, "Positional arg {} failed with {}".format(index, String(e)))
+            raise CallError(
+                400,
+                "Positional arg {} failed with {}".format(index, String(e))
+            )
 
         args.insert(index, val)
 
@@ -200,7 +254,8 @@ class param(FuncDecorator):
         :param required: True if a name has to be found in kwargs
         :param default: the default value if name isn't found
         :param kwargs: the kwargs that will be used to find the value
-        :returns: tuple, found_name, val where found_name is the actual name kwargs contained
+        :returns: tuple, found_name, val where found_name is the actual name
+            kwargs contained
         """
         val = default
         found_name = ''
@@ -211,7 +266,9 @@ class param(FuncDecorator):
                 break
 
         if not found_name and required:
-            raise ValueError("required param {} does not exist".format(self.name))
+            raise ValueError("required param {} does not exist".format(
+                self.name
+            ))
 
         return found_name, val
 
@@ -225,13 +282,20 @@ class param(FuncDecorator):
             dest_name = flags.get('dest', name)
 
             has_val = True
-            found_name, val = self.find_kwarg(request, self.names, prequired, pdefault, kwargs)
+            found_name, val = self.find_kwarg(
+                request,
+                self.names,
+                prequired,
+                pdefault,
+                kwargs
+            )
             if found_name:
                 # we are going to replace found_name with dest_name
                 kwargs.pop(found_name)
             else:
-                # we still want to run a default value through normalization but if we
-                # didn't find a value and don't have a default, don't set any value
+                # we still want to run a default value through normalization but
+                # if we didn't find a value and don't have a default, don't set
+                # any value
                 has_val = 'default' in flags
 
             if has_val:
@@ -329,14 +393,25 @@ class param(FuncDecorator):
             if isinstance(val, list) and ptype != list:
                 for v in val:
                     if v not in pchoices:
-                        raise ValueError("param value {} not in choices {}".format(v, pchoices))
+                        raise ValueError(
+                            "param value {} not in choices {}".format(
+                                v,
+                                pchoices
+                            )
+                        )
 
             else:
                 if val not in pchoices:
-                    raise ValueError("param value {} not in choices {}".format(val, pchoices))
+                    raise ValueError(
+                        "param value {} not in choices {}".format(
+                            val,
+                            pchoices
+                        )
+                    )
 
         # at some point this if statement is just going to be too ridiculous
-        # FieldStorage check is because of this bug https://bugs.python.org/issue19097
+        # FieldStorage check is because of this bug
+        # https://bugs.python.org/issue19097
         if not isinstance(val, cgi.FieldStorage):
             if not allow_empty and val is not False and not val:
                 if 'default' not in flags:
@@ -364,21 +439,21 @@ class param(FuncDecorator):
 
         return val
 
-    def decorate(slf, func, *names, **flags):
-        slf.normalize_type(names)
-        slf.normalize_flags(flags)
-
-        def decorated(self, *args, **kwargs):
-            self, args, kwargs = slf.normalize_param(self, args, kwargs)
-            return func(self, *args, **kwargs)
-        return decorated
+#     def decorate(slf, func, *names, **flags):
+#         slf.normalize_type(names)
+#         slf.normalize_flags(flags)
+# 
+#         def decorated(self, *args, **kwargs):
+#             self, args, kwargs = slf.normalize_param(self, args, kwargs)
+#             return func(self, *args, **kwargs)
+#         return decorated
 
 
 class param_query(param):
     """same as param, but only checks GET params"""
     def find_kwarg(self, request, names, required, default, kwargs):
         try:
-            return super(param_query, self).find_kwarg(
+            return super().find_kwarg(
                 request,
                 names,
                 required,
@@ -386,8 +461,12 @@ class param_query(param):
                 request.query_kwargs
             )
 
-        except ValueError:
-            raise ValueError("required param {} was not present in GET params".format(self.name))
+        except ValueError as e:
+            raise ValueError(
+                "required param {} was not present in GET params".format(
+                    self.name
+                )
+            ) from e
 
 
 class param_body(param):
@@ -402,33 +481,10 @@ class param_body(param):
                 request.body_kwargs
             )
 
-        except ValueError:
-            raise ValueError("required param {} was not present in POST params".format(self.name))
-
-
-class code_error(FuncDecorator):
-    """
-    When placed on HTTPMETHOD methods (eg, GET) this will allow you to easily map
-    raised exceptions to http status codes
-
-    :example:
-        class Foo(Controller):
-            @code_error(406, AttributeError, IndexError)
-            def GET(self): raise AttributeError()
-
-    :param code: integer, an http status code
-        https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
-    :param **exc_classes: tuple, one or more exception classes that will be checked
-        against the raised error
-    """
-    def decorate(self, func, code, *exc_classes):
-        def decorated(self, *args, **kwargs):
-            try:
-                return func(self, *args, **kwargs)
-
-            except exc_classes as e:
-                raise CallError(code, e)
-
-        return decorated
-
+        except ValueError as e:
+            raise ValueError(
+                "required param {} was not present in POST params".format(
+                    self.name
+                )
+            ) from e
 

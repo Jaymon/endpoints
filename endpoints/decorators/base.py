@@ -43,11 +43,12 @@ class ControllerDecorator(FuncDecorator):
                 controller_kwargs
             )
 
-            ret = func(controller, *controller_args, **controller_kwargs)
-            if asyncio.iscoroutine(ret):
-                ret = await ret
-
-            return ret
+            return await self.handle_controller(
+                func,
+                controller,
+                controller_args,
+                controller_kwargs,
+            )
 
         return decorated
 
@@ -76,46 +77,16 @@ class ControllerDecorator(FuncDecorator):
         self.decorator_args = args
         self.decorator_kwargs = kwargs
 
-
     async def handle_kwargs(self, controller, controller_args, controller_kwargs):
         """Returns the **kwargs part that will be passed into the .handle() method
 
         this is called from .handle_params()
         """
-        return {}
-
-
-#     async def handle_args(self, controller, controller_args, controller_kwargs):
-#         """Returns the *args part that will be passed into the .handle() method
-# 
-#         this is called from .handle_params()
-#         """
-#         return [controller, controller_args, controller_kwargs]
-# 
-#     async def handle_kwargs(self, controller, controller_args, controller_kwargs):
-#         """Returns the **kwargs part that will be passed into the .handle() method
-# 
-#         this is called from .handle_params()
-#         """
-#         return {}
-# 
-#     async def handle_params(self, controller, controller_args, controller_kwargs):
-#         """get params ready for calling .handle()
-# 
-#         this method exists because child classes might only really need certain
-#         params passed to the method, this allows the child classes to decided
-#         what their .handle method needs
-# 
-#         :param controller: call.Controller instance, you can get the request with
-#             controller.request
-#         :param controller_args: the arguments that will be passed to the controller
-#         :param controller_kwargs: the key/val arguments that will be passed to the 
-#             controller, these usually come from query strings and post bodies
-#         :returns: a tuple (list, dict) that correspond to the *args, **kwargs that
-#             will be passed to the target() method
-#         """
-#         args = [controller, controller_args, controller_kwargs]
-#         return await self.handle_args(*args), await self.handle_kwargs(*args)
+        return {
+            "controller": controller,
+            "controller_args": controller_args,
+            "controller_kwargs": controller_kwargs,
+        }
 
     async def handle_error(self, controller, e):
         """Any error the class isn't sure how to categorize will go through this
@@ -132,6 +103,13 @@ class ControllerDecorator(FuncDecorator):
             logger.warning(e)
 
         raise e
+
+    async def handle_controller(self, func, controller, controller_args, controller_kwargs):
+        ret = func(controller, *controller_args, **controller_kwargs)
+        while asyncio.iscoroutine(ret):
+            ret = await ret
+
+        return ret
 
     async def handle_call(self, controller, controller_args, controller_kwargs):
         """Internal method for this class
@@ -168,7 +146,7 @@ class ControllerDecorator(FuncDecorator):
         :returns: bool, if this method returns False then it will cause a
             ValueError to be raised signalling the input failed this decorator
         """
-        raise NotImplementedError()
+        return True
 
 
 class TargetDecorator(ControllerDecorator):
