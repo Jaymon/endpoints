@@ -10,13 +10,10 @@ import email
 import time
 import inspect
 
-from datatypes import String, ReflectModule
+from datatypes import String, ReflectModule, property
 
 from ..config import environ
 from ..call import Controller, Request, Response
-from ..decorators import property
-#from ..exception import CallError, Redirect, CallStop, AccessDenied
-
 from ..exception import (
     CallError,
     Redirect,
@@ -483,7 +480,7 @@ class BaseApplication(ApplicationABC):
                 controller.__class__.__name__,
                 controller_method.__name__
             ))
-            # TODO check for aysnc handle method
+            # TODO check for async handle method
             await controller_method(*controller_args, **controller_kwargs)
 
         except Exception as e:

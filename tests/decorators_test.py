@@ -1,10 +1,7 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-from . import TestCase, skipIf, SkipTest, Server
 import time
 import re
-
-import testdata
+import asyncio
 
 import endpoints
 from endpoints.call import (
@@ -12,14 +9,21 @@ from endpoints.call import (
     Request,
     Response,
 )
-from endpoints import CallError
+from endpoints.exception import (
+    CallError,
+    AccessDenied,
+)
 from endpoints import decorators
 from endpoints.utils import ByteString, Base64, String
-from endpoints.http import Request
 from endpoints.decorators import (
     param,
     param_body,
     param_query
+)
+from endpoints.decorators.base import (
+    ControllerDecorator,
+    BackendDecorator,
+    TargetDecorator,
 )
 from endpoints.decorators.limit import (
     RateLimitDecorator,
@@ -28,18 +32,27 @@ from endpoints.decorators.limit import (
     ratelimit_param,
     ratelimit_param_ip,
 )
+from endpoints.decorators.auth import (
+    AuthBackend,
+    AuthDecorator,
+    auth_basic,
+    auth_client,
+    auth_token,
+)
 
 from . import (
     TestCase as BaseTestCase,
     testdata,
+    Server,
+    SkipTest,
 )
 
 
 class TestCase(BaseTestCase):
     def create_controller(self):
         class FakeController(Controller):
-            def POST(self): pass
-            def GET(self): pass
+            async def POST(self): pass
+            async def GET(self): pass
 
         res = Response()
         req = Request()
@@ -48,13 +61,110 @@ class TestCase(BaseTestCase):
         c = FakeController(req, res)
         return c
 
+#     def arun(self, callback, *cb_args, **cb_kwargs):
+#         if callable(callback):
+#             return asyncio.run(callback(*cb_args, **cb_kwargs))
+# 
+#         elif asyncio.iscoroutine(callback):
+#             return asyncio.run(callback)
+#             #return await callback
+
+
+class ControllerDecoratorTest(TestCase):
+    def test_async_handle(self):
+        class Dec(ControllerDecorator):
+            async def handle(self, *args, **kwargs):
+                return True
+
+        c = self.create_controller()
+        @Dec()
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+        self.assertEqual(1, func(c))
+
+    def test_sync_handle(self):
+        class Dec(ControllerDecorator):
+            def handle(self, *args, **kwargs):
+                return True
+
+        c = self.create_controller()
+        @Dec()
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+        self.assertEqual(1, func(c))
+
+
+class TargetDecoratorTest(TestCase):
+    def test_async_handle(self):
+        async def atarget(*args, **kwargs):
+            return True
+
+        c = self.create_controller()
+        @TargetDecorator(atarget)
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+        self.assertEqual(1, func(c))
+
+    def test_sync_handle(self):
+        def target(*args, **kwargs):
+            return True
+
+        c = self.create_controller()
+        @TargetDecorator(target)
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+        self.assertEqual(1, func(c))
+
+
+class BackendDecoratorTest(TestCase):
+    def test_async_handle(self):
+        class Backend(object):
+            async def handle(self, *args, **kwargs):
+                return True
+
+        class Dec(BackendDecorator):
+            backend_class = Backend
+
+        c = self.create_controller()
+        @Dec()
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+
+        self.assertEqual(1, func(c))
+
+    def test_sync_handle(self):
+        class Backend(object):
+            def handle(self, *args, **kwargs):
+                return True
+
+        class Dec(BackendDecorator):
+            backend_class = Backend
+
+        c = self.create_controller()
+        @Dec()
+        async def afunc(self):
+            return 1
+        func = self.mock_async(afunc)
+
+        self.assertEqual(1, func(c))
+
 
 class RateLimitTest(TestCase):
     def set_bearer_auth_header(self, request, access_token):
         request.set_header("authorization", 'Bearer {}'.format(access_token))
 
     def test_throttle(self):
-        class TARA(object):
+        class MockObject(object):
             @ratelimit_ip(limit=3, ttl=1)
             def foo(self): return 1
 
@@ -62,10 +172,10 @@ class RateLimitTest(TestCase):
             def bar(self): return 2
 
 
-        r_foo = endpoints.Request()
+        r_foo = Request()
         r_foo.set_header("X_FORWARDED_FOR", "276.0.0.1")
         r_foo.path = "/foo"
-        c = TARA()
+        c = self.mock_async(MockObject())
         c.request = r_foo
 
         for x in range(3):
@@ -104,14 +214,14 @@ class RateLimitTest(TestCase):
             @ratelimit_ip(limit=3, ttl=1)
             def foo(self): return 1
 
-        o = MockObject()
+        o = self.mock_async(MockObject())
         o.request = Request()
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
         o.request.path = "/fooip"
 
-        o.foo()
-        o.foo()
-        o.foo()
+        for _ in range(3):
+            o.foo()
+
         with self.assertRaises(CallError) as cm:
             o.foo()
         self.assertEqual(429, cm.exception.code)
@@ -134,7 +244,7 @@ class RateLimitTest(TestCase):
             @ratelimit_access_token(limit=2, ttl=1)
             def foo(self): return 1
 
-        o = MockObject()
+        o = self.mock_async(MockObject())
         o.request = Request()
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.path = "/footoken"
@@ -163,18 +273,17 @@ class RateLimitTest(TestCase):
         r = o.foo()
         self.assertEqual(1, r)
 
-    def test_ratelimit_param(self):
+    def test_ratelimit_param_only(self):
         class MockObject(object):
             @ratelimit_param("bar", limit=2, ttl=1)
             def foo(self, **kwargs): return 1
 
-        o = MockObject()
+        o = self.mock_async(MockObject())
         o.request = Request()
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.path = "/fooparam"
 
         o.foo(bar="che")
-
         o.foo(bar="che")
 
         with self.assertRaises(CallError) as cm:
@@ -208,7 +317,7 @@ class RateLimitTest(TestCase):
             @ratelimit_param_ip("bar", limit=1, ttl=1)
             def foo(self, **kwargs): return 1
 
-        o = MockObject()
+        o = self.mock_async(MockObject())
         o.request = create_request("200.1.1.1")
         o.foo(bar="che")
 
@@ -255,7 +364,7 @@ class RateLimitTest(TestCase):
                 @ratelimit_access_token()
                 def rl_access_token(self): return 5
 
-            o = MockObject()
+            o = self.mock_async(MockObject())
 
             with self.assertRaises(CallError):
                 o.rl_param_ip(bar=1)
@@ -270,44 +379,30 @@ class RateLimitTest(TestCase):
                 o.rl_access_token()
 
     def test_async(self):
-        import asyncio
+        class MockObject(object):
+            request = Request()
 
-        class Backend(object):
-            def handle(self, *args, **kwargs):
-                return False
+            @ratelimit_ip()
+            async def rl_ip(self): return 2
 
-        with testdata.environment(RateLimitDecorator, backend_class=Backend):
-            class MockObject(object):
-                request = Request()
+            @ratelimit_param_ip("bar")
+            async def rl_param_ip(self, **kwargs): return 3
 
-                @ratelimit_ip()
-                async def rl_ip(self): return 2
+            @ratelimit_param("bar")
+            async def rl_param(self, **kwargs): return 4
 
-                @ratelimit_param_ip("bar")
-                async def rl_param_ip(self, **kwargs): return 3
+            @ratelimit_access_token()
+            async def rl_access_token(self): return 5
 
-                @ratelimit_param("bar")
-                async def rl_param(self, **kwargs): return 4
+        o = self.mock_async(MockObject())
 
-                @ratelimit_access_token()
-                async def rl_access_token(self): return 5
-
-            o = MockObject()
-
-            with self.assertRaises(CallError):
-                asyncio.run(o.rl_param_ip(bar=1))
-
-            with self.assertRaises(CallError):
-                asyncio.run(o.rl_ip())
-
-            with self.assertRaises(CallError):
-                asyncio.run(o.rl_param(bar=1))
-
-            with self.assertRaises(CallError):
-                asyncio.run(o.rl_access_token())
+        self.assertEqual(2, o.rl_ip())
+        self.assertEqual(3, o.rl_param_ip(bar=1))
+        self.assertEqual(4, o.rl_param(bar=1))
+        self.assertEqual(5, o.rl_access_token())
 
 
-class AuthTest(TestCase):
+class AuthDecoratorTest(TestCase):
     def get_basic_auth_header(self, username, password):
         credentials = Base64.encode('{}:{}'.format(username, password))
         return 'Basic {}'.format(credentials)
@@ -315,162 +410,174 @@ class AuthTest(TestCase):
     def get_bearer_auth_header(self, access_token):
         return 'Bearer {}'.format(access_token)
 
-
     def test_bad_setup(self):
+        class Backend(AuthBackend):
+            async def handle(*args, **kwargs):
+                return False
 
-        def target(controller, *args, **kwargs):
-            return False
-
-        class TARA(object):
-            @decorators.auth_token(target=target)
+        class MockObject(object):
+            @auth_token(backend_class=Backend)
             def foo_token(self): pass
 
-            @decorators.auth_client(target=target)
-            def foo_client(self): pass
+            @auth_client(backend_class=Backend)
+            async def foo_client(self): pass
 
-            @decorators.auth_basic(target=target)
+            @auth_basic(backend_class=Backend)
             def foo_basic(self): pass
 
-            @decorators.auth(target=target)
-            def foo_auth(self): pass
+        c = self.mock_async(MockObject())
+        c.request = Request()
 
-        r = endpoints.Request()
-        c = TARA()
-        c.request = r
-
-        for m in ["foo_token", "foo_client", "foo_basic", "foo_auth"]: 
-            with self.assertRaises(endpoints.AccessDenied):
+        for m in ["foo_token", "foo_client", "foo_basic"]: 
+            with self.assertRaises(AccessDenied):
                 getattr(c, m)()
 
-    def test_token_auth(self):
-        def target(controller, access_token):
-            if access_token != "bar":
-                raise ValueError()
-            return True
+    def test_auth_token(self):
+        class Backend(AuthBackend):
+            async def auth_token(self, controller, access_token):
+                if access_token == "foo":
+                    raise ValueError()
 
-        def target_bad(controller, *args, **kwargs):
-            return False
+                if access_token == "bar":
+                    return True
 
-        class TARA(object):
-            @decorators.auth_token(target=target)
+                elif access_token == "che":
+                    return False
+
+        class MockObject(object):
+            @auth_token(backend_class=Backend)
             def foo(self): pass
 
-            @decorators.auth_token(target=target_bad)
-            def foo_bad(self): pass
+        r = Request()
 
-        r = endpoints.Request()
-        c = TARA()
+        c = self.mock_async(MockObject())
         c.request = r
 
         r.set_header('authorization', self.get_bearer_auth_header("foo"))
-        with self.assertRaises(endpoints.AccessDenied):
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         r.set_header('authorization', self.get_bearer_auth_header("bar"))
         c.foo()
 
-        r = endpoints.Request()
+        r = Request()
         c.request = r
 
         r.body_kwargs["access_token"] = "foo"
-        with self.assertRaises(endpoints.AccessDenied):
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         r.body_kwargs["access_token"] = "bar"
         c.foo()
 
-        r = endpoints.Request()
+        r = Request()
         c.request = r
 
         r.query_kwargs["access_token"] = "foo"
-        with self.assertRaises(endpoints.AccessDenied):
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         r.query_kwargs["access_token"] = "bar"
         c.foo()
 
-        with self.assertRaises(endpoints.AccessDenied):
-            c.foo_bad()
+        r.query_kwargs["access_token"] = "che"
+        with self.assertRaises(AccessDenied):
+            c.foo()
 
-    def test_client_auth(self):
-        def target(controller, client_id, client_secret):
-            return client_id == "foo" and client_secret == "bar"
+    def test_auth_client(self):
+        class Backend(AuthBackend):
+            async def auth_client(self, controller, client_id, client_secret):
+                return client_id == "foo" and client_secret == "bar"
 
-        def target_bad(controller, *args, **kwargs):
-            return False
-
-        class TARA(object):
-            @decorators.auth_client(target=target)
-            def foo(self): pass
-
-            @decorators.auth_client(target=target_bad)
-            def foo_bad(self): pass
+        class MockObject(object):
+            @auth_client(backend_class=Backend)
+            async def foo(self): pass
 
         client_id = "foo"
         client_secret = "..."
-        r = endpoints.Request()
-        r.set_header('authorization', self.get_basic_auth_header(client_id, client_secret))
+        r = Request()
 
-        c = TARA()
+        c = self.mock_async(MockObject())
         c.request = r
-        with self.assertRaises(endpoints.AccessDenied):
+
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(client_id, client_secret)
+        )
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         client_secret = "bar"
-        r.set_header('authorization', self.get_basic_auth_header(client_id, client_secret))
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(client_id, client_secret)
+        )
         c.foo()
 
-        with self.assertRaises(endpoints.AccessDenied):
-            c.foo_bad()
+    def test_auth_basic_simple(self):
+        class Backend(AuthBackend):
+            async def auth_basic(self, controller, username, password):
+                if username == "foo":
+                    raise ValueError()
 
-    def test_basic_auth_simple(self):
-        def target(controller, username, password):
-            if username != "bar":
-                raise ValueError()
-            return True
+                elif username == "bar":
+                    return True
 
-        def target_bad(controller, *args, **kwargs):
-            return False
+                else:
+                    return False
 
-        class TARA(object):
-            @decorators.auth_basic(target=target)
-            def foo(self): pass
-
-            @decorators.auth_basic(target=target_bad)
-            def foo_bad(self): pass
+        class MockObject(object):
+            @auth_basic(backend_class=Backend)
+            async def foo(self): pass
 
         username = "foo"
         password = "..."
-        r = endpoints.Request()
-        r.set_header('authorization', self.get_basic_auth_header(username, password))
-
-        c = TARA()
+        r = Request()
+        c = self.mock_async(MockObject())
         c.request = r
 
-        with self.assertRaises(endpoints.AccessDenied):
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(username, password)
+        )
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         username = "bar"
-        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(username, password)
+        )
         c.foo()
 
-        with self.assertRaises(endpoints.AccessDenied):
-            c.foo_bad()
+        username = "che"
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(username, password)
+        )
+        with self.assertRaises(AccessDenied):
+            c.foo()
 
-    def test_basic_auth_same_kwargs(self):
-        def target(controller, username, password):
-            if username != "bar":
-                raise ValueError()
-            return True
+    def test_auth_basic_same_kwargs(self):
+        class Backend(AuthBackend):
+            async def auth_basic(self, controller, username, password):
+                if username == "foo":
+                    raise ValueError()
+
+                elif username == "bar":
+                    return True
+
+                else:
+                    return False
 
         class MockObject(object):
-            @decorators.auth_basic(target=target)
-            def foo(self, *args, **kwargs): return 1
+            @auth_basic(backend_class=Backend)
+            async def foo(self, **kwargs): return 1
 
-        c = MockObject()
+        c = self.mock_async(MockObject())
         username = "bar"
         password = "..."
-        r = endpoints.Request()
+        r = Request()
         r.set_header('authorization', self.get_basic_auth_header(username, password))
         c.request = r
 
@@ -478,28 +585,32 @@ class AuthTest(TestCase):
         r = c.foo(request="this_should_error_out")
         self.assertEqual(1, r)
 
-    def test_auth(self):
-        def target(controller, controller_args, controller_kwargs):
-            if controller.request.body_kwargs["foo"] != "bar":
-                raise ValueError()
-            return True
 
-        def target_bad(controller, *args, **kwargs):
-            return False
+    def test_auth_extend(self):
+        class Backend(AuthBackend):
+            async def auth(self, controller, controller_args, controller_kwargs):
+                if controller.request.body_kwargs["foo"] == "bar":
+                    return True
 
-        class TARA(object):
-            @decorators.auth(target=target)
+                elif controller.request.body_kwargs["foo"] == "che":
+                    raise ValueError()
+
+                else:
+                    return False
+
+        class auth(AuthDecorator):
+            pass
+
+        class MockObject(object):
+            @auth(backend_class=Backend)
             def foo(self): pass
 
-            @decorators.auth(target=target_bad)
-            def foo_bad(self): pass
-
-        r = endpoints.Request()
-        r.body_kwargs = {"foo": "che"}
-
-        c = TARA()
+        r = Request()
+        c = self.mock_async(MockObject())
         c.request = r
-        with self.assertRaises(endpoints.AccessDenied):
+
+        r.body_kwargs = {"foo": "che"}
+        with self.assertRaises(AccessDenied):
             c.foo()
 
         r.body_kwargs = {"foo": "bar"}

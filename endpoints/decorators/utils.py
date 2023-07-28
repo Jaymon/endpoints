@@ -6,11 +6,7 @@ import cgi
 from functools import wraps
 import logging
 
-<<<<<<< Updated upstream
-from datatypes import FuncDecorator, property
-=======
 from datatypes.decorators import FuncDecorator
->>>>>>> Stashed changes
 
 from ..compat import *
 from ..exception import CallError

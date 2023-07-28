@@ -32,7 +32,7 @@ class Redirect(CallError):
         headers = kwargs.pop('headers', {})
         headers.setdefault('Location', location)
         kwargs['headers'] = headers
-        super(Redirect, self).__init__(code, location, **kwargs)
+        super().__init__(code, location, **kwargs)
 
 
 class AccessDenied(CallError):
@@ -73,7 +73,7 @@ class AccessDenied(CallError):
         v = "{} realm=\"{}\"".format(self.scheme, self.realm) if self.realm else self.scheme
         kwargs["headers"].setdefault("WWW-Authenticate", v)
 
-        super(AccessDenied, self).__init__(401, msg, **kwargs)
+        super().__init__(401, msg, **kwargs)
 
 
 class CallStop(CallError):
@@ -89,14 +89,14 @@ class CallStop(CallError):
         body -- mixed -- the body of the response
         '''
         self.body = body
-        super(CallStop, self).__init__(code, msg, **kwargs)
+        super().__init__(code, msg, **kwargs)
 
 
 class RouteError(CallError):
     """Raised when @route fails on a Controller method"""
     def __init__(self, instance, code=-1, msg=""):
         self.instance = instance
-        super(RouteError, self).__init__(code=code, msg=msg)
+        super().__init__(code=code, msg=msg)
 
 
 class VersionError(RouteError):
@@ -104,7 +104,7 @@ class VersionError(RouteError):
     def __init__(self, instance, request_version, versions):
         self.request_version = request_version
         self.versions = versions
-        super(VersionError, self).__init__(instance, code=-2)
+        super().__init__(instance, code=-2)
 
 
 class CloseConnection(CallError):
@@ -118,5 +118,5 @@ class CloseConnection(CallError):
 
         :param msg: string, the message you want to accompany your close
         '''
-        super(CloseConnection, self).__init__(0, msg, *args, **kwargs)
+        super().__init__(0, msg, *args, **kwargs)
 
