@@ -439,15 +439,6 @@ class param(ControllerDecorator):
 
         return val
 
-#     def decorate(slf, func, *names, **flags):
-#         slf.normalize_type(names)
-#         slf.normalize_flags(flags)
-# 
-#         def decorated(self, *args, **kwargs):
-#             self, args, kwargs = slf.normalize_param(self, args, kwargs)
-#             return func(self, *args, **kwargs)
-#         return decorated
-
 
 class param_query(param):
     """same as param, but only checks GET params"""

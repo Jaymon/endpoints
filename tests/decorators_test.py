@@ -1238,9 +1238,9 @@ class ParamTest(TestCase):
 
 
 class RouteTest(TestCase):
-    def test_issue94(self):
+    def test_issue_94(self):
         """https://github.com/Jaymon/endpoints/issues/94"""
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route, param",
             "class Default(Controller):",
@@ -1265,7 +1265,7 @@ class RouteTest(TestCase):
         self.assertEqual("foo", res.body)
 
     def test_error(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "class Foo(Controller):",
@@ -1282,7 +1282,7 @@ class RouteTest(TestCase):
         self.assertEqual(405, res.code)
 
     def test_path_route(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route_path",
             "class Foo(Controller):",
@@ -1308,7 +1308,7 @@ class RouteTest(TestCase):
         self.assertEqual(404, res.code)
 
     def test_param_route_keys(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route_param",
             "class Foo(Controller):",
@@ -1334,7 +1334,7 @@ class RouteTest(TestCase):
         self.assertEqual(400, res.code)
 
     def test_param_route_matches(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route_param",
             "class Foo(Controller):",
@@ -1360,7 +1360,7 @@ class RouteTest(TestCase):
         self.assertEqual(400, res.code)
 
     def test_simple(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "class Foo(Controller):",
@@ -1393,7 +1393,7 @@ class RouteTest(TestCase):
         self.assertEqual(4, res._body)
 
     def test_extend_1(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "",
@@ -1450,7 +1450,7 @@ class RouteTest(TestCase):
             self.assertEqual(5, res._body)
 
     def test_extend_2(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route",
             "",
@@ -1471,7 +1471,7 @@ class RouteTest(TestCase):
 
     def test_mixed(self):
         """make sure plays nice with param"""
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import route, param",
             "class Foo(Controller):",
@@ -1500,8 +1500,7 @@ class RouteTest(TestCase):
 
 class VersionTest(TestCase):
     def test_simple(self):
-        controller_prefix = "version_simple"
-        c = Server(controller_prefix, [
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import version",
             "class Foo(Controller):",
@@ -1530,7 +1529,7 @@ class VersionTest(TestCase):
         self.assertEqual(404, res.code)
 
     def test_complex(self):
-        c = Server(contents=[
+        c = self.create_server([
             "from endpoints import Controller",
             "from endpoints.decorators import version, route",
             "",
