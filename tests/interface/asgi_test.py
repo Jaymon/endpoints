@@ -9,7 +9,7 @@ from datatypes import (
 from endpoints.interface.asgi import Application
 from endpoints.config import environ
 
-from . import HTTPTestCase, WebSocketTestCase
+from . import _HTTPTestCase, _WebSocketTestCase
 
 
 class Server(Command):
@@ -51,12 +51,12 @@ class Server(Command):
         self.host = Host(m.group(2), m.group(3)).client()
 
 
-class HTTPApplicationTest(HTTPTestCase):
+class HTTPApplicationTest(_HTTPTestCase):
     server_class = Server
     application_class = Application
 
 
-class WebSocketApplicationTest(WebSocketTestCase):
+class WebSocketApplicationTest(_WebSocketTestCase):
     server_class = Server
     application_class = Application
 

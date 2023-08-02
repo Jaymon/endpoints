@@ -34,14 +34,17 @@ class ApplicationABC(object):
     def normalize_call_kwargs(self, *args, **kwargs):
         raise NotImplementedError()
 
+    async def handle_http(self, *args, **kwargs):
+        raise NotImplementedError()
+
+    async def create_request(self, raw_request, **kwargs):
+        raise NotImplementedError()
+
     def is_http_call(self, *args, **kwargs):
         return True
 
     def is_websocket_call(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    async def handle_http(self, *args, **kwargs):
-        raise NotImplementedError()
+        return False
 
     def is_websocket_recv(self, data, **kwargs):
         raise NotImplementedError()
@@ -114,15 +117,15 @@ class BaseApplication(ApplicationABC):
                 setattr(self, k, v)
 
     async def __call__(self, *args, **kwargs):
-        """this is what will be called for each request that that ASGI server
-        handles"""
+        """this is what will be called for each request that the server handles
+        """
         call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
 
         if self.is_http_call(**call_kwargs):
-            await self.handle_http(**call_kwargs)
+            return await self.handle_http(**call_kwargs)
 
         elif self.is_websocket_call(**call_kwargs):
-            await self.handle_websocket(**call_kwargs)
+            return await self.handle_websocket(**call_kwargs)
 
         else:
             logger.warning("Request was not HTTP or WebSocket")
@@ -141,10 +144,25 @@ class BaseApplication(ApplicationABC):
 
     async def set_request_body(self, request, body, **kwargs):
         """
-        :returns: tuple[Any, list, dict], returns raw_body, body_args, body_kwargs
+        :returns: tuple[Any, list, dict], returns raw_body, body_args, and
+            body_kwargs
         """
         if request.headers.is_chunked():
             raise IOError("Chunked bodies are not supported")
+
+        if isinstance(body, io.IOBase):
+            length = int(request.get_header(
+                "Content-Length",
+                -1,
+                allow_empty=False
+            ))
+            if length > 0:
+                body = body.read(length)
+
+            else:
+                # since there is no content length we can conclude that we don't
+                # actually have a body
+                body = None
 
         args = []
         kwargs = {}
@@ -350,7 +368,7 @@ class BaseApplication(ApplicationABC):
                     break
 
             if ret["module_name"]:
-                ret["module"] = ReflectModule(ret["module_name"]).module()
+                ret["module"] = ReflectModule(ret["module_name"]).get_module()
 
                 named_class, default_class = await self.find_controller_class(
                     ret["module"],
@@ -380,7 +398,7 @@ class BaseApplication(ApplicationABC):
                 if not named_ret or not default_ret:
                     controller_module = ReflectModule(
                         controller_prefix
-                    ).module()
+                    ).get_module()
 
                     named_class, default_class = await self.find_controller_class(
                         controller_module,
@@ -480,7 +498,6 @@ class BaseApplication(ApplicationABC):
                 controller.__class__.__name__,
                 controller_method.__name__
             ))
-            # TODO check for async handle method
             await controller_method(*controller_args, **controller_kwargs)
 
         except Exception as e:
@@ -511,6 +528,8 @@ class BaseApplication(ApplicationABC):
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy
         """
+        res.error = e
+
         if isinstance(e, CloseConnection):
             raise
 

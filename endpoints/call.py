@@ -28,7 +28,6 @@ from .config import environ
 
 from datatypes import (
     HTTPHeaders as Headers,
-    HTTPEnviron as Environ,
     property as cachedproperty,
 )
 
@@ -519,16 +518,23 @@ class Call(object):
     def add_header(self, header_name, val, **params):
         self.headers.add_header(header_name, val, **params)
 
-    def get_header(self, header_name, default_val=None):
+    def get_header(self, header_name, default_val=None, allow_empty=True):
         """try as hard as possible to get a a response header of header_name,
-        rreturn default_val if it can't be found"""
-        return self.headers.get(header_name, default_val)
+        return default_val if it can't be found"""
+        v = self.headers.get(header_name, default_val)
+        if v:
+            return v
 
-    def find_header(self, header_names, default_val=None):
-        """given a list of headers return the first one you can, default_val if you
-        don't find any
+        else:
+            if not allow_empty:
+                return default_val
 
-        :param header_names: list, a list of headers, first one found is returned
+    def find_header(self, header_names, default_val=None, allow_empty=True):
+        """given a list of headers return the first one you can, default_val if
+        you don't find any
+
+        :param header_names: list, a list of headers, first one found is
+            returned
         :param default_val: mixed, returned if no matching header is found
         :returns: mixed, the value of the header or default_val
         """
@@ -536,7 +542,12 @@ class Call(object):
         for header_name in header_names:
             if self.has_header(header_name):
                 ret = self.get_header(header_name, default_val)
-                break
+                if ret or allow_empty:
+                    break
+
+        if not ret and not allow_empty:
+            ret = default_val
+
         return ret
 
     def _parse_query_str(self, query):
@@ -568,10 +579,13 @@ class Call(object):
     def __deepcopy__(self, memodict=None):
         memodict = memodict or {}
 
-        memodict.setdefault(
-            "controller_info",
-            getattr(self, "controller_info", {})
-        )
+        memodict.setdefault("controller_info", None)
+        memodict.setdefault("raw_request", None)
+
+        #         memodict.setdefault(
+#             "controller_info",
+#             getattr(self, "controller_info", {})
+#         )
         memodict.setdefault("body", getattr(self, "body", None))
 
         return Deepcopy(ignore_private=True).copy(self, memodict)
@@ -599,9 +613,6 @@ class Request(Call):
         * query_kwargs -- tied to query, the values in query but converted to a
             dict {name: val}
     '''
-    environ = None
-    """holds all the values that aren't considered headers but usually get passed with the request"""
-
     raw_request = None
     """the original raw request that was filtered through one of the interfaces"""
 
@@ -722,10 +733,6 @@ class Request(Call):
             if vs:
                 r.extend(map(lambda v: v.strip(), vs.split(',')))
 
-            vs = self.environ.get(name, '')
-            if vs:
-                r.extend(map(lambda v: v.strip(), vs.split(',')))
-
         return r
 
     @cachedproperty(read_only="_ip")
@@ -771,18 +778,13 @@ class Request(Call):
     @cachedproperty(cached="_scheme")
     def scheme(self):
         """return the request scheme (eg, http, https)"""
-        scheme = self.environ.get('wsgi.url_scheme', "http")
-        return scheme
+        return "http"
 
     @cachedproperty(cached="_port")
     def port(self):
         """return the server port"""
-        return int(self.environ.get('SERVER_PORT', 0))
-
-    @property
-    def host_url(self):
-        """return the request host as a Url instance"""
-        return self.url.host_url()
+        _, port = Url.split_hostname_from_port(self.host)
+        return port
 
     @property
     def url(self):
@@ -794,7 +796,7 @@ class Request(Call):
         port = self.port
 
         # normalize the port
-        host_domain, host_port = Url.split_hostname_from_port(host)
+        hostname, host_port = Url.split_hostname_from_port(host)
         if host_port:
             port = host_port
 
@@ -806,7 +808,7 @@ class Request(Call):
 
         u = Url(
             scheme=scheme,
-            hostname=host,
+            hostname=hostname,
             path=path,
             query=query,
             port=port,
@@ -856,7 +858,6 @@ class Request(Call):
         return kwargs
 
     def __init__(self):
-        self.environ = Environ()
         self.body = None
         self.body_args = []
         self.body_kwargs = {}
@@ -986,6 +987,9 @@ class Response(Call):
     because _body can be almost anything (not just a dict)
     """
     encoding = ""
+
+    error = None
+    """Will contain any raised exception"""
 
     @cachedproperty(cached="_code", onget=False)
     def code(self):

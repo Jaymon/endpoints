@@ -1,8 +1,8 @@
 # -*- coding: utf-8 -*-
 
-from ...compat import *
-from ..base import BaseApplication
-from ...utils import String
+from ..compat import *
+from .base import BaseApplication
+from ..utils import String
 
 
 class Application(BaseApplication):

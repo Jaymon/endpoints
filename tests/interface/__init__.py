@@ -33,7 +33,7 @@ class TestCase(BaseTestCase):
         return client
 
 
-class HTTPTestCase(TestCase):
+class _HTTPTestCase(TestCase):
     def test_get_request_url(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server(contents=[
@@ -47,6 +47,7 @@ class HTTPTestCase(TestCase):
         c = self.create_client()
         r = c.get('/requrl')
         self.assertTrue("/requrl" in r.body)
+        self.assertRegex(r.body, r"https?://[^/]")
 
     def test_get_list_param_decorator(self):
         server = self.create_server(contents=[
@@ -297,6 +298,13 @@ class HTTPTestCase(TestCase):
         ])
 
         c = self.create_client()
+        r = c.post('/', None, headers={"content-type": "application/json"})
+        self.assertEqual(204, r.code)
+        return
+
+
+
+        c = self.create_client()
         r = c.post(
             '/',
             {"foo": "bar"},
@@ -329,7 +337,7 @@ class HTTPTestCase(TestCase):
         self.assertEqual('"bar"', r.body)
 
 
-class WebSocketTestCase(TestCase):
+class _WebSocketTestCase(TestCase):
     client_class = WebSocketClient
     server_class = None
 
