@@ -5,7 +5,7 @@ For the most part, routing is automatic depending on what you name your controll
 [README about controllers](https://github.com/firstopinion/endpoints/blob/master/docs/CONTROLLERS.md)
 
 
-## route decorator
+## The Route Decorator
 
 You can have different controller methods (eg, **GET**, **POST**) handle a given request depending on the request by using the `@route` decorator on your various Controller methods. So, let's say you have a `controllers.py` which contained:
 
@@ -17,17 +17,17 @@ from endpoints.decorators import route
 class Default(Controller):
     # this GET will handle / requests
     @route(lambda req: len(req.path_args) == 0)
-    def GET_1(self, username):
+    async def GET_1(self, username):
         return "/"
 
     # this GET will handle /:uid/:title requests
     @route(lambda req: len(req.path_args) == 2)
-    def GET_2(self, uid, title):
+    async def GET_2(self, uid, title):
         return "/:uid/:title"
 
     # this GET will handle /:username requests
     @route(lambda req: len(req.path_args) == 1)
-    def GET_3(self, username):
+    async def GET_3(self, username):
         return "/:username"
 ```
 

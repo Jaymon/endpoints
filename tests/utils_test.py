@@ -1,12 +1,16 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-from unittest import TestCase
 import json
 
-import testdata
-
 from endpoints.compat import *
-from endpoints.utils import MimeType, AcceptHeader, JSONEncoder
+from endpoints.utils import (
+    MimeType,
+    AcceptHeader,
+    JSONEncoder,
+    Url,
+    Status,
+)
+
+from . import TestCase
 
 
 class MimeTypeTest(TestCase):
@@ -30,7 +34,6 @@ class MimeTypeTest(TestCase):
 
 
 class AcceptHeaderTest(TestCase):
-
     def test_init(self):
         ts = [
             (
@@ -43,7 +46,13 @@ class AcceptHeaderTest(TestCase):
                 ]
             ),
             (
-                'text/*;q=0.3, text/html;q=0.7, text/html;level=1, text/html;level=2;q=0.4, */*;q=0.5',
+                ", ".join([
+                    "text/*;q=0.3",
+                    "text/html;q=0.7",
+                    "text/html;level=1",
+                    "text/html;level=2;q=0.4",
+                    "*/*;q=0.5",
+                ]),
                 [
                     "text/html;level=1",
                     "text/html;q=0.7",
@@ -107,15 +116,49 @@ class AcceptHeaderTest(TestCase):
 
             self.assertEqual(t[2], count)
 
-#     def test_bad_split(self):
-#         a = AcceptHeader("application/json;version=v1")
-#         for mt in a.filter("application/json"):
-#             pout.v(mt)
-
 
 class JSONEncoderTest(TestCase):
     def test_string(self):
         r1 = json.dumps({'foo': b'bar'}, cls=JSONEncoder)
         r2 = json.dumps({'foo': 'bar'}, cls=JSONEncoder)
         self.assertEqual(r1, r2)
+
+
+class UrlTest(TestCase):
+    def test_module(self):
+        c = self.create_server({
+            "foo": [
+                "from endpoints import Controller",
+                "class Bar(Controller):",
+                "    def GET(self):",
+                "        u = self.request.url",
+                "        return u.module()",
+                "",
+                "class Default(Controller):",
+                "    def GET(self):",
+                "        u = self.request.url",
+                "        return u.module()",
+                "",
+            ],
+        })
+
+        res = c.handle("/foo/bar")
+        self.assertEqual("http://endpoints.fake/foo", res._body)
+
+        res = c.handle("/foo")
+        self.assertEqual("http://endpoints.fake/foo", res._body)
+
+    def test_controller(self):
+        u = Url("http://example.com/foo/bar/che", class_path="foo")
+        u2 = u.controller(che=4)
+        self.assertEqual("http://example.com/foo?che=4", u2)
+
+
+class StatusTest(TestCase):
+    def test_codes(self):
+        s = Status(401)
+        self.assertEqual("Unauthorized", s)
+
+        s = Status(1001)
+        self.assertEqual("Close Going Away", s)
 

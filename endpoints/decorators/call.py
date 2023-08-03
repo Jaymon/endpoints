@@ -1,11 +1,8 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
-import inspect
-import re
 
 from ..exception import CallError, RouteError, VersionError
-from ..http import Url
+from ..utils import Url
 from .base import ControllerDecorator
 
 
@@ -13,7 +10,8 @@ logger = logging.getLogger(__name__)
 
 
 class route(ControllerDecorator):
-    """Used to decide if the Controller's method should be used to satisfy the request
+    """Used to decide if the Controller's method should be used to satisfy the
+    request
 
     :example:
         class Default(Controller):
@@ -27,23 +25,25 @@ class route(ControllerDecorator):
             def GET_2(self, username):
                 pass
 
-    If this decorator is used then all GET methods in the controller have to have
-    a unique name (ie, there can be no just GET method, they have to be GET_1, etc.)
+    If this decorator is used then all GET methods in the controller have to
+    have a unique name (ie, there can be no just GET method, they have to be
+    GET_1, etc.)
     """
     def definition(self, callback, *args, **kwargs):
         self.callback = callback
         self.error_code = kwargs.pop("error_code", 405)
 
-    def handle(self, request):
-        return self.callback(request)
+    async def handle(self, controller, **kwargs):
+        return self.callback(controller.request)
 
-    def handle_args(self, controller, controller_args, controller_kwargs):
-        return [controller.request]
+    async def handle_error(self, controller, e):
+        if isinstance(e, CallError):
+            super().handle_error(controller, e)
 
-    def handle_error(self, controller, e):
-        raise RouteError(instance=self)
+        else:
+            raise RouteError(instance=self) from e
 
-    def handle_failure(self, controller):
+    async def handle_failure(self, controller):
         """This is called if all routes fail, it's purpose is to completely
         fail the request
 
@@ -56,20 +56,23 @@ class route(ControllerDecorator):
         :param controller: Controller, the controller that was trying to find a 
             method to route to
         """
-        req = controller.request
+        request = controller.request
 
         # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
         # An origin server SHOULD return the status code 405 (Method Not Allowed)
         # if the method is known by the origin server but not allowed for the
         # requested resource
-        raise CallError(self.error_code, "Could not find a method to satisfy {}".format(
-            req.path
-        ))
+        raise CallError(
+            self.error_code,
+            "Could not find a method to satisfy {}".format(
+                request.path
+            )
+        )
 
 
 class route_path(route):
-    """easier route decorator that will check the sub paths to make sure they are part 
-    of the full endpoint path
+    """easier route decorator that will check the sub paths to make sure they
+    are part of the full endpoint path
 
     :Example:
 
@@ -83,8 +86,9 @@ class route_path(route):
         self.paths = paths
         self.error_code = kwargs.pop("error_code", 404)
 
-    def handle(self, request):
+    async def handle(self, controller, **kwargs):
         ret = True
+        request = controller.request
         pas = Url.normalize_paths(self.paths)
         method_args = request.controller_info["method_args"]
         for i, p in enumerate(pas):
@@ -101,8 +105,8 @@ class route_path(route):
 
 
 class route_param(route):
-    """easier route decorator that will check the parameters to make sure they are part 
-    of the request
+    """easier route decorator that will check the parameters to make sure they
+    are part of the request
 
     :Example:
 
@@ -119,8 +123,9 @@ class route_param(route):
         # we throw a 400 here to match @param failures
         self.error_code = 400
 
-    def handle(self, request):
+    async def handle(self, controller, **kwargs):
         ret = True
+        request = controller.request
         method_kwargs = request.controller_info["method_kwargs"]
         for k in self.keys:
             if k not in method_kwargs:
@@ -156,20 +161,18 @@ class version(route):
             def GET_2(self):
                 pass
 
-    If this decorator is used then all GET methods in the controller have to have
-    a unique name (ie, there can be no just GET method, they have to be GET_1, etc.)
+    If this decorator is used then all GET methods in the controller have to
+    have a unique name (ie, there can be no just GET method, they have to be
+    GET_1, etc.)
     """
     def definition(self, *versions, **kwargs):
         self.versions = set(versions)
         self.error_code = kwargs.pop("error_code", 404)
 
-    def handle_args(self, controller, controller_args, controller_kwargs):
-        return [controller]
+    async def handle_error(self, controller, e):
+        raise e
 
-    def handle_error(self, controller, e):
-        raise
-
-    def handle(self, controller):
+    async def handle(self, controller, **kwargs):
         req_version = controller.request.version(controller.content_type)
         if req_version not in self.versions:
             raise VersionError(self, req_version, self.versions)

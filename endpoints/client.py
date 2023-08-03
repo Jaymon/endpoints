@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import urllib
-import subprocess
-import json
-import os
 import re
 from contextlib import contextmanager
 import random
@@ -12,10 +7,13 @@ import string
 import time
 import socket
 import logging
+import uuid
 
-import requests
-#from requests.auth import HTTPBasicAuth
-from requests.auth import _basic_auth_str
+try:
+    import requests
+    from requests.auth import _basic_auth_str
+except ImportError:
+    requests = None
 
 try:
     # https://github.com/websocket-client/websocket-client
@@ -23,20 +21,28 @@ try:
 except ImportError:
     websocket = None
 
+from datatypes import Host
+
 from .compat import *
-from .utils import String, ByteString, Base64
-from .http import Headers, Url, Host
-from .interface import Payload
+from .utils import String, ByteString, Base64, Url
+from .interface.base import BaseApplication
+from .call import Headers
 
 
 logger = logging.getLogger(__name__)
 
 
-class WebClient(object):
-    """A generic test client that can make endpoint requests"""
+class HTTPClient(object):
+    """A generic test client that can make endpoints requests"""
     timeout = 10
 
     def __init__(self, host, *args, **kwargs):
+        if not requests:
+            logger.error("You need to install requests to use {}".format(
+                type(self).__name__
+            ))
+            raise ImportError("requests is not installed")
+
         self.host = Url(host, hostname=Host(host).client())
 
         # these are the common headers that usually don't change all that much
@@ -263,14 +269,13 @@ class WebClient(object):
         )
 
 
-class WebsocketClient(WebClient):
+class WebSocketClient(HTTPClient):
     """a websocket client
 
     pretty much every method of this client can accept a timeout argument, if you
     don't include the timeout then self.timeout will be used instead
     """
-
-    payload_class = Payload
+    application_class = BaseApplication
 
     attempts = 3
     """how many times the client should attempt to connect/re-connect"""
@@ -289,10 +294,16 @@ class WebsocketClient(WebClient):
 
         kwargs.setdefault("headers", Headers())
         kwargs["headers"]['User-Agent'] = "{} Websocket Client".format(__name__.split(".")[0])
-        super(WebsocketClient, self).__init__(host, *args, **kwargs)
+        super().__init__(host, *args, **kwargs)
 
         self.set_trace(kwargs.pop("trace", False))
-        self.client_id = Base64.encode(String(id(self)))
+
+        # The value of [the Sec-WebSocket-Key] header field MUST be a nonce
+        # consisting of a randomly selected 16-byte value that has been
+        # base64-encoded.  The nonce MUST be selected randomly for each
+        # connection.
+        self.client_id = Base64.encode(uuid.uuid4().bytes)
+        #self.client_id = Base64.encode(String(id(self)))
         #self.client_id = Base64.encode(os.urandom(16))
         self.send_count = 0
         self.attempts = kwargs.pop("attempts", self.attempts)
@@ -321,7 +332,7 @@ class WebsocketClient(WebClient):
             websocket.enableTrace(True) # for debugging connection issues
 
     def get_fetch_headers(self, method, headers):
-        headers = super(WebsocketClient, self).get_fetch_headers(method, headers)
+        headers = super().get_fetch_headers(method, headers)
         headers.setdefault("Sec-WebSocket-Key", self.client_id)
         return headers
 
@@ -357,7 +368,6 @@ class WebsocketClient(WebClient):
         timeout = self.get_timeout(timeout=timeout, **kwargs)
 
         self.set_trace(kwargs.pop("trace", False))
-        #pout.v(websocket_url, websocket_headers, self.query_kwargs, self.headers)
 
         try:
             logger.debug("{} connecting to {}".format(self.client_id, ws_url))
@@ -368,41 +378,44 @@ class WebsocketClient(WebClient):
                 sslopt={'cert_reqs':ssl.CERT_NONE},
             )
 
-            ret = self.recv_callback(callback=lambda r: r.uuid == ws_headers["Sec-Websocket-Key"])
+            ret = self.recv_callback(
+                callback=lambda r: r.uuid == ws_headers["Sec-Websocket-Key"]
+            )
             if ret.code >= 400:
                 raise IOError("Failed to connect with code {}".format(ret.code))
 
             logger.debug("{} connected to {}".format(self.client_id, ws_url))
 
         except websocket.WebSocketTimeoutException as e:
-            #pout.v(e)
-            raise IOError("Failed to connect within {} seconds".format(timeout))
+            raise IOError(
+                "Failed to connect within {} seconds".format(timeout)
+            ) from e
 
         except websocket.WebSocketException as e:
-            #pout.v(e)
-            raise IOError("Failed to connect with error: {}".format(e))
+            raise IOError(
+                "Failed to connect with error: {}".format(e)
+            ) from e
 
         except socket.error as e:
             # this is an IOError, I just wanted to be aware of that, most common
             # problem is: [Errno 111] Connection refused
-            #pout.v(e)
             raise
-
-#         except Exception as e:
-#             #pout.v(e)
-#             raise
 
         return ret
 
     def get_fetch_request(self, method, path, body, **kwargs):
         payload_body = self.get_fetch_query({})
         payload_body.update(self.get_fetch_body(body))
-        p = self.payload_class.dumps(dict(
+
+        kwargs.setdefault("uuid", self.client_id)
+
+        p = self.application_class.get_websocket_dumps(
             method=method.upper(),
             path=path,
             body=payload_body,
             **kwargs
-        ))
+        )
+
         return p
 
     def send(self, path, body, **kwargs):
@@ -448,16 +461,21 @@ class WebsocketClient(WebClient):
                         kwargs['timeout'] = timeout
                         kwargs["attempt"] = attempt
 
-                        logger.debug('{} send {} attempt {}/{} with timeout {}'.format(
-                            self.client_id,
-                            uuid,
-                            attempt,
-                            max_attempts,
-                            timeout
-                        ))
+                        logger.debug(
+                            '{} send {} attempt {}/{} with timeout {}'.format(
+                                self.client_id,
+                                uuid,
+                                attempt,
+                                max_attempts,
+                                timeout
+                            )
+                        )
 
                         sent_bits = self.ws.send(payload)
-                        logger.debug('{} sent {} bytes'.format(self.client_id, sent_bits))
+                        logger.debug('{} sent {} bytes'.format(
+                            self.client_id,
+                            sent_bits
+                        ))
                         if sent_bits:
                             ret = self.fetch_response(uuid, **kwargs)
                             if ret:
@@ -465,37 +483,46 @@ class WebsocketClient(WebClient):
 
                 except websocket.WebSocketConnectionClosedException as e:
                     self.ws.shutdown()
-                    raise IOError("connection is not open but reported it was open: {}".format(e))
 
             except (IOError, TypeError) as e:
-                logger.debug('{} error on send attempt {}: {}'.format(self.client_id, attempt, e))
+                logger.debug('{} error on send attempt {}: {}'.format(
+                    self.client_id,
+                    attempt,
+                    e
+                ))
                 success = False
 
             finally:
                 if not success:
                     attempt += 1
                     if attempt > max_attempts:
-                        raise RuntimeError("{} fetch attempts exceeded {} max attempts".format(attempt, max_attempts))
+                        raise RuntimeError(
+                            "{} fetch attempts exceeded {} max attempts".format(
+                                attempt,
+                                max_attempts
+                            )
+                        )
 
                     else:
                         timeout *= 2
                         if (attempt / max_attempts) > 0.50:
-                            logger.debug(
-                                "{} closing and re-opening connection for next attempt".format(self.client_id)
-                            )
+                            logger.debug(" ".join([
+                                f"{self.client_id} closing and re-opening",
+                                "connection for next attempt",
+                            ]))
                             self.close()
 
         return ret
 
     def fetch_response(self, uuid, **kwargs):
-        """payload has been sent, do anything else you need to do (eg, wait for response?)
+        """payload has been sent, do anything else you need to do (eg, wait for
+        response?)
 
-        :param uuid: string, the unique identifier of a websocket request we are waiting for the response to
+        :param uuid: string, the unique identifier of a websocket request we are
+        waiting for the response to
         :returns: mixed, the response payload
         """
         def callback(res_payload):
-            #pout.v(req_payload, res_payload)
-            #ret = req_payload.uuid == res_payload.uuid or res_payload.uuid == "CONNECT"
             ret = res_payload.uuid == uuid
             if ret:
                 logger.debug('{} received {} response for {}'.format(
@@ -517,21 +544,34 @@ class WebsocketClient(WebClient):
 
         payload = rand_id()
         self.ws.ping(payload)
-        opcode, data = self.recv_raw(timeout, [websocket.ABNF.OPCODE_PONG], **kwargs)
+        opcode, data = self.recv_raw(
+            timeout,
+            [websocket.ABNF.OPCODE_PONG],
+            **kwargs
+        )
         if data != payload:
             raise IOError("Pinged server but did not receive correct pong")
 
     def recv_raw(self, timeout, opcodes, **kwargs):
         """this is very internal, it will return the raw opcode and data if they
-        match the passed in opcodes"""
+        match the passed in opcodes
+
+        You can find the opcode values here:
+            https://github.com/websocket-client/websocket-client/blob/master/websocket/_abnf.py
+        """
         orig_timeout = self.get_timeout(timeout)
         timeout = orig_timeout
 
         while timeout > 0.0:
             start = time.time()
-            if not self.connected: self.connect(timeout=timeout, **kwargs)
+            if not self.connected:
+                self.connect(timeout=timeout, **kwargs)
+
             with self.wstimeout(timeout, **kwargs) as timeout:
-                logger.debug('{} waiting to receive for {} seconds'.format(self.client_id, timeout))
+                logger.debug('{} waiting to receive for {} seconds'.format(
+                    self.client_id,
+                    timeout
+                ))
                 try:
                     opcode, data = self.ws.recv_data()
                     if opcode in opcodes:
@@ -546,14 +586,17 @@ class WebsocketClient(WebClient):
                     pass
 
                 except websocket.WebSocketConnectionClosedException:
-                    # bug in Websocket.recv_data(), this should be done by Websocket
+                    # bug in Websocket.recv_data(), this should be done by
+                    # Websocket
                     try:
                         self.ws.shutdown()
+
                     except AttributeError:
                         pass
-                    #raise EOFError("websocket closed by server and reconnection did nothing")
 
-            if timeout:
+                    raise
+
+            if timeout > 0.0:
                 stop = time.time()
                 timeout -= (stop - start)
 
@@ -569,25 +612,27 @@ class WebsocketClient(WebClient):
         """This just makes the payload instance more HTTPClient like"""
         class Return(object): pass
         ret = Return()
-        p = self.payload_class.loads(raw)
+        p = self.application_class.get_websocket_loads(raw)
 
         for k, v in p.items():
             setattr(ret, k, v)
-        #p.code = p["code"]
-        #p._body = p["body"]
         ret._body = ret.body
         return ret
 
     def recv(self, timeout=0, **kwargs):
-        """this will receive data and convert it into a message, really this is more
-        of an internal method, it is used in recv_callback and recv_msg"""
-        opcode, data = self.recv_raw(timeout, [websocket.ABNF.OPCODE_TEXT], **kwargs)
+        """this will receive data and convert it into a message, really this is
+        more of an internal method, it is used in recv_callback and recv_msg"""
+        opcode, data = self.recv_raw(
+            timeout,
+            [websocket.ABNF.OPCODE_TEXT],
+            **kwargs
+        )
         return self.get_fetch_response(data)
 
     def recv_callback(self, callback, **kwargs):
         """receive messages and validate them with the callback, if the callback 
-        returns True then the message is valid and will be returned, if False then
-        this will try and receive another message until timeout is 0"""
+        returns True then the message is valid and will be returned, if False
+        then this will try and receive another message until timeout is 0"""
         payload = None
         timeout = self.get_timeout(**kwargs)
         full_timeout = timeout
@@ -606,9 +651,6 @@ class WebsocketClient(WebClient):
             raise IOError("recv_callback timed out in {}".format(full_timeout))
 
         return payload
-
-#     def has_connection(self):
-#         return self.connected
 
     def close(self):
         if self.connected:

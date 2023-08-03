@@ -15,22 +15,20 @@ from endpoints.decorators.limit import ratelimit_ip
 
 
 class Default(Controller):
-    @limit_ip(limit=10, ttl=3600)
-    def GET(self):
+    @ratelimit_ip(limit=10, ttl=3600)
+    async def GET(self):
         return "hello world"
 ```
 
 That's it, now any unique ip request to `/` will be limited to 10 request every hour (3600 seconds)
 
 
-## The limit decorators
+## The Limit Decorators
 
-* **ratelimit_ip** - limit requests for a unique ip address.
-* **ratelimit** - limit requests for a unique ip address but you have to pass in `limit` and `ttl`.
-* **ratelimit_token** - limit requests for a unique _access_token_.
-* **ratelimit_param** - limit requests to a certain parameter.
-* **ratelimit_param_ip** - limit requests to a certain parameter and a unique ip address.
-* **ratelimit_param_only** - limit requests to a certain parameter with no restriction on uri path.
+* `ratelimit_ip` - limit requests for a unique ip address.
+* `ratelimit_access_token` - limit requests for a unique _access_token_.
+* `ratelimit_param` - limit requests to a certain parameter.
+* `ratelimit_param_ip` - limit requests to a certain parameter and a unique ip address.
 
 
 ## Customization
@@ -39,33 +37,35 @@ You can extend any of the limit decorators to fit them into your own system or c
 
 ```python
 from endpoints import Controller
-from endpoints.decorators.limit import RateLimitDecorator
+from endpoints.decorators.limit import RateLimitDecorator, RateLimitBackend
 
-class Backend(class):
+class Backend(RateLimitBackend):
     DEFAULT_LIMIT = 10
     DEFAULT_TTL = 3600
-    def target(self, request, key, limit, ttl):
+    async def handle(self, request, key, limit, ttl):
         if not limit:
             limit = self.DEFAULT_LIMIT
         if not ttl:
             ttl = self.DEFAULT_TTL
 
         # check key to see if it should be rejected based on limit and ttl
+        # and return True (the request is valid) or False (the request will
+        # be denied)
 
 class limit_user(RateLimitDecorator):
     backend_class = Backend
 
-    def normalize_key(self, request, *args, **kwargs):
-        user = some_call_that_returns_user_from_some_db_using_request_info(request)
+    async def normalize_key(self, request, *args, **kwargs):
+        user = await some_call_that_returns_user_from_some_db_using_request_info(request)
         return user.id if user else ""
 
 class Default(Controller):
     @limit_user
-    def GET(self):
+    async def GET(self):
         return "GET uses backend's default limit and ttl"
 
     @limit_user(5, 7200)
-    def POST(self):
+    async def POST(self):
         return "POST users limit and ttl passed into backend"
 ```
 

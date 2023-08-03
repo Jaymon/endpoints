@@ -11,7 +11,7 @@ Create a file named _controllers.py_ with the following contents:
 from endpoints import Controller
 
 class Hello(Controller):
-    def GET(self):
+    async def GET(self):
         return "hello world"
 ```
 
@@ -19,7 +19,6 @@ Now you can make a request:
 
     $ curl http://localhost:8000/hello
     "hello world"
-
 
 Now let's try some different stuff:
 
@@ -33,11 +32,11 @@ from endpoints import Controller
 from endpoints.decorators import param
 
 class Hello(Controller):
-    def GET(self):
+    async def GET(self):
         return "hello world"
 
     @param("name")
-    def POST(self, **kwargs):
+    async def POST(self, **kwargs):
         return "hello {}".format(kwargs["name"])
 ```
 
@@ -52,12 +51,13 @@ Nice, but now we want to be even more clever, we want **GET** to act differently
 
 ```python
 from endpoints import Controller
-from endpoints.decorators.auth import basic_auth
+from endpoints.decorators.auth import auth_basic, AuthBackend
 from endpoints.decorators import route
 
-class auth(basic_auth):
-    def target(self, request, username, password):
+class Backend(AuthBackend):
+    async def handle(self, controller, username, password):
         ret = False
+        request = controller.request
         if username == "Alice" and password == "1234":
             request.username = "Alice"
             ret = True
@@ -66,16 +66,17 @@ class auth(basic_auth):
             ret = True
         return ret
 
+auth_basic.backend_class = Backend
 
 class Hello(Controller):
-    @auth()
+    @auth_basic()
     @route(lambda request: request.username == "Alice")
-    def GET_alice(self):
+    async def GET_alice(self):
         return "hello Alice"
 
-    @auth()
+    @auth_basic()
     @route(lambda request: request.username == "Bob")
-    def GET_bob(self, **kwargs):
+    async def GET_bob(self, **kwargs):
         return "hola Bob"
 ```
 
@@ -96,8 +97,8 @@ You can define your controller methods to accept certain path params and to acce
 
 ```python
 class Foo(Controller):
-  def GET(self, one, two=None, **params): pass
-  def POST(self, **params): pass
+  async def GET(self, one, two=None, **params): pass
+  async def POST(self, **params): pass
 ```
 
 your call requests would be translated like this:
@@ -132,7 +133,7 @@ class Default(Controller):
 
   cors = False # Turn off cors
 
-  def GET(self):
+  async def GET(self):
     return "This will not have CORS support"
 ```
 
@@ -149,10 +150,10 @@ For example:
 from endpoints import Controller
 
 class Default(Controller):
-	def GET(self, *args, **kwargs):
+	async def GET(self, *args, **kwargs):
 		return "GET {}".format("/".join(args))
 	
-	def POST(self, *args, **kwargs):
+	async def POST(self, *args, **kwargs):
 		return "POST {}".format("/".join(args))
 ```
 
@@ -172,7 +173,7 @@ This makes it possible for you to define your paths in multiple different ways, 
 from endpoints import Controller
 
 class User(Controller):
-	def GET(self): pass
+	async def GET(self): pass
 ```
 
 would be equivalent to:
@@ -183,7 +184,7 @@ would be equivalent to:
 from endpoints import Controller
 
 class Default(Controller):
-	def GET(self): pass
+	async def GET(self): pass
 ```
 
 Endpoints first checks module paths, then it checks classes in the found module, then defaults to the `Default` class if no other suitable class is found.

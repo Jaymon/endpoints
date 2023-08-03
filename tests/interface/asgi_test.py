@@ -1,14 +1,21 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import re
 
-from datatypes import ModuleCommand, Host
+from datatypes import (
+    Command,
+    Host,
+)
 
-from . import _HTTPTestCase
+from endpoints.interface.asgi import Application
 from endpoints.config import environ
 
+from . import _HTTPTestCase, _WebSocketTestCase
 
-class Server(ModuleCommand):
+
+class Server(Command):
+    """
+    https://github.com/django/daphne
+    """
     @property
     def environ(self):
         env = super().environ
@@ -23,31 +30,33 @@ class Server(ModuleCommand):
             host = environ.HOST
         self.host = Host(host) if host else None
 
-        cmd_host = "0.0.0.0:4000"
+        cmd_host = "0.0.0.0"
+        cmd_port = "4000"
         if self.host:
-            cmd_host = self.host.netloc
+            cmd_host = self.host.hostname
+            cmd_port = self.host.port
 
-        cmd = [
-            "--host", cmd_host,
-            "--prefix", self.controller_prefix,
-            "--server", "endpoints.interface.wsgi:Server",
-        ]
-
+        app_path = "endpoints.interface.asgi:ApplicationFactory"
         super().__init__(
-            "endpoints",
-            command=cmd,
+            f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
             **kwargs
         )
 
     def start(self, **kwargs):
         super().start(**kwargs)
 
-        regex = re.compile(r"Listening\s+on\s+(([^:]+):(\d+))")
+        regex = re.compile(r"Listening\s+on\s+TCP\s+address\s+(([^:]+):(\d+))")
         r = self.wait_for(regex)
         m = regex.search(r)
         self.host = Host(m.group(2), m.group(3)).client()
 
 
-class HTTPTest(_HTTPTestCase):
+class HTTPApplicationTest(_HTTPTestCase):
     server_class = Server
+    application_class = Application
+
+
+class WebSocketApplicationTest(_WebSocketTestCase):
+    server_class = Server
+    application_class = Application
 

@@ -1,13 +1,9 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import os
 import mimetypes
-import sys
-import base64
 import json
 import types
-import copy
-from io import IOBase, FileIO
+from functools import cmp_to_key
+
 
 from datatypes import (
     ByteString,
@@ -15,55 +11,83 @@ from datatypes import (
     Base64,
     Path,
     Deepcopy,
+    Url as BaseUrl,
 )
 
 from .compat import *
-from . import environ
 
 
-class FileWrapper(FileIO):
-    """Wraps a file descriptor.
+class Url(BaseUrl):
+    """a url object on steroids, this is here to make it easy to manipulate urls
+    we try to map the supported fields to their urlparse equivalents, with some
+    additions
 
-    Honestly, this exists because Python2 won't allow you to add properties to a
-    descriptor (because it doesn't extend object), this is currently used for any
-    uploaded files"""
-    def __init__(self, fp, name=None, **kwargs):
-        self.fp = fp
-        self.name = name
+    https://tools.ietf.org/html/rfc3986.html
 
-        for k, v in kwargs.items():
-            setattr(self, k, v)
+    given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
+    with a controller: Bar
 
-    def close(self, *args, **kwargs):
-        return self.fp.close(*args, **kwargs)
+    .scheme = http
+    .netloc = user:pass@foo.com:1000
+    .hostloc = foo.com:1000
+    .hostname = foo.com
+    .host() = http://foo.com
+    .port = 1000
+    .base = http://user:pass@foo.com:1000/bar/che
+    .fragment = anchor
+    .anchor = fragment
+    .uri = /bar/che?baz=boom#anchor
+    .host(...) = http://foo.com/...
+    .base(...) = http://foo.com/bar/che/...
+    .controller(...) = http://foo.com/bar/...
+    """
+    class_path = ""
 
-    def seekable(self):
-        return self.fp.seekable()
+    module_path = ""
 
-    def seek(self, *args, **kwargs):
-        return self.fp.seek(*args, **kwargs)
+    def module(self, *paths, **query_kwargs):
+        """create a new Url instance using the module path as a base
 
-    def read(self, *args, **kwargs):
-        return self.fp.read(*args, **kwargs)
+        :param *paths: list, the paths to append to the module path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        if self.module_path:
+            if "path" in kwargs:
+                paths = self.normalize_paths(self.module_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
+            else:
+                kwargs["path"] = self.module_path
+        return self.create(self.root, **kwargs)
 
-    def readall(self):
-        return self.fp.readall()
+    def controller(self, *paths, **query_kwargs):
+        """create a new url object using the controller path as a base
 
-    def tell(self, *args, **kwargs):
-        return self.fp.tell(*args, **kwargs)
+        if you have a controller `foo.BarController` then this would create a new
+        Url instance with `host/foo/bar` as the base path, so any *paths will be
+        appended to `/foo/bar`
 
-    def readline(self, *args, **kwargs):
-        return self.fp.readline(*args, **kwargs)
+        :example:
+            # controller foo.Bar(Controller)
 
-    def readlines(self, *args, **kwargs):
-        return self.fp.readlines(*args, **kwargs)
+            print url # http://host.com/foo/bar/some_random_path
 
-    def __iter__(self):
-        for line in self.fp:
-            yield line
+            print url.controller() # http://host.com/foo/bar
+            print url.controller("che", boom="bam") # http://host/foo/bar/che?boom=bam
 
-    def writable(self):
-        return False
+        :param *paths: list, the paths to append to the controller path
+        :param **query_kwargs: dict, any query string params to add
+        :returns: new Url instance
+        """
+        kwargs = self._normalize_params(*paths, **query_kwargs)
+        if self.class_path:
+            if "path" in kwargs:
+                paths = self.normalize_paths(self.class_path, kwargs["path"])
+                kwargs["path"] = "/".join(paths)
+            else:
+                kwargs["path"] = self.class_path
+        return self.create(self.root, **kwargs)
 
 
 class MimeType(object):
@@ -79,8 +103,8 @@ class MimeType(object):
     def find_type(cls, val):
         """return the mimetype from the given string value
 
-        if value is a path, then the extension will be found, if val is an extension then
-        that will be used to find the mimetype
+        if value is a path, then the extension will be found, if val is an
+        extension then that will be used to find the mimetype
         """
         mt = ""
         index = val.rfind(".")
@@ -135,8 +159,8 @@ class AcceptHeader(object):
 
     def _sort(self, a, b):
         '''
-        sort the headers according to rfc 2616 so when __iter__ is called, the accept media types are
-        in order from most preferred to least preferred
+        sort the headers according to rfc 2616 so when __iter__ is called, the
+        accept media types are in order from most preferred to least preferred
         '''
         ret = 0
 
@@ -169,15 +193,11 @@ class AcceptHeader(object):
         return ret
 
     def __iter__(self):
-        if is_py2:
-            sorted_media_types = sorted(self.media_types, self._sort, reverse=True)
-        else:
-            from functools import cmp_to_key
-            sorted_media_types = sorted(
-                self.media_types,
-                key=cmp_to_key(self._sort),
-                reverse=True
-            )
+        sorted_media_types = sorted(
+            self.media_types,
+            key=cmp_to_key(self._sort),
+            reverse=True
+        )
         for x in sorted_media_types:
             yield x
 
@@ -243,5 +263,106 @@ class JSONEncoder(json.JSONEncoder):
             return String(obj)
 
         else:
-            return json.JSONEncoder.default(self, obj)
+            #return json.JSONEncoder.default(self, obj)
+            return super().default(obj)
+
+
+class Status(String):
+    def __new__(cls, code, **kwargs):
+        if code < 1000:
+            status = cls.get_http_status(code)
+
+        else:
+            status = cls.get_websocket_status(code)
+
+        if not status:
+            status = "UNKNOWN"
+
+        instance = super().__new__(cls, status)
+        instance.code = code
+        return instance
+
+    @classmethod
+    def get_http_status(cls, code, **kwargs):
+        status = ""
+        status_tuple = BaseHTTPRequestHandler.responses.get(code)
+        if status_tuple:
+            status = status_tuple[0]
+
+        return status
+
+    @classmethod
+    def get_websocket_status(cls, code, **kwargs):
+        """Get the websocket status code
+
+        https://github.com/Luka967/websocket-close-codes
+        """
+        status = ""
+
+        codes = {
+            # Successful operation / regular socket shutdown
+            1000: "Close Normal",
+
+            # Client is leaving (browser tab closing)
+            1001: "Close Going Away",
+
+            # Endpoint received a malformed frame
+            1002: "Close Protocol Error",
+
+            # Endpoint received an unsupported frame (e.g. binary-only endpoint
+            # received text frame)
+            1003: "Close Unsupported",
+
+            1004: "Reserved",
+
+            # Expected close status, received none
+            1005: "Closed No Status",
+
+            # No close code frame has been receieved
+            1006: "Close Abnormal",
+
+            # Endpoint received inconsistent message (e.g. malformed UTF-8)
+            1007: "Unsupported Payload",
+
+            # Generic code used for situations other than 1003 and 1009
+            1008: "Policy Violation",
+
+            # Endpoint won't process large frame
+            1009: "Close Too Large",
+
+            # Client wanted an extension which server did not negotiate
+            1010: "Mandatory Extension",
+
+            # Internal server error while operating
+            1011: "Server Error",
+
+            # Server/service is restarting
+            1012: "Service Restart",
+
+            # Temporary server condition forced blocking client's request
+            1013: "Try Again Later",
+
+            # Server acting as gateway received an invalid response
+            1014: "Bad Gateway",
+
+            # Transport Layer Security handshake failure
+            1015: "TLS Handshake Fail",
+        }
+
+        if code in codes:
+            status = codes[code]
+
+        elif code >= 1016 and code <= 1999:
+            status = "Reserved For Later"
+
+        elif code >= 2000 and code <= 2999:
+            status = "Reserved For WebSocket Extensions"
+
+        elif code >= 3000 and code <= 3999:
+            status = "Registered First Come First Serve at IANA"
+
+        elif code >= 4000 and code <= 4999:
+            status = "Available For Applications"
+
+        return status
 

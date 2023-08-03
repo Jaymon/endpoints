@@ -1,16 +1,34 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
-from .base import TargetDecorator
+from .base import BackendDecorator
 
 
 logger = logging.getLogger(__name__)
 
 
-class auth(TargetDecorator):
+class AuthBackend(object):
+    async def handle(self, method_name, **kwargs):
+        callback = getattr(self, method_name)
+        return callback(**kwargs)
+
+    async def auth_basic(self, controller, username, password):
+        raise NotImplementedError()
+
+    async def auth_client(self, controller, client_id, client_secret):
+        return await self.auth_basic(
+            controller=controller,
+            username=client_id,
+            password=client_secret,
+        )
+
+    async def auth_token(self, controller, access_token):
+        raise NotImplementedError()
+
+
+class AuthDecorator(BackendDecorator):
     """
     handy auth decorator that makes doing basic or token auth easy peasy
 
@@ -41,24 +59,35 @@ class auth(TargetDecorator):
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
 
-    def handle_error(self, controller, e):
-        logger.debug(e, exc_info=True)
-        if isinstance(e, NotImplementedError):
-            raise CallError(403, "You need a validator function to use authentication")
+    backend_class = AuthBackend
+
+    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+        return {
+            "method_name": self.__class__.__name__,
+            "controller": controller,
+            "controller_args": controller_args,
+            "controller_kwargs": controller_kwargs,
+        }
+
+    async def handle_error(self, controller, e):
+        if isinstance(e, CallError):
+            super().handle_error(controller, e)
+
+        elif isinstance(e, NotImplementedError):
+            raise CallError(
+                403,
+                "You need a validator function to use authentication"
+            ) from e
+
         else:
             raise AccessDenied(
                 String(e),
                 scheme=self.scheme,
                 realm=self.realm,
-            )
-
-    def definition(self, target=None, *anoop, **kwnoop):
-        """makes target optional since auth decorators are made to have target passed
-        in or to easily be extended"""
-        return super(auth, self).definition(target=target)
+            ) from e
 
 
-class auth_basic(auth):
+class auth_basic(AuthDecorator):
     """
     handy basic auth decorator that checks for username, password in an auth header
 
@@ -78,13 +107,21 @@ class auth_basic(auth):
     """
     scheme = AccessDenied.SCHEME_BASIC
 
-    def handle_args(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
         username, password = controller.request.get_auth_basic()
 
-        if not username: raise ValueError("username is required")
-        if not password: raise ValueError("password is required")
+        if not username:
+            raise ValueError("username is required")
 
-        return [controller, username, password]
+        if not password:
+            raise ValueError("password is required")
+
+        return {
+            "method_name": "auth_basic",
+            "controller": controller,
+            "username": username,
+            "password": password,
+        }
 
 
 class auth_client(auth_basic):
@@ -105,16 +142,24 @@ class auth_client(auth_basic):
             def GET(self):
                 return "hello world"
     """
-    def handle_args(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
         client_id, client_secret = controller.request.client_tokens
 
-        if not client_id: raise ValueError("client_id is required")
-        if not client_secret: raise ValueError("client_secret is required")
+        if not client_id:
+            raise ValueError("client_id is required")
 
-        return [controller, client_id, client_secret]
+        if not client_secret:
+            raise ValueError("client_secret is required")
+
+        return {
+            "method_name": "auth_client",
+            "controller": controller,
+            "client_id": client_id,
+            "client_secret": client_secret,
+        }
 
 
-class auth_token(auth):
+class auth_token(AuthDecorator):
     """
     handy token auth decorator that checks for access_token in an authorization
     Bearer header
@@ -135,10 +180,15 @@ class auth_token(auth):
     """
     scheme = AccessDenied.SCHEME_BEARER
 
-    def handle_args(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
         access_token = controller.request.access_token
 
-        if not access_token: raise ValueError("access_token is required")
+        if not access_token:
+            raise ValueError("access_token is required")
 
-        return [controller, access_token]
+        return {
+            "method_name": "auth_token",
+            "controller": controller,
+            "access_token": access_token,
+        }
 
