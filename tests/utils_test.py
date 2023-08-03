@@ -1,5 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import json
 
 from endpoints.compat import *
@@ -11,7 +10,7 @@ from endpoints.utils import (
     Status,
 )
 
-from . import TestCase, testdata
+from . import TestCase
 
 
 class MimeTypeTest(TestCase):

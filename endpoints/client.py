@@ -1,9 +1,4 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import urllib
-import subprocess
-import json
-import os
 import re
 from contextlib import contextmanager
 import random
@@ -37,7 +32,7 @@ from .call import Headers
 logger = logging.getLogger(__name__)
 
 
-class WebClient(object):
+class HTTPClient(object):
     """A generic test client that can make endpoints requests"""
     timeout = 10
 
@@ -274,7 +269,7 @@ class WebClient(object):
         )
 
 
-class WebSocketClient(WebClient):
+class WebSocketClient(HTTPClient):
     """a websocket client
 
     pretty much every method of this client can accept a timeout argument, if you

@@ -159,10 +159,16 @@ class Application(BaseApplication):
 
 
 class ApplicationFactory(object):
+    """This is convenience wrapper to make it easy to call daphne, because you
+    can just do this:
 
+        $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi.ApplicationFactory
+    """
     application = None
+    """Will hold a cached instance of .application_class"""
 
     application_class = Application
+    """The application class that will be created"""
 
     @classmethod
     def get_application(cls, **kwargs):
@@ -176,5 +182,4 @@ class ApplicationFactory(object):
     async def __call__(self, receive, send):
         application = self.get_application()
         await application(self.scope, receive, send)
-        #await super().__call__(self.scope, receive, send)
 

@@ -1,12 +1,9 @@
 #!/usr/bin/env python
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import sys
 import os
 import argparse
 import logging
-import runpy
-import uuid
 
 from datatypes import ReflectName
 
@@ -18,8 +15,8 @@ class Console(object):
     """Provides the CLI (command line interface) for running endpoints
 
     this is a class so subprojects can extend and manipulate how this works but
-    take advantage of the foundation that lays and the subprojects can have basically
-    similar interfaces to running on the command line
+    take advantage of the foundation that lays and the subprojects can have
+    basically similar interfaces to running on the command line
     """
     def __init__(self):
         self.environ = environ
@@ -34,8 +31,8 @@ class Console(object):
 
         args = self.parser.parse_args()
 
-        # we want to make sure the directory can be imported from since chances are
-        # the prefix module lives in that directory
+        # we want to make sure the directory can be imported from since chances
+        # are the prefix module lives in that directory
         sys.path.append(args.directory)
 
         if not args.quiet:
@@ -51,33 +48,27 @@ class Console(object):
         self.environ.set_host(args.host)
         self.environ.set_controller_prefixes(args.prefix)
 
-#         config = {}
         if args.file:
             s = args.server_class(wsgifile=args.file)
 
         else:
             s = args.server_class()
 
-
-            # load the configuration file
-#             config = runpy.run_path(args.file)
-
-#         s = args.server_class()
-        self.environ.set_host(s.hostloc)
-
-#         if "application" in config:
-#             s.application = config["application"]
+        # we reset the host and update the environment because the server
+        # could've set the port
+        hostloc = ":".join(map(str, s.server_address))
+        self.environ.set_host(hostloc)
 
         try:
             if args.count:
                 logger.info("Listening on {} for {} requests".format(
-                    s.hostloc,
+                    hostloc,
                     args.count
                 ))
                 s.serve_count(args.count)
 
             else:
-                logger.info("Listening on {}".format(s.hostloc))
+                logger.info("Listening on {}".format(hostloc))
                 s.serve_forever()
 
         except KeyboardInterrupt:
@@ -152,7 +143,8 @@ class Console(object):
     def get_server_class(self, classpath):
         """Returns the interface Server class
 
-        :param modpath: the module path of the interface (eg, endpoints.interface.wsgi)
+        :param modpath: the module path of the interface (eg,
+            endpoints.interface.wsgi)
         :returns: Server class
         """
         classpath = ReflectName(classpath)

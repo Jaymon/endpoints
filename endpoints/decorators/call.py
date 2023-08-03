@@ -1,8 +1,5 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import logging
-import inspect
-import re
 
 from ..exception import CallError, RouteError, VersionError
 from ..utils import Url

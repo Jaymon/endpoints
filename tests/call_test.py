@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import os
 import asyncio
 
 from requests.auth import _basic_auth_str
 
-import endpoints
 from endpoints.compat import *
 from endpoints.environ import *
 from endpoints.utils import ByteString
 from endpoints.call import Controller, Request, Response
-from endpoints.exception import CallError
 
 from . import TestCase, testdata
 

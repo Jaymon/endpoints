@@ -1,16 +1,13 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import os
 import logging
 import json
-import sys
 import functools
 import io
 import email
 import time
 import inspect
 
-from datatypes import String, ReflectModule, property
+from datatypes import String, ReflectModule
 
 from ..config import environ
 from ..call import Controller, Request, Response
@@ -31,6 +28,9 @@ logger = logging.getLogger(__name__)
 
 
 class ApplicationABC(object):
+    """Child classes should extend BaseApplication but this class contains
+    the methods that a child interface will most likely want to override so
+    they are all here for convenience"""
     def normalize_call_kwargs(self, *args, **kwargs):
         raise NotImplementedError()
 
@@ -223,10 +223,10 @@ class BaseApplication(ApplicationABC):
         return self.response_class()
 
     async def get_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
-        """usually when iterating this object it means we are returning the response
-        of a wsgi request, so this will iterate the body and make sure it is a bytes
-        string because wsgiref requires an actual bytes instance, a child class
-        won't work
+        """usually when iterating this object it means we are returning the
+        response of a wsgi request, so this will iterate the body and make sure
+        it is a bytes string because wsgiref requires an actual bytes instance,
+        a child class won't work
 
         :returns: a generator that yields bytes strings
         """
@@ -277,9 +277,8 @@ class BaseApplication(ApplicationABC):
         return controller_modpaths
 
     async def get_controller_class(self, module, class_name):
-        """try and get the class_name from the module and make sure it is a valid
-        controller"""
-        # let's get the class
+        """try and get the class_name from the module and make sure it is a
+        valid controller"""
         class_name = class_name.capitalize()
         class_object = getattr(module, class_name, None)
         if not class_object or not issubclass(class_object, Controller):
@@ -290,8 +289,6 @@ class BaseApplication(ApplicationABC):
     async def find_controller_class(self, module, path_args, **kwargs):
         named_class = None
         default_class = None
-
-        class_fallback = kwargs.get("class_fallback", "Default")
 
         if path_args:
             # look for a class name with the first path arg, this will be
@@ -308,7 +305,7 @@ class BaseApplication(ApplicationABC):
             # a class matching a path arg is found
             default_class = await self.get_controller_class(
                 module,
-                class_fallback,
+                kwargs.get("class_fallback", "Default"),
             )
 
         return named_class, default_class
@@ -657,13 +654,19 @@ class BaseApplication(ApplicationABC):
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):
-        """Similar to create_response_body it prepares a response to be sent back
-        down the wire using the payload_class variable
+        """Similar to create_response_body it prepares a response to be sent
+        back down the wire using the payload_class variable
 
-        :param request: the call's Request instance, this needs the request because
-            of how websockets are sent back and forth
+        This isn't asyncronouse because it is used in ..client.WebSocketClient
+        to create websocket bodies
+
+        This is the sister method to .get_websocket_loads() and should be a
+        mirror of that method
+
+        :param request: the call's Request instance, this needs the request
+            because of how websockets are sent back and forth
         :param response: the call's Response instance
-        :returns: a generator that yields bytes strings
+        :returns: str
         """
         d = {}
 
@@ -696,6 +699,17 @@ class BaseApplication(ApplicationABC):
 
     @classmethod
     def get_websocket_loads(cls, body):
+        """Given a received websocket body this will convert it back into a dict
+
+        This isn't asyncronouse because it is used in ..client.WebSocketClient
+        to read websocket bodies sent from the server
+
+        This is the sister method to .get_websocket_dumps() and should be a
+        mirror of that method
+
+        :param body: str
+        :returns: dict
+        """
         d = json.loads(body)
 
         if "code" not in d and "method" not in d:
@@ -713,6 +727,8 @@ class BaseApplication(ApplicationABC):
         return d
 
     async def handle_websocket_connect(self, **kwargs):
+        """This handles calling <FOUND CONTROLLER>.CONNECT
+        """
         request = await self.create_request(**kwargs)
         response = await self.create_response(**kwargs)
 
@@ -722,6 +738,8 @@ class BaseApplication(ApplicationABC):
         await self.send_websocket_connect(request, response, **kwargs)
 
     async def handle_websocket_disconnect(self, **kwargs):
+        """This handles calling <FOUND CONTROLLER>.DISCONNECT
+        """
         request = await self.create_request(**kwargs)
         response = await self.create_response(**kwargs)
 
@@ -732,6 +750,10 @@ class BaseApplication(ApplicationABC):
         await self.send_websocket_disconnect(request, response, **kwargs)
 
     async def handle_websocket(self, **kwargs):
+        """Handle the lifecycle of a websocket connection. Child interfaces
+        should override methods that this calls but shouldn't override this
+        method unless they really need to
+        """
         await self.handle_websocket_connect(**kwargs)
         disconnect = True
 

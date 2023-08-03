@@ -1,29 +1,20 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
 import time
 import datetime
-import importlib
 import logging
 import os
-import sys
-import fnmatch
-import traceback
 import inspect
-import pkgutil
 import json
 import re
+import io
 
-from .utils import AcceptHeader, String
+from .compat import *
+from .utils import AcceptHeader
 from .exception import (
     CallError,
-    Redirect,
-    CallStop,
-    AccessDenied,
     RouteError,
     VersionError,
-    CloseConnection,
 )
-from .compat import *
 from .config import environ
 
 from datatypes import (
@@ -581,11 +572,6 @@ class Call(object):
 
         memodict.setdefault("controller_info", None)
         memodict.setdefault("raw_request", None)
-
-        #         memodict.setdefault(
-#             "controller_info",
-#             getattr(self, "controller_info", {})
-#         )
         memodict.setdefault("body", getattr(self, "body", None))
 
         return Deepcopy(ignore_private=True).copy(self, memodict)
@@ -868,13 +854,13 @@ class Request(Call):
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
 
-        This can be extended to implement versioning in any other way though, this
-        is used with the @version decorator
+        This can be extended to implement versioning in any other way though,
+        this is used with the @version decorator
 
-        :param content_type: string, the content type you want to check version info,
-            by default this checks all content types, which is probably what most
-            want, since if you're doing accept header versioning you're probably
-            only passing up one content type
+        :param content_type: string, the content type you want to check version
+            info, by default this checks all content types, which is probably
+            what most want, since if you're doing accept header versioning
+            you're probably only passing up one content type
         :returns: string, the found version
         """
         v = ""
@@ -908,7 +894,8 @@ class Request(Call):
         return access_token
 
     def get_auth_basic(self):
-        """return the username and password of a basic auth header if it exists"""
+        """return the username and password of a basic auth header if it exists
+        """
         username = ''
         password = ''
         auth_header = self.get_header('authorization')
@@ -1049,7 +1036,8 @@ class Response(Call):
     def is_file(self):
         """return True if the response body is a file pointer"""
         # http://stackoverflow.com/questions/1661262/check-if-object-is-file-like-in-python
-        return hasattr(self._body, "read") if self.has_body() else False
+        return isinstance(getattr(self, "_body", None), io.IOBase)
+        #return hasattr(self._body, "read") if self.has_body() else False
 
     def is_success(self):
         """return True if this response is considered a "successful" response"""

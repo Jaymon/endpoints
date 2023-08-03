@@ -1,12 +1,8 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import types
 import re
 import cgi
-from functools import wraps
 import logging
 
-from datatypes.decorators import FuncDecorator
 from .base import ControllerDecorator
 
 from ..compat import *

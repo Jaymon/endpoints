@@ -1,7 +1,6 @@
 # -*- coding: utf-8 -*-
 import time
 import re
-import asyncio
 
 import endpoints
 from endpoints.call import (
@@ -13,8 +12,7 @@ from endpoints.exception import (
     CallError,
     AccessDenied,
 )
-from endpoints import decorators
-from endpoints.utils import ByteString, Base64, String
+from endpoints.utils import Base64, String
 from endpoints.decorators.base import (
     ControllerDecorator,
     BackendDecorator,
@@ -45,8 +43,6 @@ from endpoints.decorators.utils import (
 from . import (
     TestCase as BaseTestCase,
     testdata,
-    Server,
-    SkipTest,
 )
 
 

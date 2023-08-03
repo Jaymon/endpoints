@@ -8,16 +8,13 @@ import testdata
 from unittest import TestSuite
 
 from endpoints.compat import *
-from endpoints.client import WebClient, WebSocketClient
+from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
 from .. import TestCase as BaseTestCase
 
 
 class TestCase(BaseTestCase):
-    #server = None
-    #server_class = None # this should be a client.Server class
-    client_class = WebClient
-    #application_class = BaseApplication
+    client_class = HTTPClient
 
     def setUp(self):
         if self.server:

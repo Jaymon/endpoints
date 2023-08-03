@@ -5,7 +5,7 @@ import datetime
 from datatypes import Pool
 
 from ..compat import *
-from ..exception import CallError, AccessDenied
+from ..exception import CallError
 from ..utils import String
 from .base import BackendDecorator
 

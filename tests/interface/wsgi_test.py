@@ -4,7 +4,6 @@ import re
 
 from datatypes import ModuleCommand, Host
 
-#from endpoints.interface.wsgi.client import WebServer
 from . import _HTTPTestCase
 from endpoints.config import environ
 
@@ -51,14 +50,4 @@ class Server(ModuleCommand):
 
 class HTTPTest(_HTTPTestCase):
     server_class = Server
-
-#     def test_foo(self):
-#         from datatypes import ReflectName
-# 
-#         s = ReflectName("endpoints.interface.wsgi:Server")
-#         pout.v(s.module_name, s.class_name)
-# 
-#         c = s.get_class()
-#         pout.v(c)
-#         c.start()
 
