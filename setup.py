@@ -35,7 +35,18 @@ kwargs["long_description_content_type"] = "text/markdown"
 setup(
     version=version,
     description='Get an api up and running quickly',
-    keywords="wsgi wsgi-server api api-server server framework web-framework REST rest-api",
+    keywords=" ".join([
+        "asgi",
+        "wsgi",
+        "wsgi-server",
+        "api",
+        "api-server",
+        "server",
+        "framework",
+        "web-framework",
+        "REST",
+        "rest-api",
+    ]),
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
     url='http://github.com/jaymon/{}'.format(name),
@@ -44,7 +55,6 @@ setup(
     tests_require=['testdata', 'requests', "daphne"],
     extras_require={
         'websockets': ["websocket-client"],
-        #'tornado': ["tornado"],
         'html': ['jinja2'],
     },
     classifiers=[ # https://pypi.python.org/pypi?:action=list_classifiers
