@@ -2,7 +2,7 @@
 
 Quickest API builder in the West! 
 
-_Endpoints_ is a lightweight REST api framework written in python and used in multiple production systems that handle millions of requests daily.
+_Endpoints_ is a lightweight REST api framework written in python that supports both WSGI and ASGI. _Endpoints_ has been used in multiple production systems that handle millions of requests daily.
 
 
 ## 5 Minute Getting Started
@@ -17,12 +17,6 @@ If you want the latest and greatest you can also install from source:
 
     $ pip install -U "git+https://github.com/jaymon/endpoints#egg=endpoints"
 
-**Note:** if you get the following error
-
-    $ pip: command not found
-
-you will need to [install pip](https://pip.pypa.io/en/stable/installing/).
-
 
 ### Set Up Your Controller File
 
@@ -36,24 +30,30 @@ Add the following code to your new Controller file. These classes are examples o
 from endpoints import Controller
 
 class Default(Controller):
-  def GET(self):
+  async def GET(self):
     return "boom"
 
-  def POST(self, **kwargs):
+  async def POST(self, **kwargs):
     return 'hello {}'.format(kwargs['name'])
 
 class Foo(Controller):
-  def GET(self):
+  async def GET(self):
     return "bang"
 ```
 
 
-### Start a Server
+### Start a WSGI Server
 
 Now that you have your `controllers.py`, let's use the built-in WSGI server to serve them, we'll set our `controllers.py` file as the [controller prefix](docs/PREFIXES.md) so Endpoints will know where to find the [Controller classes](docs/CONTROLLERS.md) we just defined:
 
     $ endpoints --prefix=controllers --host=localhost:8000
 
+
+### Start an ASGI Server
+
+Install [Daphne](https://github.com/django/daphne) and start it:
+
+    $ ENDPOINTS_PREFIX=controllers daphne -b localhost -p 8000 -v 3 endpoints.interface.asgi.ApplicationFactory
 
 ### Test it out
 
@@ -122,11 +122,11 @@ and the file `controllers/__init__.py` contained:
 from endpoints import Controller
 
 class Default(Controller):
-  def GET(self):
+  async def GET(self):
     return "called /"
 
 class Foo(Controller):
-  def GET(self):
+  async def GET(self):
     return "called /foo"
 ```
 

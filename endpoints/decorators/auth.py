@@ -17,7 +17,7 @@ class AuthBackend(object):
     async def auth_basic(self, controller, username, password):
         raise NotImplementedError()
 
-    async def auth_basic(self, controller, client_id, client_secret):
+    async def auth_client(self, controller, client_id, client_secret):
         return await self.auth_basic(
             controller=controller,
             username=client_id,

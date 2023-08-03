@@ -16,20 +16,20 @@ from endpoints.decorators import version
 
 class Default(Controller):
   @version("", "v1") # handle any requests with no version or with v1
-  def GET_1(self):
+  async def GET_1(self):
     return "called version 1 /"
 
   @version("v2") # handle any requests with version v2
-  def GET_2(self):
+  async def GET_2(self):
     return "called version 2 /"
 
 class Foo(Controller):
   @version("v1")
-  def GET_1(self):
+  async def GET_1(self):
     return "called version 1 /foo"
 
   @version("v2")
-  def GET_2(self):
+  async def GET_2(self):
     return "called version 2 /foo"
 ```
 
