@@ -1,0 +1,78 @@
+[project]
+requires-python = ">=3.10"
+description = "Get an api up and running quickly"
+authors = [
+  { name = "Jay Marcyes", email = "jay@marcyes.com" }
+]
+keywords = [
+  "asgi",
+  "asgi-server",
+  "wsgi",
+  "wsgi-server",
+  "api",
+  "api-server",
+  "server",
+  "framework",
+  "web-framework",
+  "REST",
+  "rest-api"
+]
+classifiers = [
+  "Development Status :: 5 - Production/Stable",
+  "Environment :: Web Environment",
+  "Intended Audience :: Developers",
+  "License :: OSI Approved :: MIT License",
+  "Operating System :: OS Independent",
+  "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries",
+  "Programming Language :: Python :: 3"
+]
+dependencies = [
+  "datatypes"
+]
+name = "endpoints"
+dynamic = [
+  "version"
+]
+readme = "README.md"
+license = { file = "LICENSE.txt" }
+
+[project.urls]
+Homepage = "https://github.com/Jaymon/endpoints"
+Repository = "https://github.com/Jaymon/endpoints"
+
+[project.optional-dependencies]
+tests = [
+  "testdata",
+  "requests",
+  "daphne"
+]
+websockets = [
+  "websocket-client"
+]
+html = [
+  "jinja2"
+]
+
+[project.scripts]
+endpoints = "endpoints.__main__:EntryPoint.handle"
+
+[build-system]
+requires = [
+  "setuptools>=62.3.0"
+]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+exclude = [
+  "tests*",
+  "example*",
+  "*_test*",
+  "docs*"
+]
+include = [
+  "endpoints*"
+]
+
+[tool.setuptools.dynamic]
+version = { attr = "endpoints.__version__" }
+
