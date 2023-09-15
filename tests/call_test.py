@@ -4,7 +4,6 @@ import asyncio
 from requests.auth import _basic_auth_str
 
 from endpoints.compat import *
-from endpoints.environ import *
 from endpoints.utils import ByteString
 from endpoints.call import Controller, Request, Response
 
@@ -182,13 +181,13 @@ class RequestTest(TestCase):
         })
         r.query = "foo=bar"
         r.path = "/baz/che"
-        r.environ['wsgi.url_scheme'] = "http"
-        r.environ['SERVER_PORT'] = "80"
+        r.scheme = "http"
+        r.port = "80"
         r.foo = 1
 
         r2 = r.copy()
         self.assertEqual(r.foo, r2.foo)
-        self.assertEqual(r.environ["SERVER_PORT"], r2.environ["SERVER_PORT"])
+        self.assertEqual(r.port, r2.port)
 
         r2.headers["foo"] = "bar"
         self.assertFalse("foo" in r.headers)
@@ -203,8 +202,8 @@ class RequestTest(TestCase):
         })
         r.query = "foo=bar"
         r.path = "/baz/che"
-        r.environ['wsgi.url_scheme'] = "http"
-        r.environ['SERVER_PORT'] = "80"
+        r.scheme = "http"
+        r.port = "80"
         u = r.url
         self.assertEqual("http://localhost/baz/che?foo=bar", r.url)
         r.port = 555
@@ -370,7 +369,7 @@ class ResponseTest(TestCase):
             r.status = None
 
         r = Response()
-        r.code = 1000
+        r.code = 10000000
         self.assertEqual("UNKNOWN", r.status)
 
     def test_body_file(self):

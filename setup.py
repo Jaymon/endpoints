@@ -35,7 +35,7 @@ kwargs["long_description_content_type"] = "text/markdown"
 setup(
     version=version,
     description='Get an api up and running quickly',
-    keywords=" ".join([
+    keywords=[
         "asgi",
         "wsgi",
         "wsgi-server",
@@ -46,7 +46,7 @@ setup(
         "web-framework",
         "REST",
         "rest-api",
-    ]),
+    ],
     author='Jay Marcyes',
     author_email='jay@marcyes.com',
     url='http://github.com/jaymon/{}'.format(name),
@@ -68,7 +68,7 @@ setup(
     ],
     entry_points = {
         'console_scripts': [
-            '{} = {}.__main__:console'.format(name, name),
+            '{} = {}.__main__:EntryPoint.handle'.format(name, name),
         ],
     },
     **kwargs

@@ -574,7 +574,8 @@ class Call(object):
         memodict.setdefault("raw_request", None)
         memodict.setdefault("body", getattr(self, "body", None))
 
-        return Deepcopy(ignore_private=True).copy(self, memodict)
+        #return Deepcopy(ignore_private=True).copy(self, memodict)
+        return Deepcopy().copy(self, memodict)
 
     def is_json(self):
         return self.headers.is_json()

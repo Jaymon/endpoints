@@ -11,13 +11,17 @@ from endpoints import __version__
 from endpoints.config import environ
 
 
-class Console(object):
+class EntryPoint(object):
     """Provides the CLI (command line interface) for running endpoints
 
     this is a class so subprojects can extend and manipulate how this works but
     take advantage of the foundation that lays and the subprojects can have
     basically similar interfaces to running on the command line
     """
+    @classmethod
+    def handle(cls):
+        return cls()()
+
     def __init__(self):
         self.environ = environ
         self.parser = self.create_parser()
@@ -155,9 +159,6 @@ class Console(object):
         return s
 
 
-console = Console()
-
-
 if __name__ == "__main__":
-    sys.exit(console())
+    sys.exit(EntryPoint.handle())
 
