@@ -24,7 +24,7 @@ class httpcache(ControllerDecorator):
         self.ttl = int(ttl)
         super().definition(**kwargs)
 
-    async def handle(self, controller, *args, **kwargs):
+    async def handle_request(self, controller, *args, **kwargs):
         controller.response.add_headers({
             "Cache-Control": "max-age={}".format(self.ttl),
         })
@@ -38,7 +38,7 @@ class nohttpcache(ControllerDecorator):
 
     https://devcenter.heroku.com/articles/increasing-application-performance-with-http-cache-headers#cache-prevention
     """
-    async def handle(self, controller, *args, **kwargs):
+    async def handle_request(self, controller, *args, **kwargs):
         controller.response.add_headers({
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache", 
@@ -65,12 +65,12 @@ class code_error(ControllerDecorator):
         self.code = code
         self.exc_classes = exc_classes
 
-    async def handle_controller(self, *args, **kwargs):
-        try:
-            return await super().handle_controller(*args, **kwargs)
-
-        except self.exc_classes as e:
+    async def handle_error(self, controller, e):
+        if isinstance(e, self.exc_classes):
             raise CallError(self.code, e) from e
+
+        else:
+            return await super().handle_error(controller, e)
 
 
 class param(ControllerDecorator):
@@ -123,19 +123,21 @@ class param(ControllerDecorator):
         self.normalize_type(names)
         self.normalize_flags(flags)
 
-    async def handle_controller(self, func, controller, controller_args, controller_kwargs):
-        controller, cargs, ckwargs = self.normalize_param(
-            controller,
-            controller_args,
-            controller_kwargs,
-        )
+    async def handle_request(self, controller, controller_args, controller_kwargs):
+        """this is where all the magic happens, this will try and find the
+        param and put its value in kwargs if it has a default and stuff"""
+        if self.is_kwarg:
+            controller_kwargs = self.normalize_kwarg(
+                controller.request,
+                controller_kwargs
+            )
+        else:
+            controller_args = self.normalize_arg(
+                controller.request,
+                controller_args
+            )
 
-        return await super().handle_controller(
-            func,
-            controller,
-            cargs,
-            ckwargs,
-        )
+        return controller_args, controller_kwargs
 
     def normalize_flags(self, flags):
         """normalize the flags to make sure needed values are there
@@ -192,15 +194,6 @@ class param(ControllerDecorator):
                 ret = default()
 
         return ret
-
-    def normalize_param(self, slf, args, kwargs):
-        """this is where all the magic happens, this will try and find the
-        param and put its value in kwargs if it has a default and stuff"""
-        if self.is_kwarg:
-            kwargs = self.normalize_kwarg(slf.request, kwargs)
-        else:
-            args = self.normalize_arg(slf.request, args)
-        return slf, args, kwargs
 
     def normalize_arg(self, request, args):
         flags = self.flags

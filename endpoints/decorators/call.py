@@ -38,7 +38,7 @@ class route(ControllerDecorator):
 
     async def handle_error(self, controller, e):
         if isinstance(e, CallError):
-            super().handle_error(controller, e)
+            await super().handle_error(controller, e)
 
         else:
             raise RouteError(instance=self) from e

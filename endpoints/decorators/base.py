@@ -18,14 +18,34 @@ class ControllerDecorator(FuncDecorator):
     This also is Controller specific, it's meant to be used in decorators that
     decorate Controller methods
 
-    .. seealso:: decorators.auth
+    A controller decorator has a specific lifecycle:
+
+        1. .definition() is called with any arguments that were passed in when
+            the decorator is first created, by default, the instance properties
+            .decorator_args and .decorator_kwargs will be set
+        2. .handle_kwargs() is called when a Controller method that is wrapped
+            by the decorator is called. This method should return any arguments
+            that will be passed to .handle() as **kwargs. You would override
+            this method if you wanted your child decorator to have a custom
+            .handle() definition
+        3. .handle() is called with the return value of .handle_kwargs(). If
+            this method returns False then .handle_error() will be called. If
+            this method returns True or None then the wrapped controller method
+            will be called
+        4. .handle_request() is called with the controller instance and the 
+            args (as a list) and kwargs (as a dict). It should return a
+            tuple[list, dict] where index 0 represents that *args that will be
+            passed to wrapped method and index 1 represents the **kwargs that
+            will be passed to the wrapped method
+        5. .handle_response() is called with the controller instance and the
+            response from whatever controller method was called
     """
     def decorate(self, func, *args, **kwargs):
         """decorate the passed in func calling target when func is called
 
         You should never override this method unless you know what you are doing
 
-        :param func: callable, the function being decorated
+        :param func: callable, the controller method being decorated
         :param *args: these are the positional arguments passed into the
             decorator __init__ method
         :param **kwargs: these are the named arguments passed into the decorator
@@ -35,18 +55,51 @@ class ControllerDecorator(FuncDecorator):
         self.definition(*args, **kwargs)
 
         async def decorated(controller, *controller_args, **controller_kwargs):
+
+            # handle the decorator's .handle() call
             await self.handle_call(
                 controller,
                 controller_args,
                 controller_kwargs
             )
 
-            return await self.handle_controller(
+            # prepare the controller request
+            try:
+                crequest = await self.handle_request(
+                    controller,
+                    controller_args,
+                    controller_kwargs
+                )
+
+                if crequest is not None:
+                    controller_args = crequest[0]
+                    controller_kwargs = crequest[1]
+
+            except Exception as e:
+                return await self.handle_error(controller, e)
+
+            # actually call the controller
+            controller_response = await self.handle_controller(
                 func,
                 controller,
                 controller_args,
                 controller_kwargs,
             )
+
+            # make any changes to the controller's response before returning
+            try:
+                cresponse = await self.handle_response(
+                    controller,
+                    controller_response,
+                )
+
+                if cresponse is not None:
+                    controller_response = cresponse
+
+                return controller_response
+
+            except Exception as e:
+                return await self.handle_error(controller, e)
 
         return decorated
 
@@ -76,9 +129,15 @@ class ControllerDecorator(FuncDecorator):
         self.decorator_kwargs = kwargs
 
     async def handle_kwargs(self, controller, controller_args, controller_kwargs):
-        """Returns the **kwargs part that will be passed into the .handle() method
+        """Returns the **kwargs part that will be passed into the .handle()
+        method
 
-        this is called from .handle_params()
+        :param controller: Controller, the controller instance
+        :param controller_args: list|tuple, the positional arguments that will
+            be passed to func
+        :param controller_kwargs: dict, the keyword arguments that will be
+            passed to func
+        :returns: dict, this will be passed to .handle() as **kwargs
         """
         return {
             "controller": controller,
@@ -103,17 +162,37 @@ class ControllerDecorator(FuncDecorator):
         raise e
 
     async def handle_controller(self, func, controller, controller_args, controller_kwargs):
-        ret = func(controller, *controller_args, **controller_kwargs)
-        while asyncio.iscoroutine(ret):
-            ret = await ret
+        """Internal method that handles actually runnning the controller
+        function and returns whatever the function returned
 
-        return ret
+        :param func: callable, the controller method
+        :param controller: Controller, the controller instance
+        :param controller_args: list|tuple, the positional arguments that will
+            be passed to func
+        :param controller_kwargs: dict, the keyword arguments that will be
+            passed to func
+        :returns: Any, whatever the func returns
+        """
+        try:
+            controller_response = func(
+                controller,
+                *controller_args,
+                **controller_kwargs
+            )
+            while asyncio.iscoroutine(controller_response):
+                controller_response = await controller_response
+
+            return controller_response
+
+        except Exception as e:
+            return await self.handle_error(controller, e)
 
     async def handle_call(self, controller, controller_args, controller_kwargs):
-        """Internal method for this class
+        """Internal method for this class, this handles calling .handle_kwargs()
+        and .handle() for this decorator
 
         handles normalizing the passed in values from the decorator using
-        .handle_params() and then passes them to .handle()
+        .handle_kwargs() and then passes them to .handle()
         """
         try:
             handle_kwargs = await self.handle_kwargs(
@@ -132,19 +211,57 @@ class ControllerDecorator(FuncDecorator):
                 )
 
         except Exception as e:
-            await self.handle_error(controller, e)
+            return await self.handle_error(controller, e)
 
     async def handle(self, *args, **kwargs):
         """The meat of the decorator, this is where all the functionality should
-        go in the child class, this is meant to be extended
+        go in the child class, this is meant to be extended in decorators that
+        want to check something and interrupt the request if some condition
+        fails
 
         if this raises an error it will be passed to .handle_error()
 
         :param **kwargs: dict, whatever returned from .normalize_handle_kwargs()
         :returns: bool, if this method returns False then it will cause a
-            ValueError to be raised signalling the input failed this decorator
+            ValueError to be raised signalling the input failed this decorator,
+            if this returns None then it's return value is ignored
         """
         return True
+
+    async def handle_request(self, controller, controller_args, controller_kwargs):
+        """This is called right before the controller method is called, this is
+        for decorators that want to normalize the controller method request in
+        some way
+
+        if this raises an error it will be passed to .handle_error()
+
+        :param controller: Controller, the controller instance whose method is
+            going to be called
+        :param controller_args: list|tuple, the positional controller method
+            arguments that were passed in
+        :param controller_kwargs: dict, the keyword controller method arguments
+            that were passed in
+        :returns: tuple[list, dict], index 1 will be passed to the controller
+            method as *args, index 2 will be passed as **kwargs, if None is
+            returned then no change to the controller args and kwargs will be
+            made
+        """
+        return controller_args, controller_kwargs
+
+    async def handle_response(self, controller, controller_response):
+        """This is called right after the controller method is called, this is
+        for decorators that want to normalize the controller method return value
+        in some way
+
+        if this raises an error it will be passed to .handle_error()
+
+        :param controller: Controller, the controller instance whose method was
+            just called
+        :param controller_response: Any, whatever the controller method returned
+        :returns: Any, if None is returned then no changes to the controller's 
+            response will be made
+        """
+        return controller_response
 
 
 class BackendDecorator(ControllerDecorator):
