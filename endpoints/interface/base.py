@@ -545,7 +545,14 @@ class BaseApplication(ApplicationABC):
             res.body = None
 
         elif isinstance(e, (AccessDenied, CallError)):
-            logger.warning(String(e))
+            if logger.isEnabledFor(logging.WARNING):
+                e_msg = String(e)
+                ce = e
+                while ce := getattr(ce, "__cause__", None):
+                    e_msg += " caused by " + String(ce)
+
+                logger.warning(e_msg)
+
             res.code = e.code
             res.add_headers(e.headers)
 

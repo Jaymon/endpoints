@@ -51,9 +51,13 @@ Now that you have your `controllers.py`, let's use the built-in WSGI server to s
 
 ### Start an ASGI Server
 
-Install [Daphne](https://github.com/django/daphne) and start it:
+Install [Daphne](https://github.com/django/daphne):
 
-    $ ENDPOINTS_PREFIX=controllers daphne -b localhost -p 8000 -v 3 endpoints.interface.asgi.ApplicationFactory
+    $ pip install -U daphne
+
+And start it:
+
+    $ ENDPOINTS_PREFIX=controllers daphne -b localhost -p 8000 -v 3 endpoints.interface.asgi:ApplicationFactory
 
 ### Test it out
 

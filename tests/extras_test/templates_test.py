@@ -12,7 +12,7 @@ class TemplateTest(TestCase):
 
         c = self.create_server([
             "from endpoints import Controller",
-            "from endpoints.extras.template import template",
+            "from endpoints.extras.templates import template",
             "class Default(Controller):",
             "    @template('{}', directories=['{}'])".format(
                 p.basename,

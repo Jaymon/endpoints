@@ -33,7 +33,7 @@ class Templates(object):
 
         else:
             directories = []
-            for d in environ.paths("TEMPLATE_PATH"):
+            for d in environ.paths("TEMPLATES_PATH"):
                 directories.append(Path(d))
 
         self.directories = directories
