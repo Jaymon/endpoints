@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-import random
-import os
 import json
 
 import testdata
-from unittest import TestSuite
 
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
-from .. import TestCase as BaseTestCase
+from .. import TestCase as BaseTestCase, IsolatedAsyncioTestCase
 
 
 class TestCase(BaseTestCase):
@@ -19,6 +15,8 @@ class TestCase(BaseTestCase):
     def setUp(self):
         if self.server:
             self.server.stop()
+
+        super().setUp()
 
     def tearDown(self):
         if self.server:
@@ -31,6 +29,9 @@ class TestCase(BaseTestCase):
 
 
 class _HTTPTestCase(TestCase):
+    """Base class for the actual interfaces, this contains common tests for any
+    interface handling HTTP requests
+    """
     def test_get_request_url(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server(contents=[
@@ -335,6 +336,9 @@ class _HTTPTestCase(TestCase):
 
 
 class _WebSocketTestCase(TestCase):
+    """Base class for the actual interfaces, this contains common tests for any
+    interface handling WebSocket requests
+    """
     client_class = WebSocketClient
     server_class = None
 

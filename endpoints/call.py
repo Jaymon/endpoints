@@ -7,6 +7,7 @@ import inspect
 import json
 import re
 import io
+import sys
 
 from .compat import *
 from .utils import AcceptHeader
@@ -20,6 +21,9 @@ from .config import environ
 from datatypes import (
     HTTPHeaders as Headers,
     property as cachedproperty,
+    Dirpath,
+    ReflectModule,
+    DictTree,
 )
 
 from .compat import *
@@ -34,6 +38,157 @@ from .utils import (
 
 
 logger = logging.getLogger(__name__)
+
+
+class Router(object):
+    """Welp, I got rid of the Router class for a bit but here it is back.
+
+    This handles caching and figuring out the route for each incoming
+    request
+    """
+    def __init__(self, controller_prefixes=None, paths=None, **kwargs):
+        self._controller_prefixes = controller_prefixes or []
+        self._paths = paths or []
+        self._controller_class = kwargs.get(
+            "controller_class",
+            Controller
+        )
+
+        self._controller_modules = {}
+
+        for m in self.get_modules_from_prefixes(self._controller_prefixes):
+            self._controller_modules[m.__name__] = m
+
+        for m in self.get_modules_from_paths(self._paths):
+            self._controller_modules[m.__name__] = m
+
+        self._controller_pathfinder = self.get_pathfinder()
+
+    def __iter__(self):
+        controller_classes = self._controller_class.controller_classes
+        for classpath, controller_class in controller_classes.items():
+            yield controller_class
+
+    def get_modules_from_prefix(self, controller_prefix):
+        rm = ReflectModule(controller_prefix)
+        for m in rm.get_modules():
+            yield m
+
+    def get_modules_from_prefixes(self, controller_prefixes):
+        # we load all the submodules of all the controller prefixes. This
+        # should cause all the controllers to load into memory and be
+        # available in self.controller_class.controller_classes
+        for controller_prefix in controller_prefixes:
+            for m in self.get_modules_from_prefix(controller_prefix):
+                yield m
+
+    def get_modules_from_paths(self, paths):
+        if not self._controller_prefixes and not paths:
+            # if we don't have any controller prefixes and we don't have any
+            # paths then let's use the current working directory and try and
+            # autodiscover some controllers
+            paths = [Dirpath.cwd()]
+
+        for path in paths:
+            for p in (Dirpath(p) for p in sys.path):
+                if p.is_relative_to(path):
+                    dirparts = p.relative_parts(path)
+
+                    piter = p.iterator
+                    # we only want to look a few folders deep
+                    piter.depth(2)
+                    # ignore any folders that begin with an underscore or period
+                    piter.nin_basename(regex=r"^[_\.]")
+                    # we only want dir/file fileroots with this name
+                    piter.eq_fileroot("controllers")
+                    #piter.regex(r"(?:^|/)controllers(?:\.|$)")
+                    #piter.pattern("controllers", fileroot=True)
+
+                    for sp in piter:
+                        modparts = sp.parent.relative_parts(path)
+                        # trim the directory parts of our module path so we have
+                        # a real module path we can import
+                        modparts = modparts[len(dirparts):]
+                        modparts.append(sp.fileroot)
+                        prefix = ".".join(modparts)
+
+                        for m in self.get_modules_from_prefix(prefix):
+                            yield m
+
+                        # we only want the first match
+                        break
+
+    def get_pathfinder(self):
+        pathfinder = DictTree()
+
+        # used to find module path args
+        controller_prefixes = list(self._controller_prefixes)
+        controller_prefixes.append(".controllers")
+
+        for controller_class in self:
+            path_args = []
+
+            modpath = controller_class.__module__
+
+            # we only check path and strip the prefixes if it has a valid
+            # controller prefix, if it doesn't have a valid controller
+            # prefix then the class name is the only part of the path we
+            # care about 
+            has_module_path = (
+                modpath in self._controller_modules
+                or re.search(rf"(?:^|\.)controllers(?:\.|$)", modpath)
+            )
+
+            if has_module_path:
+                path_args = controller_class.get_module_path_args(
+                    controller_prefixes
+                )
+
+            class_path_args = controller_class.get_class_path_args(
+                "Default"
+            )
+            if not class_path_args:
+                class_path_args = [""]
+
+            path_args.extend(class_path_args)
+
+            pathfinder.set(path_args, controller_class)
+
+        return pathfinder
+
+    def find_controller(self, path_args):
+        controller_args = list(path_args)
+        controller_class = None
+
+        offset = 0
+        pathfinder = self._controller_pathfinder
+        while offset < len(controller_args):
+            if controller_args[offset] in pathfinder:
+                pathfinder = pathfinder[controller_args[offset]] 
+                if isinstance(pathfinder, Mapping):
+                    offset += 1
+
+                else:
+                    controller_class = pathfinder
+                    controller_args = controller_args[offset + 1:]
+                    break
+
+            else:
+                break
+
+        if not controller_class:
+            if "" in pathfinder:
+                controller_class = pathfinder[""]
+                controller_args = controller_args[offset:]
+
+        if not controller_class:
+            raise TypeError(
+                "Could not find a valid controller from path /{}".format(
+                    "/".join(path_args),
+                )
+            )
+
+        return controller_class, controller_args
 
 
 class Controller(object):
@@ -81,12 +236,15 @@ class Controller(object):
     """holds a Response() instance"""
 
     private = False
-    """set this to True if the controller should not be picked up by reflection,
-    the controller will still be available, but reflection will not reveal it as
-    an endpoint"""
+    """set this to True if the controller is not designed to be requested"""
 
     cors = True
     """Activates CORS support, http://www.w3.org/TR/cors/"""
+
+    controller_classes = {}
+    """Holds all the controller classes that have been loaded into memory, the
+    classpath is the key and the class object is the value, see
+    __init_subclass__"""
 
     @cachedproperty(cached="_encoding")
     def encoding(self):
@@ -102,10 +260,186 @@ class Controller(object):
         content_type = req.accept_content_type
         return content_type if content_type else environ.RESPONSE_CONTENT_TYPE
 
+    @classmethod
+    def is_private(cls):
+        """Return True if this class is considered private and is not
+        requestable
+
+        This is useful if you want to have certain parent controllers that
+        shouldn't actually be able to handle requests
+
+        :Example:
+            class _Foo(Controller):
+                # this class is private because it starts with an underscore
+                pass
+
+            _Foo.is_private() # True
+
+            class FooController(Controller):
+                # this class is private because it ends with Controller
+                pass
+
+            FooController.is_private() # True
+
+            class Foo(Controller):
+                # this class is private because it set the .private class
+                # property
+                private = True
+
+            Foo.is_private() # True
+
+        :returns: bool, True if private/internal, False if requestable
+        """
+        return (
+            cls.private
+            or cls.__name__.startswith("_")
+            or cls.__name__.endswith("Controller")
+        )
+
+    @classmethod
+    def get_module_path_args(cls, controller_prefixes=None):
+        path_args = []
+        path = modpath = cls.__module__
+        controller_prefixes = controller_prefixes or []
+
+        # these are the default controller_prefixes that filter the module
+#         controller_prefixes.extend([
+#             ".controllers",
+#             "__main__",
+#         ])
+
+        for controller_prefix in controller_prefixes:
+            if controller_prefix.startswith("."):
+                rcpr = re.escape(controller_prefix[1:])
+                if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
+                    path = modpath[m.end(0):]
+                    break
+
+            else:
+                rcpr = re.escape(controller_prefix)
+                if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
+                    path = modpath[m.end(0):]
+
+        if path:
+            path_args = path.lower().split(".")
+
+        return path_args
+
+    @classmethod
+    def get_class_path_args(cls, default_class_name=""):
+        path_args = []
+        class_name = cls.__name__ # TODO: use __qualname__ instead? 
+
+        if class_name != default_class_name:
+            path_args.append(class_name.lower())
+
+        return path_args
+
+#     @classmethod
+#     def find_path(cls, controller_prefixes=None, default_class_name=""):
+#         """Find the URL path for this controller using the given prefixes and
+#         default class name as a guide
+# 
+#         :param controller_prefixes: list[str], a list of the controller prefixes
+#             (module paths) where controller classes can be found, if an item
+#             begins with a period (eg, ".controllers") then that prefix can be
+#             anywhere in the module path and will be stripped (eg, ".controllers"
+#             will match "foo.controllers.bar" and use "bar" as the first part of
+#             the URL path)
+#         :param default_class_name: str, the name of the class that shouldn't be
+#             counted as part of the URL path (eg, "Default")
+#         :returns: str, the URL path that starts with / but won't end with /
+#             (eg, "/foo/bar/che")
+#         """
+#         path = modpath = cls.__module__
+#         controller_prefixes = controller_prefixes or []
+# 
+#         for controller_prefix in controller_prefixes:
+# 
+#             if controller_prefix.startswith("."):
+#                 rcpr = re.escape(controller_prefix[1:])
+#                 if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
+#                     path = modpath[m.end(0):]
+#                     break
+# 
+#             else:
+#                 rcpr = re.escape(controller_prefix)
+#                 if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
+#                     path = modpath[m.end(0):]
+# 
+#         class_name = cls.__name__ # TODO: use __qualname__ instead? 
+# 
+#         if class_name != default_class_name:
+#             path += "/" + class_name
+# 
+#         path = "/".join(path.split(".")).lower()
+#         if not path.startswith("/"):
+#             path = "/" + path
+# 
+#         return path
+
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
         self.logger = self.create_logger(request, response)
+
+    def __init_subclass__(cls):
+        """When a child class is loaded into memory it will be saved into
+        .controller_classes, this way every orm class knows about all the other
+        classes, this is the method that makes that possible magically
+
+        https://peps.python.org/pep-0487/
+        """
+        super().__init_subclass__()
+        cls.controller_classes[f"{cls.__module__}:{cls.__qualname__}"] = cls
+
+    def prepare_response(self):
+        """Called at the beginning of the handle() call, use to prepare the
+        response instance with defaults that can be overridden in the
+        controller's actual http handle method"""
+        req = self.request
+        res = self.response
+
+        encoding = self.encoding
+        content_type = self.content_type
+
+        res.encoding = encoding
+        res.set_header('Content-Type', "{};charset={}".format(
+            content_type,
+            encoding
+        ))
+
+    def handle_origin(self, origin):
+        """Check the origin and decide if it is valid
+
+        :param origin: string, this can be empty or None, so you'll need to
+            handle the empty case if you are overriding this
+        :returns: bool, True if the origin is acceptable, False otherwise
+        """
+        return True
+
+    def handle_cors(self):
+        """This will set the headers that are needed for any cors request
+        (OPTIONS or real) """
+        req = self.request
+        origin = req.get_header('origin')
+        if self.handle_origin(origin):
+            if origin:
+                # your server must read the value of the request's Origin header
+                # and use that value to set Access-Control-Allow-Origin, and
+                # must also set a Vary: Origin header to indicate that some
+                # headers are being set dynamically depending on the origin.
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+                self.response.set_header('Access-Control-Allow-Origin', origin)
+                self.response.set_header('Vary', "Origin")
+
+        else:
+            # RFC6455 - If the origin indicated is unacceptable to the server,
+            # then it SHOULD respond to the WebSocket handshake with a reply
+            # containing HTTP 403 Forbidden status code.
+            # https://stackoverflow.com/q/28553580/5006
+            raise CallError(403)
 
     async def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
@@ -130,6 +464,7 @@ class Controller(object):
             v = req.get_header(req_header)
             if v:
                 self.response.set_header(res_header, v)
+
             else:
                 raise CallError(400, 'Need {} header'.format(req_header))
 
@@ -139,70 +474,24 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def prepare_response(self):
-        """Called at the beginning of the handle() call, use to prepare the
-        response instance with defaults that can be overridden in the
-        controller's actual http handle method"""
-        req = self.request
-        res = self.response
-
-        encoding = self.encoding
-        content_type = self.content_type
-
-        res.encoding = encoding
-        res.set_header('Content-Type', "{};charset={}".format(
-            content_type,
-            encoding
-        ))
-
-    async def handle_origin(self, origin):
-        """Check the origin and decide if it is valid
-
-        :param origin: string, this can be empty or None, so you'll need to handle
-            the empty case if you are overriding this
-        :returns: bool, True if the origin is acceptable, False otherwise
-        """
-        return True
-
-    async def handle_cors(self):
-        """This will set the headers that are needed for any cors request
-        (OPTIONS or real) """
-        req = self.request
-        origin = req.get_header('origin')
-        if await self.handle_origin(origin):
-            if origin:
-                # your server must read the value of the request's Origin header
-                # and use that value to set Access-Control-Allow-Origin, and must
-                # also set a Vary: Origin header to indicate that some headers
-                # are being set dynamically depending on the origin.
-                # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
-                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-                self.response.set_header('Access-Control-Allow-Origin', origin)
-                self.response.set_header('Vary', "Origin")
-
-        else:
-            # RFC6455 - If the origin indicated is unacceptable to the server,
-            # then it SHOULD respond to the WebSocket handshake with a reply
-            # containing HTTP 403 Forbidden status code.
-            # https://stackoverflow.com/q/28553580/5006
-            raise CallError(403)
-
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and returns the response
 
         This should set any response information directly onto self.response
 
         this method has the same signature as the request handling methods
-        (eg, GET, POST) so subclasses can override this method and add decorators
+        (eg, GET, POST) so subclasses can override this method and add
+        decorators
 
-        :param *controller_args: tuple, the path arguments that will be passed to
-            the request handling method (eg, GET, POST)
-        :param **controller_kwargs: dict, the query and body params merged together
+        :param *controller_args: tuple, the path arguments that will be passed
+            to the request handling method (eg, GET, POST)
+        :param **controller_kwargs: dict, the query and body params merged
+            together
         """
         if self.cors:
-            await self.handle_cors()
+            self.handle_cors()
 
-        await self.prepare_response()
+        self.prepare_response()
 
         req = self.request
         res = self.response
@@ -211,7 +500,7 @@ class Controller(object):
         # that will be called if all found methods failed to resolve
         res_error_handler = None
 
-        controller_methods = await self.find_methods()
+        controller_methods = self.find_methods()
         for controller_method_name, controller_method in controller_methods:
             req.controller_info["method_name"] = controller_method_name
             req.controller_info["method"] = controller_method
@@ -293,12 +582,12 @@ class Controller(object):
         """
         pass
 
-    async def find_methods(self):
+    def find_methods(self):
         """Find the methods that could satisfy this request
 
-        This will go through and find any method that starts with the request.method,
-        so if the request was GET /foo then this would find any methods that start
-        with GET
+        This will go through and find any method that starts with the
+        request.method, so if the request was GET /foo then this would find any
+        methods that start with GET
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
@@ -338,8 +627,8 @@ class Controller(object):
 
                 else:
                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                    # and 501 (Not Implemented) if the method is unrecognized or not
-                    # implemented by the origin server
+                    # and 501 (Not Implemented) if the method is unrecognized or
+                    # not implemented by the origin server
                     self.logger.warning(
                         "No methods to handle {} found".format(method_name)
                     )
@@ -351,15 +640,12 @@ class Controller(object):
         elif len(methods) > 1 and method_name in method_names:
             raise ValueError(
                 " ".join([
-                    "A multi method {} request should not have any methods named {}.",
-                    "Instead, all {} methods should use use an appropriate decorator",
-                    "like @route or @version and have a unique name starting with {}_"
-                ]).format(
-                    method_name,
-                    method_name,
-                    method_name,
-                    method_name
-                )
+                    f"A multi method {method_name} request should not have any",
+                    f"methods named {method_name}. Instead, all {method_name}",
+                    "methods should use use an appropriate decorator like",
+                    "@route or @version and have a unique name starting with",
+                    f"{method_name}_"
+                ])
             )
 
         return methods
@@ -431,7 +717,9 @@ class Controller(object):
             #hs = []
             for k, v in req.headers.items():
                 if k not in ignore_hs:
-                    self.logger.info("Request {}header {}: {}".format(uuid, k, v))
+                    self.logger.info(
+                        "Request {}header {}: {}".format(uuid, k, v)
+                    )
                     #hs.append("Request header: {}: {}".format(k, v))
 
             #self.logger.info(os.linesep.join(hs))
@@ -443,7 +731,8 @@ class Controller(object):
     def log_start_body(self):
         """Log the request body
 
-        this is separate from log_start so it can be easily overridden in children
+        this is separate from log_start so it can be easily overridden in
+        children
         """
         if not self.logger.isEnabledFor(logging.DEBUG): return
 
@@ -454,10 +743,14 @@ class Controller(object):
 
         if req.has_body():
             try:
-                self.logger.debug("Request {}body: {}".format(uuid, req.body_kwargs))
+                self.logger.debug(
+                    "Request {}body: {}".format(uuid, req.body_kwargs)
+                )
 
             except Exception:
-                self.logger.debug("Request {}body raw: {}".format(uuid, req.body))
+                self.logger.debug(
+                    "Request {}body raw: {}".format(uuid, req.body)
+                )
                 #logger.debug("RAW REQUEST: {}".format(req.raw_request))
                 raise
 
@@ -601,13 +894,15 @@ class Request(Call):
             dict {name: val}
     '''
     raw_request = None
-    """the original raw request that was filtered through one of the interfaces"""
+    """the original raw request that was filtered through one of the interfaces
+    """
 
     method = None
     """the http method (GET, POST)"""
 
     controller_info = None
-    """will hold the controller information for the request, populated from the Call"""
+    """will hold the controller information for the request, populated from the
+    Call"""
 
     @cachedproperty(cached="_uuid")
     def uuid(self):
@@ -634,16 +929,17 @@ class Request(Call):
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
 
-        :returns: string, empty if a suitable content type wasn't found, this will
-            only check the first accept content type and then only if that content
-            type has no wildcards
+        :returns: string, empty if a suitable content type wasn't found, this
+            will only check the first accept content type and then only if that
+            content type has no wildcards
         """
         v = ""
         accept_header = self.get_header('accept', "")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a:
-                # we only care about the first value, and only if it has no wildcards
+                # we only care about the first value, and only if it has no
+                # wildcards
                 if "*" not in mt[0]:
                     v = "/".join(mt[0])
                 break
@@ -664,7 +960,8 @@ class Request(Call):
 
     @cachedproperty(cached="_encoding")
     def encoding(self):
-        """the character encoding of the request, usually only set in POST type requests"""
+        """the character encoding of the request, usually only set in POST type
+        requests"""
         encoding = None
         ct = self.get_header('content-type')
         if ct:
@@ -687,8 +984,8 @@ class Request(Call):
 
     @property
     def client_tokens(self):
-        """try and get Oauth 2.0 client id and secret first from basic auth header,
-        then from GET or POST parameters
+        """try and get Oauth 2.0 client id and secret first from basic auth
+        header, then from GET or POST parameters
 
         return -- tuple -- client_id, client_secret
         """

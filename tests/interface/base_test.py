@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from endpoints.call import Controller
+from endpoints.interface.base import BaseApplication
 
 from . import TestCase
 
@@ -426,19 +427,22 @@ class BaseApplicationTest(TestCase):
         self.assertEqual('nomodbar', info['method_args'][0])
 
     def test_import_error(self):
-        c = self.create_server([
-            "from endpoints import Controller",
-            "from does_not_exist import FairyDust",
-            "class Default(Controller):",
-            "    def GET(): pass",
-        ])
-        res = c.handle('/')
-        self.assertEqual(404, res.code)
+        with self.assertRaises(ImportError):
+            c = self.create_server([
+                "from endpoints import Controller",
+                "from does_not_exist import FairyDust",
+                "class Default(Controller):",
+                "    def GET(): pass",
+            ])
+#         res = c.handle('/')
+#         self.assertEqual(404, res.code)
 
     def test_callback_info(self):
         c = self.create_server()
+
         request = c.create_request("/foo/bar", "GET")
         request.query_kwargs = {'foo': 'bar', 'che': 'baz'}
+
         with self.assertRaises(TypeError):
             c.find(request=request)
 
@@ -449,7 +453,6 @@ class BaseApplicationTest(TestCase):
                 "    def GET(*args, **kwargs): pass"
             ],
         })
-
         # if it succeeds, then it passed the test :)
         d = c.find(request=request)
 
@@ -573,3 +576,59 @@ class BaseApplicationTest(TestCase):
             for key, val in t['out'].items():
                 self.assertEqual(val, d[key])
 
+#     async def test_find_loaded_controller_class(self):
+#         """Tests finding teh controller using only memory loaded controllers,
+#         this is the first stage of removing the requirement to set a controller
+#         prefix"""
+#         controller_prefix = self.create_module([
+#             "from endpoints import Controller",
+#             "",
+#             "class Foo(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#             "class Bar(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#             "class Default(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#         ])
+# 
+#         # load all the controller classes into memory
+#         controller_prefix.module()
+# 
+#         a = self.create_application()
+# 
+#         pout.v(a)
+
+
+
+
+#         c = self.create_server([
+#             "from endpoints import Controller",
+#             "",
+#             "class Foo(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#             "class Bar(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#             "class Default(Controller):",
+#             "    def GET(self, *args, **kwargs):",
+#             "        pass",
+#             "",
+#         ])
+# 
+#         # load all the controller classes into memory
+#         c.controller_prefix.module()
+# 
+#         # get rid of application's controller prefixes so it will depend only on
+#         # controller classes loaded into memory
+#         c.application.controller_prefixes = None
+# 
+#         pout.v(c)

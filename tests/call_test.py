@@ -5,7 +5,7 @@ from requests.auth import _basic_auth_str
 
 from endpoints.compat import *
 from endpoints.utils import ByteString
-from endpoints.call import Controller, Request, Response
+from endpoints.call import Controller, Request, Response, Router
 
 from . import TestCase, testdata
 
@@ -68,7 +68,7 @@ class ControllerTest(TestCase):
         class Cors(Controller):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
-                asyncio.run(self.handle_cors())
+                self.handle_cors()
             def POST(self): pass
 
         res = Response()
@@ -133,6 +133,296 @@ class ControllerTest(TestCase):
         ])
         res = c.handle('/')
         self.assertEqual(500, res.code)
+
+    def test_get_module_path_args(self):
+        modpath = self.create_module(
+            [
+                "from endpoints import Controller",
+                "",
+                "class Foo(Controller):",
+                "    def GET(self):",
+                "        pass",
+            ],
+            modpath=self.get_module_name(3)
+        )
+
+        foo_class = modpath.get_module().Foo
+        parts = modpath.split(".")
+
+        # make sure the anywhere syntax (eg, .<PREFIX>) works
+        self.assertEqual(
+            [parts[2]],
+            foo_class.get_module_path_args([f".{parts[1]}"])
+        )
+
+        # make sure a normal prefix works
+        mp = ".".join(parts[:-1])
+        self.assertEqual([parts[2]], foo_class.get_module_path_args([mp]))
+
+        # we want to make sure we can't just match the beginning of a module
+        # path segment
+        mp = f".{parts[1][:3]}"
+        self.assertEqual(parts, foo_class.get_module_path_args([mp]))
+
+        self.assertEqual([], foo_class.get_module_path_args([modpath]))
+
+    def test_get_class_path_args(self):
+        foo_class = self.create_module_class(
+            [
+                "from endpoints import Controller",
+                "",
+                "class Foo(Controller):",
+                "    def GET(self):",
+                "        pass",
+            ]
+        )
+
+        path_args = foo_class.get_class_path_args()
+        self.assertEqual(["foo"], path_args)
+
+        path_args = foo_class.get_class_path_args("Foo")
+        self.assertEqual([], path_args)
+
+#     def test_find_path(self):
+#         modpath = self.create_module(
+#             [
+#                 "from endpoints import Controller",
+#                 "",
+#                 "class Foo(Controller):",
+#                 "    def GET(self):",
+#                 "        pass",
+#             ],
+#             modpath=self.get_module_name(3)
+#         )
+# 
+#         foo_class = modpath.module().Foo
+#         parts = modpath.split(".")
+# 
+#         # make sure the anywhere syntax (eg, .<PREFIX>) works
+#         self.assertEqual(
+#             f"/{parts[2]}/foo",
+#             foo_class.find_path([f".{parts[1]}"])
+#         )
+#         self.assertEqual(
+#             f"/{parts[2]}",
+#             foo_class.find_path([f".{parts[1]}"], "Foo")
+#         )
+# 
+#         # make sure a normal prefix works
+#         mp = ".".join(parts[:-1])
+#         p = "/" + parts[2] + "/foo"
+#         self.assertEqual(p, foo_class.find_path([mp]))
+# 
+#         # we want to make sure we can't just match the beginning of a module
+#         # path segment
+#         mp = f".{parts[1][:3]}"
+#         p = "/" + "/".join(parts) + "/foo"
+#         self.assertEqual(p, foo_class.find_path([mp]))
+# 
+#         self.assertEqual("/foo", foo_class.find_path([modpath]))
+
+class RouterTest(TestCase):
+
+    def test_paths_depth_1(self):
+        for cb in [self.create_module, self.create_package]:
+            modpath = cb(
+                [
+                    "from endpoints import Controller",
+                    "",
+                    "class Foo(Controller): pass"
+                ],
+                modpath=self.get_module_name(count=2, name="controllers")
+            )
+
+            cs = Router(paths=[modpath.basedir])
+            self.assertTrue(
+                issubclass(cs._controller_pathfinder["foo"], Controller)
+            )
+
+    def test_paths_depth_n(self):
+        for cb in [self.create_module, self.create_package]:
+            modpath = cb(
+                [
+                    "from endpoints import Controller",
+                    "",
+                    "class Foo(Controller): pass",
+                    "class Bar(Controller): pass",
+                    "class Default(Controller): pass",
+                ],
+                modpath=self.get_module_name(count=2, name="controllers")
+            )
+
+            cs = Router(paths=[modpath.basedir])
+
+            for k in ["foo", "bar", ""]:
+                self.assertTrue(
+                    issubclass(cs._controller_pathfinder[k], Controller)
+                )
+
+    def test_pathfinder_1(self):
+        modpath = self.get_module_name(count=2, name="controllers")
+        basedir = self.create_modules({
+            modpath: [
+                "from endpoints import Controller",
+                "",
+                "class One(Controller): pass",
+                "class Default(Controller): pass",
+            ],
+            "bar": [
+                "from endpoints import Controller",
+                "",
+                "class Two(Controller): pass",
+            ]
+        })
+
+        # load bar so the controllers load into memory
+        basedir.get_module("bar")
+
+        cs = Router(
+            controller_prefixes=[modpath],
+        )
+
+        self.assertEqual(1, len(cs._controller_modules))
+        self.assertTrue(modpath in cs._controller_modules)
+        for k in ["one", "two", ""]:
+            self.assertTrue(
+                issubclass(cs._controller_pathfinder[k], Controller)
+            )
+
+    def test_pathfinder_2(self):
+        """test a multiple submodule controller"""
+        modpath = self.get_module_name(count=2, name="controllers")
+        basedir = self.create_modules({
+            modpath: {
+                "bar": [
+                    "from endpoints import Controller",
+                    "",
+                    "class One(Controller): pass",
+                    "class Default(Controller): pass",
+                ],
+                "che": {
+                    "boo": [
+                        "from endpoints import Controller",
+                        "",
+                        "class Two(Controller): pass",
+                        "class Default(Controller): pass",
+                    ],
+                },
+            },
+        })
+
+        cs = Router(
+            paths=[basedir],
+        )
+
+        controller_path_args = [
+            ["che", "boo", "two"],
+            ["che", "boo", ""],
+            ["bar", "one"],
+            ["bar", ""],
+        ]
+
+        for path_args in controller_path_args:
+            self.assertTrue(issubclass(
+                cs._controller_pathfinder[path_args],
+                Controller
+            ))
+
+    def test_pathfinder_3(self):
+        """test non-python module subpath (eg, pass in foo/ as the paths and
+        then have foo/bin/MODULE/controllers.py where foo/bin is not a module
+        """
+        cwd = self.create_dir()
+        modpath = self.get_module_name(count=2, name="controllers")
+
+        basedir = self.create_modules(
+            {
+                modpath: {
+                    "bar": [
+                        "from endpoints import Controller",
+                        "",
+                        "class One(Controller): pass",
+                        "class Default(Controller): pass",
+                    ],
+                    "che": {
+                        "boo": [
+                            "from endpoints import Controller",
+                            "",
+                            "class Two(Controller): pass",
+                            "class Default(Controller): pass",
+                        ],
+                    },
+                },
+            },
+            tmpdir=cwd.child_dir("src")
+        )
+
+        cs = Router(
+            paths=[cwd],
+        )
+
+        controller_path_args = [
+            ["che", "boo", "two"],
+            ["che", "boo", ""],
+            ["bar", "one"],
+            ["bar", ""],
+        ]
+
+        for path_args in controller_path_args:
+            self.assertTrue(issubclass(
+                cs._controller_pathfinder[path_args],
+                Controller
+            ))
+
+    def test_find_controller_1(self):
+        modpath = self.get_module_name(count=2, name="controllers")
+        basedir = self.create_modules({
+            modpath: {
+                "bar": [
+                    "from endpoints import Controller",
+                    "",
+                    "class One(Controller): pass",
+                    "class Default(Controller): pass",
+                ],
+                "che": {
+                    "boo": [
+                        "from endpoints import Controller",
+                        "",
+                        "class Two(Controller): pass",
+                        "class Default(Controller): pass",
+                    ],
+                },
+            },
+        })
+
+        cs = Router(controller_prefixes=[modpath])
+
+        r = cs.find_controller(["bar", "one", "arg1", "arg2"])
+        self.assertEqual("One", r[0].__name__)
+        self.assertEqual(2, len(r[1]))
+
+        r = cs.find_controller(["bar", "arg1", "arg2", "arg3"])
+        self.assertEqual("Default", r[0].__name__)
+        self.assertEqual(3, len(r[1]))
+
+        r = cs.find_controller(["che", "boo", "arg1", "arg2", "arg3"])
+        self.assertEqual("Default", r[0].__name__)
+        self.assertEqual(3, len(r[1]))
+
+        r = cs.find_controller(["che", "boo", "two", "arg1", "arg2"])
+        self.assertEqual("Two", r[0].__name__)
+        self.assertEqual(2, len(r[1]))
+
+        r = cs.find_controller(["che", "boo", "two"])
+        self.assertEqual("Two", r[0].__name__)
+        self.assertEqual(0, len(r[1]))
+
+        r = cs.find_controller(["che", "boo"])
+        self.assertEqual("Default", r[0].__name__)
+        self.assertEqual(0, len(r[1]))
+
+        with self.assertRaises(TypeError):
+            cs.find_controller(["does", "not", "exist"])
 
 
 class RequestTest(TestCase):

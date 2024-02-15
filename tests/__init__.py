@@ -1,16 +1,12 @@
 # -*- coding: utf-8 -*-
-from __future__ import unicode_literals, division, print_function, absolute_import
-from unittest import skipIf, SkipTest
-import os
-import sys
-import logging
 import asyncio
 
 import testdata
+from testdata import IsolatedAsyncioTestCase
 
 from endpoints.config import environ
 from endpoints.interface.base import BaseApplication
-from endpoints.call import Request
+from endpoints.call import Request, Controller
 
 
 testdata.basic_logging(
@@ -89,9 +85,7 @@ class Server(object):
 
     def find(self, path="", method="GET", **kwargs):
         kwargs["request"] = self.create_request(path, method, **kwargs)
-        return asyncio.run(
-            self.application.find_controller_info(**kwargs)
-        )
+        return self.application.find_controller_info(**kwargs)
 
 
 class TestCase(testdata.TestCase):
@@ -101,14 +95,22 @@ class TestCase(testdata.TestCase):
 
     application_class = BaseApplication
 
+    def setUp(self):
+        Controller.controller_classes = {}
+
     def get_host(self):
         return environ.HOST
 
     def create_server(self, contents="", config_contents="", **kwargs):
-        if contents:
-            tdm = self.create_controller_module(contents, **kwargs)
-            kwargs["cwd"] = tdm.basedir
-            kwargs["controller_prefix"] = tdm
+        # if we don't pass in module contents then we will want to start with
+        # a blank slate module, this is because we don't want the autodiscover
+        # functionality to trigger during tests
+        if not contents:
+            contents = [""]
+
+        tdm = self.create_controller_module(contents, **kwargs)
+        kwargs["cwd"] = tdm.basedir
+        kwargs["controller_prefix"] = tdm
 
         kwargs["host"] = self.get_host()
 
@@ -126,8 +128,13 @@ class TestCase(testdata.TestCase):
         return server
 
     def create_controller_module(self, contents, **kwargs):
+        # we reset all the controller classes because if we are requesting a new
+        # a new controller module then we probably want a fresh new start with
+        # the loaded controllers
+        Controller.controller_classes = {}
+        controller_prefix = kwargs.get("controller_prefix", "")
+
         if isinstance(contents, dict):
-            controller_prefix = kwargs.get("controller_prefix", "")
             if not controller_prefix:
                 controller_prefix = testdata.get_module_name()
 
@@ -137,7 +144,7 @@ class TestCase(testdata.TestCase):
         else:
             controller_prefix = testdata.create_module(
                 data=contents,
-                modpath=kwargs.get("controller_prefix", "")
+                modpath=controller_prefix
             )
 
         return controller_prefix

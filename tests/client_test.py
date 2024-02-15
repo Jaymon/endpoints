@@ -6,7 +6,7 @@ from . import TestCase
 
 class HTTPClientTestCase(TestCase):
     """Tests the HTTP webclient, this class has no server so it can only test
-    the building block methods, I actual requesting of the client is tested in
+    the building block methods, actual requesting of the client is tested in
     the interface"""
     client_class = HTTPClient
 

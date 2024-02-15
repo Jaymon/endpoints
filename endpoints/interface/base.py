@@ -6,11 +6,12 @@ import io
 import email
 import time
 import inspect
+import os
 
-from datatypes import String, ReflectModule
+from datatypes import String, ReflectModule, ReflectPath, Dirpath
 
 from ..config import environ
-from ..call import Controller, Request, Response
+from ..call import Controller, Request, Response, Router
 from ..exception import (
     CallError,
     Redirect,
@@ -31,7 +32,25 @@ class ApplicationABC(object):
     """Child classes should extend BaseApplication but this class contains
     the methods that a child interface will most likely want to override so
     they are all here for convenience"""
+    def is_http_call(self, *args, **kwargs):
+        return True
+
+    def is_websocket_call(self, *args, **kwargs):
+        return False
+
     def normalize_call_kwargs(self, *args, **kwargs):
+        """This is a method for child interfaces to use to normalize their raw
+        request information into something that all the other methods can
+        understand and use.
+
+        It takes in whatever was passed to __call__ and converts it into kwargs
+        that can then be passed to the other methods
+
+        :param *args: passed into __call__ as positional arguments
+        :param **kwargs: passed into __call__ as keyword arguments
+        :returns: dict[str, Any], a dict that can be used as **kwargs to further
+            downstream methods in the child interface
+        """
         raise NotImplementedError()
 
     async def handle_http(self, *args, **kwargs):
@@ -39,12 +58,6 @@ class ApplicationABC(object):
 
     async def create_request(self, raw_request, **kwargs):
         raise NotImplementedError()
-
-    def is_http_call(self, *args, **kwargs):
-        return True
-
-    def is_websocket_call(self, *args, **kwargs):
-        return False
 
     def is_websocket_recv(self, data, **kwargs):
         raise NotImplementedError()
@@ -75,8 +88,8 @@ class ApplicationABC(object):
 
 
 class BaseApplication(ApplicationABC):
-    """all servers should extend this and implemented the NotImplemented methods,
-    this ensures a similar interface among all the different servers
+    """all servers should extend this and implemented the NotImplemented
+    methods, this ensures a similar interface among all the different servers
 
     A server is different from the interface because the server is actually
     responsible for serving the requests, while the interface will translate the
@@ -87,8 +100,8 @@ class BaseApplication(ApplicationABC):
 
     """
     controller_prefixes = None
-    """the controller prefixes (python module paths) you want to use to find your
-    Controller subclasses"""
+    """the controller prefixes (python module paths) you want to use to find
+    your Controller subclasses"""
 
     request_class = Request
     """the endpoints.http.Request compatible class that should be used to make
@@ -100,6 +113,10 @@ class BaseApplication(ApplicationABC):
 
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
+
+    router_class = Router
+    """Handles caching of Controllers and route finding for converting a
+    requested path into a Controller"""
 
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
@@ -115,6 +132,8 @@ class BaseApplication(ApplicationABC):
         for k, v in kwargs.items():
             if k.endswith("_class"):
                 setattr(self, k, v)
+
+        self.router = self.create_router()
 
     async def __call__(self, *args, **kwargs):
         """this is what will be called for each request that the server handles
@@ -222,7 +241,12 @@ class BaseApplication(ApplicationABC):
         return output to the client"""
         return self.response_class()
 
-    async def get_response_body(self, response, json_encoder=JSONEncoder, **kwargs):
+    async def get_response_body(
+        self,
+        response,
+        json_encoder=JSONEncoder,
+        **kwargs
+    ):
         """usually when iterating this object it means we are returning the
         response of a wsgi request, so this will iterate the body and make sure
         it is a bytes string because wsgiref requires an actual bytes instance,
@@ -263,54 +287,106 @@ class BaseApplication(ApplicationABC):
                 # just return a string representation of body if no content type
                 yield ByteString(body, response.encoding).raw()
 
-    @functools.cache
-    def get_controller_module_paths(self):
-        """get all the modules in the controller_prefixes
+#     @functools.cache
+#     def get_controller_module_paths(self):
+#         """get all the modules in the controller_prefixes
+# 
+#         :returns: set, a set of string module names (eg foo.bar, foo.che)
+#         """
+#         controller_modpaths = set()
+#         for controller_prefix in self.controller_prefixes:
+#             rm = ReflectModule(controller_prefix)
+#             controller_modpaths.update(rm.module_names())
+# 
+#         return controller_modpaths
 
-        :returns: set, a set of string module names (eg foo.bar, foo.che)
-        """
-        controller_modpaths = set()
-        for controller_prefix in self.controller_prefixes:
-            rm = ReflectModule(controller_prefix)
-            controller_modpaths.update(rm.module_names())
+#     async def get_controller_class(self, module, class_name):
+#         """try and get the class_name from the module and make sure it is a
+#         valid controller"""
+#         class_name = class_name.capitalize()
+#         class_object = getattr(module, class_name, None)
+#         if not class_object or not issubclass(class_object, Controller):
+#             class_object = None
+# 
+#         return class_object
 
-        return controller_modpaths
+#     async def find_controller_class(self, module, path_args, **kwargs):
+#         named_class = None
+#         default_class = None
+# 
+#         if path_args:
+#             # look for a class name with the first path arg, this will be
+#             # used if a matching module isn't found
+#             named_class = await self.get_controller_class(
+#                 module,
+#                 path_args[0]
+#             )
+# 
+#         if not named_class:
+#             # look for the default class just in case, this is a first
+#             # match wins scenario. Basically, the first controller default
+#             # class found will be the class that answers the call unless
+#             # a class matching a path arg is found
+#             default_class = await self.get_controller_class(
+#                 module,
+#                 kwargs.get("class_fallback", "Default"),
+#             )
+# 
+#         return named_class, default_class
 
-    async def get_controller_class(self, module, class_name):
-        """try and get the class_name from the module and make sure it is a
-        valid controller"""
-        class_name = class_name.capitalize()
-        class_object = getattr(module, class_name, None)
-        if not class_object or not issubclass(class_object, Controller):
-            class_object = None
+    def create_router(self):
+        return self.router_class(
+            controller_prefixes=self.controller_prefixes,
+            controller_class=self.controller_class,
+        )
 
-        return class_object
+#         if self.controller_prefixes:
+#             # we load all the submodules of all the controller prefixes. This
+#             # should cause all the controllers to load into memory and be
+#             # available in self.controller_class.controller_classes
+#             for controller_prefix in self.controller_prefixes:
+#                 rm = ReflectModule(controller_prefix)
+#                 for sm in rm.get_modules():
+#                     pass
+# 
+#         else:
+# 
+#             cwd = Dirpath.cwd()
+#             if cwd.has_file("controllers.py") or cwd.has_dir("controllers"):
+#                 # this should load all the controllers into memory
+#                 rm = ReflectModule("controllers")
+#                 for sm in rm.get_modules():
+#                     pass
+# 
+#             else:
+#                 import sys
+#                 #pout.v(sys.path, cwd)
+# 
+#                 for p in (Dirpath(p) for p in sys.path):
+#                     if p.is_relative_to(cwd):
+#                         piter = p.iterator
+#                         # we only want to look 2 folders deep
+#                         piter.depth(2)
+#                         # we don't want any folders/files that begin with an
+#                         # underscore or a period
+#                         piter.not_regex(r"^[_\.]", basename=True)
+#                         # we only want basenames with this name
+#                         piter.pattern("controllers", basename=True)
+# 
+#                         for sp in p.iterator.depth(2).not_regex(r"^[_\.]", basename=True)
+#                         pout.v(p)
 
-    async def find_controller_class(self, module, path_args, **kwargs):
-        named_class = None
-        default_class = None
 
-        if path_args:
-            # look for a class name with the first path arg, this will be
-            # used if a matching module isn't found
-            named_class = await self.get_controller_class(
-                module,
-                path_args[0]
-            )
+            #p = ReflectPath(os.getcwd())
 
-        if not named_class:
-            # look for the default class just in case, this is a first
-            # match wins scenario. Basically, the first controller default
-            # class found will be the class that answers the call unless
-            # a class matching a path arg is found
-            default_class = await self.get_controller_class(
-                module,
-                kwargs.get("class_fallback", "Default"),
-            )
 
-        return named_class, default_class
+#         controller_classes = self.controller_class.controller_classes
+#         for classpath, controller_class in controller_classes:
+#             if classpath.startswith(path_args):
+#                 pass
 
-    async def find_controller_info(self, request, **kwargs):
+
+    def find_controller_info(self, request, **kwargs):
         """returns all the information needed to create a controller and handle
         the request
 
@@ -346,94 +422,102 @@ class BaseApplication(ApplicationABC):
         default_ret = {}
         named_ret = {}
 
-        path_args = list(request.path_args)
+        controller_class, controller_args = self.router.find_controller(
+            request.path_args
+        )
 
-        controller_modpaths = self.get_controller_module_paths()
-        for controller_prefix in self.controller_prefixes:
-            modpath = controller_prefix
-            # using the path_args we are going to try and find the best module
-            # path for the request
-            while path_args:
-                modpath += "." + path_args[0]
-                if modpath in controller_modpaths:
-                    ret["module_name"] = modpath
-                    ret["module_path_args"].append(path_args[0])
-                    ret["controller_path_args"].append(path_args.pop(0))
-                    ret["controller_prefix"] = controller_prefix
+        ret["module_name"] = controller_class.__module__
+        ret["class"] = controller_class
+        ret["method_args"] = controller_args
 
-                else:
-                    break
-
-            if ret["module_name"]:
-                ret["module"] = ReflectModule(ret["module_name"]).get_module()
-
-                named_class, default_class = await self.find_controller_class(
-                    ret["module"],
-                    path_args,
-                )
-
-                if named_class:
-                    ret["class"] = named_class
-                    ret["controller_path_args"].append(path_args.pop(0))
-
-                elif default_class:
-                    ret["class"] = default_class
-
-                else:
-                    raise TypeError(
-                        " ".join([
-                            "Could not find a valid module and Controller",
-                            f"class for {request.path}"
-                        ])
-                    )
-
-                break
-
-            else:
-                # we didn't find the correct module using module paths, so now
-                # let's try class paths, first found class path wins
-                if not named_ret or not default_ret:
-                    controller_module = ReflectModule(
-                        controller_prefix
-                    ).get_module()
-
-                    named_class, default_class = await self.find_controller_class(
-                        controller_module,
-                        path_args,
-                    )
-
-                    if named_class and not named_ret:
-                        named_ret["class"] = named_class
-                        named_ret["module"] = controller_module
-                        named_ret["module_name"] = controller_prefix
-                        named_ret["controller_prefix"] = controller_prefix
-                        named_ret["controller_path_args"] = [path_args.pop(0)]
-
-                    if default_class and not default_ret:
-                        default_ret["class"] = default_class
-                        default_ret["module"] = controller_module
-                        default_ret["module_name"] = controller_prefix
-                        default_ret["controller_prefix"] = controller_prefix
-
-        if not ret["module_name"]:
-            if named_ret:
-                ret.update(named_ret)
-
-            elif default_ret:
-                ret.update(default_ret)
-
-            else:
-                raise TypeError(
-                    " ".join([
-                        "Could not find a valid module with path",
-                        "{} and controller_prefixes {}".format(
-                            request.path,
-                            self.controller_prefixes
-                        )
-                    ])
-                )
-
-        ret["method_args"] = path_args
+#         path_args = list(request.path_args)
+# 
+#         controller_modpaths = self.get_controller_module_paths()
+#         for controller_prefix in self.controller_prefixes:
+#             modpath = controller_prefix
+#             # using the path_args we are going to try and find the best module
+#             # path for the request
+#             while path_args:
+#                 modpath += "." + path_args[0]
+#                 if modpath in controller_modpaths:
+#                     ret["module_name"] = modpath
+#                     ret["module_path_args"].append(path_args[0])
+#                     ret["controller_path_args"].append(path_args.pop(0))
+#                     ret["controller_prefix"] = controller_prefix
+# 
+#                 else:
+#                     break
+# 
+#             if ret["module_name"]:
+#                 ret["module"] = ReflectModule(ret["module_name"]).get_module()
+# 
+#                 named_class, default_class = await self.find_controller_class(
+#                     ret["module"],
+#                     path_args,
+#                 )
+# 
+#                 if named_class:
+#                     ret["class"] = named_class
+#                     ret["controller_path_args"].append(path_args.pop(0))
+# 
+#                 elif default_class:
+#                     ret["class"] = default_class
+# 
+#                 else:
+#                     raise TypeError(
+#                         " ".join([
+#                             "Could not find a valid module and Controller",
+#                             f"class for {request.path}"
+#                         ])
+#                     )
+# 
+#                 break
+# 
+#             else:
+#                 # we didn't find the correct module using module paths, so now
+#                 # let's try class paths, first found class path wins
+#                 if not named_ret or not default_ret:
+#                     controller_module = ReflectModule(
+#                         controller_prefix
+#                     ).get_module()
+# 
+#                     named_class, default_class = await self.find_controller_class(
+#                         controller_module,
+#                         path_args,
+#                     )
+# 
+#                     if named_class and not named_ret:
+#                         named_ret["class"] = named_class
+#                         named_ret["module"] = controller_module
+#                         named_ret["module_name"] = controller_prefix
+#                         named_ret["controller_prefix"] = controller_prefix
+#                         named_ret["controller_path_args"] = [path_args.pop(0)]
+# 
+#                     if default_class and not default_ret:
+#                         default_ret["class"] = default_class
+#                         default_ret["module"] = controller_module
+#                         default_ret["module_name"] = controller_prefix
+#                         default_ret["controller_prefix"] = controller_prefix
+# 
+#         if not ret["module_name"]:
+#             if named_ret:
+#                 ret.update(named_ret)
+# 
+#             elif default_ret:
+#                 ret.update(default_ret)
+# 
+#             else:
+#                 raise TypeError(
+#                     " ".join([
+#                         "Could not find a valid module with path",
+#                         "{} and controller_prefixes {}".format(
+#                             request.path,
+#                             self.controller_prefixes
+#                         )
+#                     ])
+#                 )
+# 
+#         ret["method_args"] = path_args
         # we merge the leftover path args with the body kwargs
         ret['method_args'].extend(request.body_args)
 
@@ -442,9 +526,9 @@ class BaseApplication(ApplicationABC):
         ret["method_prefix"] = request.method.upper()
         ret["method_fallback"] = kwargs.get("method_fallback", "ANY")
 
-        ret['module_path'] = "/".join(ret["module_path_args"])
+        #ret['module_path'] = "/".join(ret["module_path_args"])
         ret['class_name'] = ret["class"].__name__
-        ret['class_path'] = "/".join(ret["controller_path_args"])
+        #ret['class_path'] = "/".join(ret["controller_path_args"])
 
         return ret
 
@@ -455,7 +539,7 @@ class BaseApplication(ApplicationABC):
             the request
         """
         try:
-            request.controller_info = await self.find_controller_info(
+            request.controller_info = self.find_controller_info(
                 request,
                 **kwargs
             )
