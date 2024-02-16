@@ -603,7 +603,7 @@ class Controller(object):
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
-        go through this method, this method is called from the Call instance
+        go through this method
 
         :param e: Exception, the error that was raised
         :param **kwargs: dict, any other information that might be handy

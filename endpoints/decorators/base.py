@@ -112,6 +112,7 @@ class ControllerDecorator(FuncDecorator):
 
         :Example:
             a decorator like:
+
                 @foo("bar", "che", baz=1)
                 def function_name(*args, **kwargs): pass
 

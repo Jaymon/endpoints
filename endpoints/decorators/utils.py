@@ -131,6 +131,7 @@ class param(ControllerDecorator):
                 controller.request,
                 controller_kwargs
             )
+
         else:
             controller_args = self.normalize_arg(
                 controller.request,
@@ -281,6 +282,7 @@ class param(ControllerDecorator):
             if found_name:
                 # we are going to replace found_name with dest_name
                 kwargs.pop(found_name)
+
             else:
                 # we still want to run a default value through normalization but
                 # if we didn't find a value and don't have a default, don't set
@@ -359,8 +361,10 @@ class param(ControllerDecorator):
                     if issubclass(ptype, bool):
                         if val in set(['true', 'True', '1']):
                             val = True
+
                         elif val in set(['false', 'False', '0']):
                             val = False
+
                         else:
                             val = ptype(val)
 
@@ -410,6 +414,7 @@ class param(ControllerDecorator):
             failed = False
             if isinstance(val, (int, float)):
                 if val < min_size: failed = True
+
             else:
                 if len(val) < min_size: failed = True
 
@@ -420,6 +425,7 @@ class param(ControllerDecorator):
             failed = False
             if isinstance(val, (int, float)):
                 if val > max_size: failed = True
+
             else:
                 if len(val) > max_size: failed = True
 
