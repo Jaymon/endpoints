@@ -149,7 +149,7 @@ class UrlTest(TestCase):
         self.assertEqual("http://endpoints.fake/foo", res._body)
 
     def test_controller(self):
-        u = Url("http://example.com/foo/bar/che", class_path="foo")
+        u = Url("http://example.com/foo/bar/che", controller_class_path="foo")
         u2 = u.controller(che=4)
         self.assertEqual("http://example.com/foo?che=4", u2)
 

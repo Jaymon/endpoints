@@ -32,7 +32,7 @@ class Application(BaseApplication):
         return scope["type"] == "websocket"
 
     async def handle_http(self, **kwargs):
-        request = await self.create_request(**kwargs)
+        request = self.create_request(**kwargs)
 
         d = await self.recv_websocket(**kwargs)
         body = d["body"]
@@ -40,9 +40,9 @@ class Application(BaseApplication):
             d = await self.recv_websocket(**kwargs)
             body += d["body"]
 
-        await self.set_request_body(request, body, **kwargs)
+        self.set_request_body(request, body, **kwargs)
 
-        response = await self.create_response()
+        response = self.create_response()
         await self.handle(request, response)
 
         await kwargs["send"]({
@@ -74,8 +74,8 @@ class Application(BaseApplication):
 
     async def handle_websocket_recv(self, data, **kwargs):
         # https://asgi.readthedocs.io/en/latest/specs/www.html#receive-receive-event
-        request = await self.create_request(**kwargs)
-        response = await self.create_response()
+        request = self.create_request(**kwargs)
+        response = self.create_response()
 
         d = self.get_websocket_loads(data["text"])
 
@@ -84,7 +84,7 @@ class Application(BaseApplication):
                 setattr(request, k, d[k])
 
         if "body" in d:
-            await self.set_request_body(request, d["body"])
+            self.set_request_body(request, d["body"])
 
         if d["headers"]:
             request.add_headers(d["headers"])
@@ -113,7 +113,7 @@ class Application(BaseApplication):
             await super().handle_websocket_connect(**kwargs)
 
         else:
-            response = await self.create_response(**kwargs)
+            response = self.create_response(**kwargs)
             response.code = 1002
             await self.send_websocket_connect(None, response, **kwargs)
 
@@ -138,7 +138,7 @@ class Application(BaseApplication):
             "reason": String(body),
         })
 
-    async def create_request(self, **kwargs):
+    def create_request(self, **kwargs):
         raw_request = kwargs["scope"]
         request = self.request_class()
         request.add_headers(raw_request.get("headers", []))

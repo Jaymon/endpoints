@@ -41,12 +41,33 @@ logger = logging.getLogger(__name__)
 
 
 class Router(object):
-    """Welp, I got rid of the Router class for a bit but here it is back.
+    """Handle Controller caching and routing
 
     This handles caching and figuring out the route for each incoming
     request
     """
     def __init__(self, controller_prefixes=None, paths=None, **kwargs):
+        """Create a Router instance, all caching is done in this method so if
+        this returns then all controllers will be cached and ready to be
+        requested
+
+        It loads the controllers using the module prefixes or paths and then
+        loads all the controllers from Controller.controller_classes which is
+        populated by Controller.__init_subclass__ when a new child class is
+        loaded into memory
+
+        :param controller_prefixes: list, the controller module prefixes to use
+            to find controllers to answer requests (eg, if you pass in `foo.bar`
+            then any submodules will be stripped of `foo.bar` and use the rest
+            of the module path to figure out the full requestable path, so 
+            `foo.bar.che.Boo` would have `che/boo` as its path
+        :param paths: list, the paths to check for controllers. This looks for
+            a module named `controllers` in the paths, the first found module
+            wins
+        :param **kwargs:
+            - controller_class: Controller, the child class to use to find
+                controller classes
+        """
         self._controller_prefixes = controller_prefixes or []
         self._paths = paths or []
         self._controller_class = kwargs.get(
@@ -65,24 +86,53 @@ class Router(object):
         self._controller_pathfinder = self.get_pathfinder()
 
     def __iter__(self):
+        """Iterate through all the cached Controller classes
+
+        :returns: generator[Controller]
+        """
         controller_classes = self._controller_class.controller_classes
         for classpath, controller_class in controller_classes.items():
             yield controller_class
 
     def get_modules_from_prefix(self, controller_prefix):
+        """Internal method. Given a module prefix yield all the modules it
+        represents
+
+        :param controller_prefix: str, a module path like `foo.bar.che`
+        :returns: generator[ModuleType]
+        """
         rm = ReflectModule(controller_prefix)
         for m in rm.get_modules():
             yield m
 
     def get_modules_from_prefixes(self, controller_prefixes):
-        # we load all the submodules of all the controller prefixes. This
-        # should cause all the controllers to load into memory and be
-        # available in self.controller_class.controller_classes
+        """Internal method. Load all the submodules of all the controller
+        prefixes. This should cause all the controllers to load into memory and
+        be available in self.controller_class.controller_classes
+
+        :param controller_prefixes: list[str], a list of module paths like
+            `foo.bar.che`
+        :returns: generator[ModuleType]
+        """
         for controller_prefix in controller_prefixes:
             for m in self.get_modules_from_prefix(controller_prefix):
                 yield m
 
     def get_modules_from_paths(self, paths):
+        """Internal method. Load the first `controllers` module found in the
+        various paths
+
+        This method incorporates this functionality:
+
+        * https://github.com/Jaymon/endpoints/issues/87
+        * https://github.com/Jaymon/endpoints/issues/123
+
+        :param paths: list[str], the paths to check, if empty and there aren't
+            any controller_prefixes either then the current working directory
+            will be checked. This is done here so it can be easily overridden
+            by a child class if someone wants to customize path auto-discovery
+        :returns: generator[ModuleType]
+        """
         if not self._controller_prefixes and not paths:
             # if we don't have any controller prefixes and we don't have any
             # paths then let's use the current working directory and try and
@@ -119,6 +169,14 @@ class Router(object):
                         break
 
     def get_pathfinder(self):
+        """Internal method. Create the tree that will be used to resolve a
+        requested path to a found controller
+
+        :returns: DictTree, basically a dictionary of dictionaries where each
+            key represents a part of a path, the final key is the name of the
+            class, an empty string represents a Default controller for that
+            module
+        """
         pathfinder = DictTree()
 
         # used to find module path args
@@ -157,8 +215,22 @@ class Router(object):
         return pathfinder
 
     def find_controller(self, path_args):
+        """Where all the magic happens, this takes a requested path_args and
+        checks the internal tree to find the right path or raises a TypeError if
+        the path can't be resolved
+
+        :param path_args: list[str], so path `/foo/bar/che` would be passed to
+            this method as `["foo", "bar", "che"]`
+        :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
+            controller_class, controller_args, and controller_info
+        """
         controller_args = list(path_args)
         controller_class = None
+
+        info = {
+            "controller_path_args": [],
+            "module_path_args": [],
+        }
 
         offset = 0
         pathfinder = self._controller_pathfinder
@@ -166,9 +238,14 @@ class Router(object):
             if controller_args[offset] in pathfinder:
                 pathfinder = pathfinder[controller_args[offset]] 
                 if isinstance(pathfinder, Mapping):
+                    info["module_path_args"].append(controller_args[offset])
+                    info["controller_path_args"].append(controller_args[offset])
+
                     offset += 1
 
                 else:
+                    info["controller_path_args"].append(controller_args[offset])
+
                     controller_class = pathfinder
                     controller_args = controller_args[offset + 1:]
                     break
@@ -188,7 +265,7 @@ class Router(object):
                 )
             )
 
-        return controller_class, controller_args
+        return controller_class, controller_args, info
 
 
 class Controller(object):
@@ -302,12 +379,6 @@ class Controller(object):
         path = modpath = cls.__module__
         controller_prefixes = controller_prefixes or []
 
-        # these are the default controller_prefixes that filter the module
-#         controller_prefixes.extend([
-#             ".controllers",
-#             "__main__",
-#         ])
-
         for controller_prefix in controller_prefixes:
             if controller_prefix.startswith("."):
                 rcpr = re.escape(controller_prefix[1:])
@@ -334,49 +405,6 @@ class Controller(object):
             path_args.append(class_name.lower())
 
         return path_args
-
-#     @classmethod
-#     def find_path(cls, controller_prefixes=None, default_class_name=""):
-#         """Find the URL path for this controller using the given prefixes and
-#         default class name as a guide
-# 
-#         :param controller_prefixes: list[str], a list of the controller prefixes
-#             (module paths) where controller classes can be found, if an item
-#             begins with a period (eg, ".controllers") then that prefix can be
-#             anywhere in the module path and will be stripped (eg, ".controllers"
-#             will match "foo.controllers.bar" and use "bar" as the first part of
-#             the URL path)
-#         :param default_class_name: str, the name of the class that shouldn't be
-#             counted as part of the URL path (eg, "Default")
-#         :returns: str, the URL path that starts with / but won't end with /
-#             (eg, "/foo/bar/che")
-#         """
-#         path = modpath = cls.__module__
-#         controller_prefixes = controller_prefixes or []
-# 
-#         for controller_prefix in controller_prefixes:
-# 
-#             if controller_prefix.startswith("."):
-#                 rcpr = re.escape(controller_prefix[1:])
-#                 if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
-#                     path = modpath[m.end(0):]
-#                     break
-# 
-#             else:
-#                 rcpr = re.escape(controller_prefix)
-#                 if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
-#                     path = modpath[m.end(0):]
-# 
-#         class_name = cls.__name__ # TODO: use __qualname__ instead? 
-# 
-#         if class_name != default_class_name:
-#             path += "/" + class_name
-# 
-#         path = "/".join(path.split(".")).lower()
-#         if not path.startswith("/"):
-#             path = "/" + path
-# 
-#         return path
 
     def __init__(self, request, response, **kwargs):
         self.request = request
@@ -1096,8 +1124,8 @@ class Request(Call):
             path=path,
             query=query,
             port=port,
-            class_path=class_path,
-            module_path=module_path
+            controller_class_path=class_path,
+            controller_module_path=module_path
         )
         return u
 

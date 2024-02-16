@@ -34,8 +34,8 @@ class Application(BaseApplication):
         }
 
     async def handle_http(self, environ, start_response):
-        request = await self.create_request(environ)
-        response = await self.create_response()
+        request = self.create_request(environ)
+        response = self.create_response()
         await self.handle(request, response)
 
         start_response(
@@ -46,7 +46,7 @@ class Application(BaseApplication):
         # https://peps.python.org/pep-0530/
         return [body async for body in self.get_response_body(response)]
 
-    async def create_request(self, raw_request, **kwargs):
+    def create_request(self, raw_request, **kwargs):
         r = self.request_class()
         for k, v in raw_request.items():
             if k.startswith('HTTP_'):
@@ -61,9 +61,9 @@ class Application(BaseApplication):
         r.scheme = raw_request.get('wsgi.url_scheme', "http")
         r.host = raw_request["HTTP_HOST"]
 
-        await self.set_request_body(
+        self.set_request_body(
             r,
-            raw_request.get('wsgi.input', None),
+            raw_request.get('wsgi.input', None)
         )
 
         r.raw_request = raw_request

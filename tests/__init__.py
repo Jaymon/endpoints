@@ -2,7 +2,6 @@
 import asyncio
 
 import testdata
-from testdata import IsolatedAsyncioTestCase
 
 from endpoints.config import environ
 from endpoints.interface.base import BaseApplication
@@ -35,7 +34,7 @@ class Server(object):
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
-            req = asyncio.run(self.application.create_request(None))
+            req = self.application.create_request(None)
             req.method = method.upper()
             req.path = path
 
@@ -63,7 +62,7 @@ class Server(object):
         :param path: string, full URI you are requesting (eg, /foo/bar)
         """
         request = self.create_request(path, method, **kwargs)
-        response = asyncio.run(self.application.create_response())
+        response = self.application.create_response()
         asyncio.run(self.application.handle(request, response))
         return response
 

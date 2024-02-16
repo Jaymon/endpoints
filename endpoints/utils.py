@@ -41,52 +41,77 @@ class Url(BaseUrl):
     .base(...) = http://foo.com/bar/che/...
     .controller(...) = http://foo.com/bar/...
     """
-    class_path = ""
+    controller_class_path = ""
+    """Holds the path to the controller (eg, if the controller was in module
+    `foo.bar` and named `Che` then this would be `/foo/bar/che`
 
-    module_path = ""
+    see Request.url
+    """
+
+    controller_module_path = ""
+    """Holds the path to controller's module (eg, if the controller was defined
+    in `controllers.foo.bar` and the controller_prefix was `controllers` then
+    this would be `/foo/bar`
+
+    see Request.url
+    """
 
     def module(self, *paths, **query_kwargs):
         """create a new Url instance using the module path as a base
 
         :param *paths: list, the paths to append to the module path
         :param **query_kwargs: dict, any query string params to add
-        :returns: new Url instance
+        :returns: Url, a new Url instance
         """
         kwargs = self._normalize_params(*paths, **query_kwargs)
-        if self.module_path:
+
+        if self.controller_module_path:
             if "path" in kwargs:
-                paths = self.normalize_paths(self.module_path, kwargs["path"])
+                paths = self.normalize_paths(
+                    self.controller_module_path,
+                    kwargs["path"]
+                )
                 kwargs["path"] = "/".join(paths)
+
             else:
-                kwargs["path"] = self.module_path
+                kwargs["path"] = self.controller_module_path
+
         return self.create(self.root, **kwargs)
 
     def controller(self, *paths, **query_kwargs):
         """create a new url object using the controller path as a base
 
-        if you have a controller `foo.BarController` then this would create a new
-        Url instance with `host/foo/bar` as the base path, so any *paths will be
-        appended to `/foo/bar`
+        if you have a controller `foo.BarController` then this would create a
+        new Url instance with `host/foo/bar` as the base path, so any *paths
+        will be appended to `/foo/bar`
 
         :example:
-            # controller foo.Bar(Controller)
+            # controller is: foo.Bar
 
-            print url # http://host.com/foo/bar/some_random_path
+            print(url) # http://host.com/foo/bar/some_random_path
 
-            print url.controller() # http://host.com/foo/bar
-            print url.controller("che", boom="bam") # http://host/foo/bar/che?boom=bam
+            print(url.controller()) # http://host.com/foo/bar
+
+            # http://host/foo/bar/che?boom=bam
+            print(url.controller("che", boom="bam"))
 
         :param *paths: list, the paths to append to the controller path
         :param **query_kwargs: dict, any query string params to add
-        :returns: new Url instance
+        :returns: Url, a new Url instance
         """
         kwargs = self._normalize_params(*paths, **query_kwargs)
-        if self.class_path:
+
+        if self.controller_class_path:
             if "path" in kwargs:
-                paths = self.normalize_paths(self.class_path, kwargs["path"])
+                paths = self.normalize_paths(
+                    self.controller_class_path,
+                    kwargs["path"]
+                )
                 kwargs["path"] = "/".join(paths)
+
             else:
-                kwargs["path"] = self.class_path
+                kwargs["path"] = self.controller_class_path
+
         return self.create(self.root, **kwargs)
 
 

@@ -6,7 +6,7 @@ import testdata
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
-from .. import TestCase as BaseTestCase, IsolatedAsyncioTestCase
+from .. import TestCase as BaseTestCase
 
 
 class TestCase(BaseTestCase):
@@ -44,7 +44,7 @@ class _HTTPTestCase(TestCase):
 
         c = self.create_client()
         r = c.get('/requrl')
-        self.assertTrue("/requrl" in r.body)
+        self.assertTrue("/requrl" in r.body, r.body)
         self.assertRegex(r.body, r"https?://[^/]")
 
     def test_get_list_param_decorator(self):
@@ -571,8 +571,6 @@ class _WebSocketTestCase(TestCase):
         ])
         c = self.create_client()
         c.connect()
-
-        pout.b()
 
         r = c.get("http://example.com/foo/bar")
         self.assertEqual(404, r.code)

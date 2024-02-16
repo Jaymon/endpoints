@@ -183,43 +183,6 @@ class ControllerTest(TestCase):
         path_args = foo_class.get_class_path_args("Foo")
         self.assertEqual([], path_args)
 
-#     def test_find_path(self):
-#         modpath = self.create_module(
-#             [
-#                 "from endpoints import Controller",
-#                 "",
-#                 "class Foo(Controller):",
-#                 "    def GET(self):",
-#                 "        pass",
-#             ],
-#             modpath=self.get_module_name(3)
-#         )
-# 
-#         foo_class = modpath.module().Foo
-#         parts = modpath.split(".")
-# 
-#         # make sure the anywhere syntax (eg, .<PREFIX>) works
-#         self.assertEqual(
-#             f"/{parts[2]}/foo",
-#             foo_class.find_path([f".{parts[1]}"])
-#         )
-#         self.assertEqual(
-#             f"/{parts[2]}",
-#             foo_class.find_path([f".{parts[1]}"], "Foo")
-#         )
-# 
-#         # make sure a normal prefix works
-#         mp = ".".join(parts[:-1])
-#         p = "/" + parts[2] + "/foo"
-#         self.assertEqual(p, foo_class.find_path([mp]))
-# 
-#         # we want to make sure we can't just match the beginning of a module
-#         # path segment
-#         mp = f".{parts[1][:3]}"
-#         p = "/" + "/".join(parts) + "/foo"
-#         self.assertEqual(p, foo_class.find_path([mp]))
-# 
-#         self.assertEqual("/foo", foo_class.find_path([modpath]))
 
 class RouterTest(TestCase):
 
@@ -540,12 +503,18 @@ class RequestTest(TestCase):
     def test_ip_bad(self):
         r = Request()
         r.set_header('REMOTE_ADDR', "10.0.2.2")
-        r.set_header("Via", "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)")
+        r.set_header(
+            "Via",
+            "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
+        )
         self.assertEqual("", r.ip)
 
         r = Request()
         r.set_header('REMOTE_ADDR', "54.241.34.107")
-        r.set_header("Via", "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)")
+        r.set_header(
+            "Via",
+            "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
+        )
         self.assertEqual("54.241.34.107", r.ip)
 
     def test_properties(self):
@@ -568,12 +537,18 @@ class RequestTest(TestCase):
 
         r = Request()
         r.query = query
-        self.assertEqual(parse.parse_qs(r.query, True), parse.parse_qs(query, True))
+        self.assertEqual(
+            parse.parse_qs(r.query, True),
+            parse.parse_qs(query, True)
+        )
         self.assertEqual(r.query_kwargs, query_kwargs)
 
         r = Request()
         r.query_kwargs = query_kwargs
-        self.assertEqual(parse.parse_qs(r.query, True), parse.parse_qs(query, True))
+        self.assertEqual(
+            parse.parse_qs(r.query, True),
+            parse.parse_qs(query, True)
+        )
         self.assertEqual(r.query_kwargs, query_kwargs)
 
     def test_get_header(self):
