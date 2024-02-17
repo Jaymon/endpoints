@@ -47,7 +47,13 @@ class Server(Command):
 
         regex = re.compile(r"Listening\s+on\s+TCP\s+address\s+(([^:]+):(\d+))")
         r = self.wait_for(regex)
+
         m = regex.search(r)
+        if not m:
+            raise RuntimeError("Looks like ASGI server failed with {}".format(
+                r.returncode
+            )
+
         self.host = Host(m.group(2), m.group(3)).client()
 
 

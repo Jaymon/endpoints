@@ -40,6 +40,17 @@ class ControllerDecorator(FuncDecorator):
         5. .handle_response() is called with the controller instance and the
             response from whatever controller method was called
     """
+    def get_wrapped_method(self, func):
+        wrapped = getattr(func, "__wrapped__", None)
+        if wrapped:
+            func = self.get_wrapped_method(wrapped)
+
+        return func
+
+    def is_wrapped_method(self, func):
+        wrapped = getattr(func, "__wrapped__", None)
+        return True if wrapped else False
+
     def decorate(self, func, *args, **kwargs):
         """decorate the passed in func calling target when func is called
 
@@ -56,14 +67,16 @@ class ControllerDecorator(FuncDecorator):
 
         async def decorated(controller, *controller_args, **controller_kwargs):
 
-            # handle the decorator's .handle() call
+            # handle the decorator's .handle_kwargs() and .handle() calls, this
+            # isn't wrapped in try/catch because .handle_call takes care of that
             await self.handle_call(
                 controller,
                 controller_args,
                 controller_kwargs
             )
 
-            # prepare the controller request
+            # prepare the controller request, this is wrapped in try/catch
+            # because .handle_request is meant to be extended by child classes
             try:
                 crequest = await self.handle_request(
                     controller,
@@ -78,7 +91,8 @@ class ControllerDecorator(FuncDecorator):
             except Exception as e:
                 return await self.handle_error(controller, e)
 
-            # actually call the controller
+            # actually call the controller, this calls the controller method
+            # and handles any errors, that's why it isn't wrapped in try/catch
             controller_response = await self.handle_controller(
                 func,
                 controller,
@@ -86,7 +100,9 @@ class ControllerDecorator(FuncDecorator):
                 controller_kwargs,
             )
 
-            # make any changes to the controller's response before returning
+            # make any changes to the controller's response before returning,
+            # this is wrapped in try/catch because .handle_response is meant
+            # to be extended by child classes
             try:
                 cresponse = await self.handle_response(
                     controller,

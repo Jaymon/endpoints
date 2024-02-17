@@ -5,7 +5,7 @@ from requests.auth import _basic_auth_str
 
 from endpoints.compat import *
 from endpoints.utils import ByteString
-from endpoints.call import Controller, Request, Response, Router
+from endpoints.call import Controller, Request, Response, Router, Param
 
 from . import TestCase, testdata
 
@@ -161,7 +161,7 @@ class ControllerTest(TestCase):
 
         # we want to make sure we can't just match the beginning of a module
         # path segment
-        mp = f".{parts[1][:3]}"
+        mp = f".{parts[1][:2]}"
         self.assertEqual(parts, foo_class.get_module_path_args([mp]))
 
         self.assertEqual([], foo_class.get_module_path_args([modpath]))
@@ -684,4 +684,74 @@ class ResponseTest(TestCase):
 
         r.body = {}
         self.assertEqual(200, r.code)
+
+
+class ParamTest(TestCase):
+    def test_param_body(self):
+        """This was moved from decorators_test.ParamTest when a param_body
+        decorator existed, that's why it has the strange name"""
+        p = Param('foo', type=int, choices=set([1, 2, 3]))
+
+        with self.assertRaises(ValueError):
+            p.handle([], {})
+
+        with self.assertRaises(ValueError):
+            p.handle([], {'foo': '8'})
+
+        r = p.handle([], {'foo': '1'})
+        self.assertEqual(1, r[1]["foo"])
+
+    def test_param_query(self):
+        """This was moved from decorators_test.ParamTest when a param_query
+        decorator existed, that's why it has the strange name"""
+
+        p = Param('foo', type=int, choices=set([1, 2, 3]))
+        with self.assertRaises(ValueError):
+            r = p.handle([], {'foo': '8'})
+
+        p = Param('foo', type=int, choices=set([1, 2, 3]))
+        r = p.handle([], {'foo': '1'})
+        self.assertEqual(1, r[1]["foo"])
+
+        p1 = Param('foo', type=int)
+        p2 = Param('bar', type=float)
+        r = p1.handle(*p2.handle([], {'foo': '1', 'bar': '1.5'}))
+        self.assertEqual(1, r[1]["foo"])
+        self.assertEqual(1.5, r[1]["bar"])
+
+        p = Param('foo', type=int, action='blah')
+        with self.assertRaises(RuntimeError):
+            p.handle([], {'foo': '1'})
+
+        p = Param('foo', type=int, action='store_list')
+        with self.assertRaises(ValueError):
+            p.handle([], {'foo': ['1,2,3,4', '5']})
+
+        p = Param('foo', type=int, action='append_list')
+        r = p.handle([], {'foo': ['1,2,3,4', '5']})
+        self.assertEqual(list(range(1, 6)), r[1]["foo"])
+
+        p = Param('foo', type=int, action='store_list')
+        r = p.handle([], {'foo': '1,2,3,4'})
+        self.assertEqual(list(range(1, 5)), r[1]["foo"])
+
+        p = Param('foo', type=int, default=1, required=False)
+        r = p.handle([], {})
+        self.assertEqual(1, r[1]["foo"])
+
+        p = Param('foo', type=int, default=1, required=True)
+        r = p.handle([], {})
+        self.assertEqual(1, r[1]["foo"])
+
+        p = Param('foo', type=int, default=1)
+        r = p.handle([], {})
+        self.assertEqual(1, r[1]["foo"])
+
+        p = Param('foo', type=int)
+        with self.assertRaises(ValueError):
+            p.handle([], {})
+
+        p = Param('foo', type=int)
+        r = p.handle([], {'foo': '1'})
+        self.assertEqual(1, r[1]["foo"])
 

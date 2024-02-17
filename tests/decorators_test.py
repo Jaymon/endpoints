@@ -36,8 +36,8 @@ from endpoints.decorators.utils import (
     nohttpcache,
     code_error,
     param,
-    param_body,
-    param_query
+#     param_body,
+#     param_query
 )
 
 from . import (
@@ -880,134 +880,134 @@ class ParamTest(TestCase):
         r = foo(c, **{'foo': '2'})
         self.assertEqual(2, r)
 
-    def test_post_param_body(self):
-        c = self.create_controller()
-        c.request.method = 'POST'
-
-        @param_body('foo', type=int, choices=set([1, 2, 3]))
-        def foo(self, *args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-
-        with self.assertRaises(CallError):
-            r = foo(c)
-
-        c.request.query_kwargs['foo'] = '1'
-        with self.assertRaises(CallError):
-            r = foo(c, **{'foo': '1'})
-
-        c.request.body_kwargs = {'foo': '8'}
-        with self.assertRaises(CallError):
-            r = foo(c, **c.request.body_kwargs)
-
-        c.request.query_kwargs = {}
-        c.request.body_kwargs = {'foo': '1'}
-        r = foo(c, **c.request.body_kwargs)
-        self.assertEqual(1, r)
-
-        c.request.query_kwargs = {'foo': '1'}
-        c.request.body_kwargs = {'foo': '3'}
-        r = foo(c, **{'foo': '3'})
-        self.assertEqual(3, r)
-
-    def test_param_query(self):
-        c = self.create_controller()
-
-        c.request.query_kwargs = {'foo': '8'}
-        @param_query('foo', type=int, choices=set([1, 2, 3]))
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        with self.assertRaises(endpoints.CallError):
-            r = foo(c, **c.request.query_kwargs)
-
-        c.request.query_kwargs = {'foo': '1'}
-        @param_query('foo', type=int, choices=set([1, 2, 3]))
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(1, r)
-
-        c.request.query_kwargs = {'foo': '1', 'bar': '1.5'}
-        @param_query('foo', type=int)
-        @param_query('bar', type=float)
-        def foo(*args, **kwargs):
-            return kwargs['foo'], kwargs['bar']
-        foo = self.mock_async(foo)
-        r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(1, r[0])
-        self.assertEqual(1.5, r[1])
-
-        c.request.query_kwargs = {'foo': '1'}
-        @param_query('foo', type=int, action='blah')
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        with self.assertRaises(RuntimeError):
-            r = foo(c, **c.request.query_kwargs)
-
-        c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-        @param_query('foo', type=int, action='store_list')
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        with self.assertRaises(CallError):
-            r = foo(c, **c.request.query_kwargs)
-
-        c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-        @param_query('foo', type=int, action='append_list')
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(list(range(1, 6)), r)
-
-        c.request.query_kwargs = {'foo': '1,2,3,4'}
-        @param_query('foo', type=int, action='store_list')
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(list(range(1, 5)), r)
-
-        c.request.query_kwargs = {}
-
-        @param_query('foo', type=int, default=1, required=False)
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c)
-        self.assertEqual(1, r)
-
-        @param_query('foo', type=int, default=1, required=True)
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c)
-        self.assertEqual(1, r)
-
-        @param_query('foo', type=int, default=1)
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c)
-        self.assertEqual(1, r)
-
-        @param_query('foo', type=int)
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        with self.assertRaises(CallError):
-            r = foo(c)
-
-        c.request.query_kwargs = {'foo': '1'}
-        @param_query('foo', type=int)
-        def foo(*args, **kwargs):
-            return kwargs['foo']
-        foo = self.mock_async(foo)
-        r = foo(c, **c.request.query_kwargs)
-        self.assertEqual(1, r)
+#     def test_post_param_body(self):
+#         c = self.create_controller()
+#         c.request.method = 'POST'
+# 
+#         @param_body('foo', type=int, choices=set([1, 2, 3]))
+#         def foo(self, *args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+# 
+#         with self.assertRaises(CallError):
+#             r = foo(c)
+# 
+#         c.request.query_kwargs['foo'] = '1'
+#         with self.assertRaises(CallError):
+#             r = foo(c, **{'foo': '1'})
+# 
+#         c.request.body_kwargs = {'foo': '8'}
+#         with self.assertRaises(CallError):
+#             r = foo(c, **c.request.body_kwargs)
+# 
+#         c.request.query_kwargs = {}
+#         c.request.body_kwargs = {'foo': '1'}
+#         r = foo(c, **c.request.body_kwargs)
+#         self.assertEqual(1, r)
+# 
+#         c.request.query_kwargs = {'foo': '1'}
+#         c.request.body_kwargs = {'foo': '3'}
+#         r = foo(c, **{'foo': '3'})
+#         self.assertEqual(3, r)
+# 
+#     def test_param_query(self):
+#         c = self.create_controller()
+# 
+#         c.request.query_kwargs = {'foo': '8'}
+#         @param_query('foo', type=int, choices=set([1, 2, 3]))
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         with self.assertRaises(endpoints.CallError):
+#             r = foo(c, **c.request.query_kwargs)
+# 
+#         c.request.query_kwargs = {'foo': '1'}
+#         @param_query('foo', type=int, choices=set([1, 2, 3]))
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c, **c.request.query_kwargs)
+#         self.assertEqual(1, r)
+# 
+#         c.request.query_kwargs = {'foo': '1', 'bar': '1.5'}
+#         @param_query('foo', type=int)
+#         @param_query('bar', type=float)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo'], kwargs['bar']
+#         foo = self.mock_async(foo)
+#         r = foo(c, **c.request.query_kwargs)
+#         self.assertEqual(1, r[0])
+#         self.assertEqual(1.5, r[1])
+# 
+#         c.request.query_kwargs = {'foo': '1'}
+#         @param_query('foo', type=int, action='blah')
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         with self.assertRaises(RuntimeError):
+#             r = foo(c, **c.request.query_kwargs)
+# 
+#         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
+#         @param_query('foo', type=int, action='store_list')
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         with self.assertRaises(CallError):
+#             r = foo(c, **c.request.query_kwargs)
+# 
+#         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
+#         @param_query('foo', type=int, action='append_list')
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c, **c.request.query_kwargs)
+#         self.assertEqual(list(range(1, 6)), r)
+# 
+#         c.request.query_kwargs = {'foo': '1,2,3,4'}
+#         @param_query('foo', type=int, action='store_list')
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c, **c.request.query_kwargs)
+#         self.assertEqual(list(range(1, 5)), r)
+# 
+#         c.request.query_kwargs = {}
+# 
+#         @param_query('foo', type=int, default=1, required=False)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c)
+#         self.assertEqual(1, r)
+# 
+#         @param_query('foo', type=int, default=1, required=True)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c)
+#         self.assertEqual(1, r)
+# 
+#         @param_query('foo', type=int, default=1)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c)
+#         self.assertEqual(1, r)
+# 
+#         @param_query('foo', type=int)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         with self.assertRaises(CallError):
+#             r = foo(c)
+# 
+#         c.request.query_kwargs = {'foo': '1'}
+#         @param_query('foo', type=int)
+#         def foo(*args, **kwargs):
+#             return kwargs['foo']
+#         foo = self.mock_async(foo)
+#         r = foo(c, **c.request.query_kwargs)
+#         self.assertEqual(1, r)
 
     def test_param_size(self):
         c = self.create_controller()

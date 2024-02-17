@@ -27,8 +27,8 @@ from .utils import (
     nohttpcache,
     code_error,
     param,
-    param_query,
-    param_body,
+#     param_query,
+#     param_body,
 )
 
 from .call import (
