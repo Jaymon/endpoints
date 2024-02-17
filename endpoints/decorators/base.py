@@ -41,15 +41,20 @@ class ControllerDecorator(FuncDecorator):
             response from whatever controller method was called
     """
     def get_wrapped_method(self, func):
+        """Find the original wrapped function. This takes advantage of 
+        functool.supdate_wrapper's automatic setting of the __wrapped__ variable
+        and assumes the original func is the one that doesn't have the variable
+
+        :param func: callable, the wrapped function
+        :returns: callable, the original wrapped controller method, this can
+            mess up if the controller is wrapped with a decorator that doesn't
+            set __wrapped__ on the function
+        """
         wrapped = getattr(func, "__wrapped__", None)
         if wrapped:
             func = self.get_wrapped_method(wrapped)
 
         return func
-
-    def is_wrapped_method(self, func):
-        wrapped = getattr(func, "__wrapped__", None)
-        return True if wrapped else False
 
     def decorate(self, func, *args, **kwargs):
         """decorate the passed in func calling target when func is called

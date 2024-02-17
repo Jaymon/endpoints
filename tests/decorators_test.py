@@ -41,12 +41,13 @@ from endpoints.decorators.utils import (
 )
 
 from . import (
-    TestCase as BaseTestCase,
+#     TestCase as BaseTestCase,
     testdata,
+    IsolatedAsyncioTestCase,
 )
 
 
-class TestCase(BaseTestCase):
+class TestCase(IsolatedAsyncioTestCase):
     def create_controller(self):
         class FakeController(Controller):
             async def POST(self): pass
@@ -61,35 +62,33 @@ class TestCase(BaseTestCase):
 
 
 class ControllerDecoratorTest(TestCase):
-    def test_async_handle(self):
+    async def test_async_handle(self):
         class Dec(ControllerDecorator):
             async def handle(self, *args, **kwargs):
                 return True
 
         c = self.create_controller()
         @Dec()
-        async def afunc(self):
+        async def func(self):
             return 1
-        func = self.mock_async(afunc)
 
-        self.assertEqual(1, func(c))
+        self.assertEqual(1, await func(c))
 
-    def test_sync_handle(self):
+    async def test_sync_handle(self):
         class Dec(ControllerDecorator):
             def handle(self, *args, **kwargs):
                 return True
 
         c = self.create_controller()
         @Dec()
-        async def afunc(self):
+        async def func(self):
             return 1
-        func = self.mock_async(afunc)
 
-        self.assertEqual(1, func(c))
+        self.assertEqual(1, await func(c))
 
 
 class BackendDecoratorTest(TestCase):
-    def test_async_handle(self):
+    async def test_async_handle(self):
         class Backend(object):
             async def handle(self, *args, **kwargs):
                 return True
@@ -99,14 +98,12 @@ class BackendDecoratorTest(TestCase):
 
         c = self.create_controller()
         @Dec()
-        async def afunc(self):
+        async def func(self):
             return 1
-        func = self.mock_async(afunc)
 
+        self.assertEqual(1, await func(c))
 
-        self.assertEqual(1, func(c))
-
-    def test_sync_handle(self):
+    async def test_sync_handle(self):
         class Backend(object):
             def handle(self, *args, **kwargs):
                 return True
@@ -116,39 +113,40 @@ class BackendDecoratorTest(TestCase):
 
         c = self.create_controller()
         @Dec()
-        async def afunc(self):
+        async def func(self):
             return 1
-        func = self.mock_async(afunc)
 
-        self.assertEqual(1, func(c))
+        self.assertEqual(1, await func(c))
 
 
 class RateLimitTest(TestCase):
     def set_bearer_auth_header(self, request, access_token):
         request.set_header("authorization", 'Bearer {}'.format(access_token))
 
-    def test_throttle(self):
+    async def test_throttle(self):
         class MockObject(object):
             @ratelimit_ip(limit=3, ttl=1)
-            def foo(self): return 1
+            def foo(self):
+                return 1
 
             @ratelimit_ip(limit=10, ttl=1)
-            def bar(self): return 2
+            def bar(self):
+                return 2
 
 
         r_foo = Request()
         r_foo.set_header("X_FORWARDED_FOR", "276.0.0.1")
         r_foo.path = "/foo"
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = r_foo
 
         for x in range(3):
-            r = c.foo()
+            r = await c.foo()
             self.assertEqual(1, r)
 
         for x in range(2):
             with self.assertRaises(CallError):
-                c.foo()
+                await c.foo()
 
         # make sure another path isn't messed with by foo
         r_bar = Request()
@@ -156,38 +154,39 @@ class RateLimitTest(TestCase):
         r_bar.path = "/bar"
         c.request = r_bar
         for x in range(10):
-            r = c.bar()
+            r = await c.bar()
             self.assertEqual(2, r)
             time.sleep(0.1)
 
         with self.assertRaises(CallError):
-            c.bar()
+            await c.bar()
 
         c.request = r_foo
 
         for x in range(3):
-            r = c.foo()
+            r = await c.foo()
             self.assertEqual(1, r)
 
         for x in range(2):
             with self.assertRaises(CallError):
-                c.foo()
+                await c.foo()
 
-    def test_ratelimit_ip(self):
+    async def test_ratelimit_ip(self):
         class MockObject(object):
             @ratelimit_ip(limit=3, ttl=1)
-            def foo(self): return 1
+            def foo(self):
+                return 1
 
-        o = self.mock_async(MockObject())
+        o = MockObject()
         o.request = Request()
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
         o.request.path = "/fooip"
 
         for _ in range(3):
-            o.foo()
+            await o.foo()
 
         with self.assertRaises(CallError) as cm:
-            o.foo()
+            await o.foo()
         self.assertEqual(429, cm.exception.code)
 
         # make sure another request gets through just fine
@@ -195,32 +194,33 @@ class RateLimitTest(TestCase):
         o.request = Request()
         o.request.path = "/fooip"
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.2")
-        o.foo()
+        await o.foo()
         o.request = orig_r
 
         time.sleep(1)
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
-        r = o.foo()
+        r = await o.foo()
         self.assertEqual(1, r)
 
-    def test_ratelimit_access_token(self):
+    async def test_ratelimit_access_token(self):
         class MockObject(object):
             @ratelimit_access_token(limit=2, ttl=1)
-            def foo(self): return 1
+            def foo(self):
+                return 1
 
-        o = self.mock_async(MockObject())
+        o = MockObject()
         o.request = Request()
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.path = "/footoken"
 
         o.request.set_header("X_FORWARDED_FOR", "1.1.1.1")
-        o.foo()
+        await o.foo()
 
         o.request.set_header("X_FORWARDED_FOR", "1.1.1.2")
-        o.foo()
+        await o.foo()
 
         with self.assertRaises(CallError) as cm:
-            o.foo()
+            await o.foo()
         self.assertEqual(429, cm.exception.code)
 
         # make sure another request gets through just fine
@@ -228,48 +228,49 @@ class RateLimitTest(TestCase):
         o.request = Request()
         o.request.path = "/footoken"
         self.set_bearer_auth_header(o.request, "footoken2")
-        o.foo()
+        await o.foo()
         o.request = orig_r
 
         time.sleep(1)
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.set_header("X_FORWARDED_FOR", "1.1.1.3")
-        r = o.foo()
+        r = await o.foo()
         self.assertEqual(1, r)
 
-    def test_ratelimit_param_only(self):
+    async def test_ratelimit_param_only(self):
         class MockObject(object):
             @ratelimit_param("bar", limit=2, ttl=1)
-            def foo(self, **kwargs): return 1
+            def foo(self, **kwargs):
+                return 1
 
-        o = self.mock_async(MockObject())
+        o = MockObject()
         o.request = Request()
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.path = "/fooparam"
 
-        o.foo(bar="che")
-        o.foo(bar="che")
+        await o.foo(bar="che")
+        await o.foo(bar="che")
 
         with self.assertRaises(CallError) as cm:
-            o.foo(bar="che")
+            await o.foo(bar="che")
         self.assertEqual(429, cm.exception.code)
 
         # make sure bar not existing is not a problem
         for x in range(5):
-            self.assertEqual(1, o.foo())
+            self.assertEqual(1, await o.foo())
 
         # just make sure something else goes through just fine
         orig_r = o.request
         o.request = Request()
         o.request.path = "/fooparam"
-        o.foo(bar="baz")
+        await o.foo(bar="baz")
         o.request = orig_r
 
         time.sleep(1)
-        r = o.foo(bar="che")
+        r = await o.foo(bar="che")
         self.assertEqual(1, r)
 
-    def test_ratelimit_param_ip(self):
+    async def test_ratelimit_param_ip(self):
         def create_request(ip):
             r = Request()
             r.path = "/fooparam"
@@ -279,35 +280,35 @@ class RateLimitTest(TestCase):
 
         class MockObject(object):
             @ratelimit_param_ip("bar", limit=1, ttl=1)
-            def foo(self, **kwargs): return 1
+            def foo(self, **kwargs):
+                return 1
 
-        o = self.mock_async(MockObject())
+        o = MockObject()
         o.request = create_request("200.1.1.1")
-        o.foo(bar="che")
+        await o.foo(bar="che")
 
         with self.assertRaises(CallError) as cm:
-            o.foo(bar="che")
+            await o.foo(bar="che")
         self.assertEqual(429, cm.exception.code)
 
         # now make sure another ip address can get through
         o.request = create_request("200.1.1.2")
-        o.foo(bar="che")
+        await o.foo(bar="che")
 
         with self.assertRaises(CallError) as cm:
-            o.foo(bar="che")
+            await o.foo(bar="che")
         self.assertEqual(429, cm.exception.code)
 
         # now make sure another value makes it through
-        o.foo(bar="baz")
+        await o.foo(bar="baz")
         with self.assertRaises(CallError):
-            o.foo(bar="baz")
+            await o.foo(bar="baz")
 
         # make sure bar not existing is not a problem
         for x in range(5):
-            self.assertEqual(1, o.foo())
+            self.assertEqual(1, await o.foo())
 
-    def test_backend(self):
-
+    async def test_backend(self):
         class Backend(object):
             def handle(self, request, key, limit, ttl):
                 return False
@@ -317,53 +318,61 @@ class RateLimitTest(TestCase):
                 request = Request()
 
                 @ratelimit_ip()
-                def rl_ip(self): return 2
+                def rl_ip(self):
+                    return 2
 
                 @ratelimit_param_ip("bar")
-                def rl_param_ip(self, **kwargs): return 3
+                def rl_param_ip(self, **kwargs):
+                    return 3
 
                 @ratelimit_param("bar")
-                def rl_param(self, **kwargs): return 4
+                def rl_param(self, **kwargs):
+                    return 4
 
                 @ratelimit_access_token()
-                def rl_access_token(self): return 5
+                def rl_access_token(self):
+                    return 5
 
-            o = self.mock_async(MockObject())
-
-            with self.assertRaises(CallError):
-                o.rl_param_ip(bar=1)
+            o = MockObject()
 
             with self.assertRaises(CallError):
-                o.rl_ip()
+                await o.rl_param_ip(bar=1)
 
             with self.assertRaises(CallError):
-                o.rl_param(bar=1)
+                await o.rl_ip()
 
             with self.assertRaises(CallError):
-                o.rl_access_token()
+                await o.rl_param(bar=1)
 
-    def test_async(self):
+            with self.assertRaises(CallError):
+                await o.rl_access_token()
+
+    async def test_async(self):
         class MockObject(object):
             request = Request()
 
             @ratelimit_ip()
-            async def rl_ip(self): return 2
+            async def rl_ip(self):
+                return 2
 
             @ratelimit_param_ip("bar")
-            async def rl_param_ip(self, **kwargs): return 3
+            async def rl_param_ip(self, **kwargs):
+                return 3
 
             @ratelimit_param("bar")
-            async def rl_param(self, **kwargs): return 4
+            async def rl_param(self, **kwargs):
+                return 4
 
             @ratelimit_access_token()
-            async def rl_access_token(self): return 5
+            async def rl_access_token(self):
+                return 5
 
-        o = self.mock_async(MockObject())
+        o = MockObject()
 
-        self.assertEqual(2, o.rl_ip())
-        self.assertEqual(3, o.rl_param_ip(bar=1))
-        self.assertEqual(4, o.rl_param(bar=1))
-        self.assertEqual(5, o.rl_access_token())
+        self.assertEqual(2, await o.rl_ip())
+        self.assertEqual(3, await o.rl_param_ip(bar=1))
+        self.assertEqual(4, await o.rl_param(bar=1))
+        self.assertEqual(5, await o.rl_access_token())
 
 
 class AuthDecoratorTest(TestCase):
@@ -374,29 +383,32 @@ class AuthDecoratorTest(TestCase):
     def get_bearer_auth_header(self, access_token):
         return 'Bearer {}'.format(access_token)
 
-    def test_bad_setup(self):
+    async def test_bad_setup(self):
         class Backend(AuthBackend):
             async def handle(*args, **kwargs):
                 return False
 
         class MockObject(object):
             @auth_token(backend_class=Backend)
-            def foo_token(self): pass
+            def foo_token(self):
+                pass
 
             @auth_client(backend_class=Backend)
-            async def foo_client(self): pass
+            async def foo_client(self):
+                pass
 
             @auth_basic(backend_class=Backend)
-            def foo_basic(self): pass
+            def foo_basic(self):
+                pass
 
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = Request()
 
         for m in ["foo_token", "foo_client", "foo_basic"]: 
             with self.assertRaises(AccessDenied):
-                getattr(c, m)()
+                await getattr(c, m)()
 
-    def test_auth_token(self):
+    async def test_auth_token(self):
         class Backend(AuthBackend):
             async def auth_token(self, controller, access_token):
                 if access_token == "foo":
@@ -410,58 +422,60 @@ class AuthDecoratorTest(TestCase):
 
         class MockObject(object):
             @auth_token(backend_class=Backend)
-            def foo(self): pass
+            def foo(self):
+                pass
 
         r = Request()
 
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = r
 
         r.set_header('authorization', self.get_bearer_auth_header("foo"))
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         r.set_header('authorization', self.get_bearer_auth_header("bar"))
-        c.foo()
+        await c.foo()
 
         r = Request()
         c.request = r
 
         r.body_kwargs["access_token"] = "foo"
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         r.body_kwargs["access_token"] = "bar"
-        c.foo()
+        await c.foo()
 
         r = Request()
         c.request = r
 
         r.query_kwargs["access_token"] = "foo"
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         r.query_kwargs["access_token"] = "bar"
-        c.foo()
+        await c.foo()
 
         r.query_kwargs["access_token"] = "che"
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
-    def test_auth_client(self):
+    async def test_auth_client(self):
         class Backend(AuthBackend):
             async def auth_client(self, controller, client_id, client_secret):
                 return client_id == "foo" and client_secret == "bar"
 
         class MockObject(object):
             @auth_client(backend_class=Backend)
-            async def foo(self): pass
+            async def foo(self):
+                pass
 
         client_id = "foo"
         client_secret = "..."
         r = Request()
 
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = r
 
         r.set_header(
@@ -469,16 +483,16 @@ class AuthDecoratorTest(TestCase):
             self.get_basic_auth_header(client_id, client_secret)
         )
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         client_secret = "bar"
         r.set_header(
             'authorization',
             self.get_basic_auth_header(client_id, client_secret)
         )
-        c.foo()
+        await c.foo()
 
-    def test_auth_basic_simple(self):
+    async def test_auth_basic_simple(self):
         class Backend(AuthBackend):
             async def auth_basic(self, controller, username, password):
                 if username == "foo":
@@ -492,12 +506,13 @@ class AuthDecoratorTest(TestCase):
 
         class MockObject(object):
             @auth_basic(backend_class=Backend)
-            async def foo(self): pass
+            async def foo(self):
+                pass
 
         username = "foo"
         password = "..."
         r = Request()
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = r
 
         r.set_header(
@@ -505,14 +520,14 @@ class AuthDecoratorTest(TestCase):
             self.get_basic_auth_header(username, password)
         )
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         username = "bar"
         r.set_header(
             'authorization',
             self.get_basic_auth_header(username, password)
         )
-        c.foo()
+        await c.foo()
 
         username = "che"
         r.set_header(
@@ -520,9 +535,9 @@ class AuthDecoratorTest(TestCase):
             self.get_basic_auth_header(username, password)
         )
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
-    def test_auth_basic_same_kwargs(self):
+    async def test_auth_basic_same_kwargs(self):
         class Backend(AuthBackend):
             async def auth_basic(self, controller, username, password):
                 if username == "foo":
@@ -536,21 +551,24 @@ class AuthDecoratorTest(TestCase):
 
         class MockObject(object):
             @auth_basic(backend_class=Backend)
-            async def foo(self, **kwargs): return 1
+            async def foo(self, **kwargs):
+                return 1
 
-        c = self.mock_async(MockObject())
+        c = MockObject()
         username = "bar"
         password = "..."
         r = Request()
-        r.set_header('authorization', self.get_basic_auth_header(username, password))
+        r.set_header(
+            'authorization',
+            self.get_basic_auth_header(username, password)
+        )
         c.request = r
 
         # if no TypeError is raised then it worked :)
-        r = c.foo(request="this_should_error_out")
+        r = await c.foo(request="this_should_error_out")
         self.assertEqual(1, r)
 
-
-    def test_auth_extend(self):
+    async def test_auth_extend(self):
         class Backend(AuthBackend):
             async def auth(self, controller, controller_args, controller_kwargs):
                 if controller.request.body_kwargs["foo"] == "bar":
@@ -567,40 +585,40 @@ class AuthDecoratorTest(TestCase):
 
         class MockObject(object):
             @auth(backend_class=Backend)
-            def foo(self): pass
+            def foo(self):
+                pass
 
         r = Request()
-        c = self.mock_async(MockObject())
+        c = MockObject()
         c.request = r
 
         r.body_kwargs = {"foo": "che"}
         with self.assertRaises(AccessDenied):
-            c.foo()
+            await c.foo()
 
         r.body_kwargs = {"foo": "bar"}
-        c.foo()
+        await c.foo()
 
 
 class CacheTest(TestCase):
-    def test_httpcache(self):
+    async def test_httpcache(self):
         c = self.create_controller()
 
         @httpcache(500)
-        async def afunc(self): pass
-        func = self.mock_async(afunc)
+        async def func(self):
+            pass
 
-        func(c)
+        await func(c)
         h = c.response.get_header("Cache-Control")
         self.assertTrue("max-age=500" in h)
 
-    def test_nohttpcache(self):
+    async def test_nohttpcache(self):
         c = self.create_controller()
 
         @nohttpcache
-        async def afunc(self): pass
-        func = self.mock_async(afunc)
+        async def func(self): pass
 
-        func(c)
+        await func(c)
         h = c.response.get_header("Cache-Control")
         self.assertTrue("no-cache" in h)
 
@@ -609,16 +627,15 @@ class CacheTest(TestCase):
 
 
 class CodeErrorTest(TestCase):
-    def test_code_error(self):
+    async def test_code_error(self):
         c = self.create_controller()
 
         @code_error(413, IOError)
         async def func(self):
             raise IOError()
-        func = self.mock_async(func)
 
         with self.assertRaises(CallError) as e:
-            func(c)
+            await func(c)
             self.assertEqual(413, e.code)
 
     def test_raise(self):
@@ -720,7 +737,11 @@ class ParamTest(TestCase):
             "    return datetime.datetime.strptime(dts, '%Y-%m-%d')",
             "",
             "class Foo(Controller):",
-            "    @param('dt', regex=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$', type=parse)",
+            "    @param(",
+            "        'dt',",
+            "        regex=r'^[0-9]{4}-[0-9]{2}-[0-9]{2}$',",
+            "        type=parse",
+            "    )",
             "    def GET(self, **kwargs):",
             "        return kwargs['dt']",
             "",
@@ -731,28 +752,26 @@ class ParamTest(TestCase):
         self.assertEqual(res._body.month, 1)
         self.assertEqual(res._body.day, 1)
 
-    def test_append_list_choices(self):
+    async def test_append_list_choices(self):
         c = self.create_controller()
 
         @param('foo', action="append_list", type=int, choices=[1, 2])
         def foo(self, *args, **kwargs):
             return kwargs["foo"]
-        foo = self.mock_async(foo)
 
-        #r = foo(c, **{'foo': "1,2"})
-        r = foo(c, foo="1,2")
+        r = await foo(c, foo="1,2")
         self.assertEqual([1, 2], r)
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': "1,2,3"})
+            await foo(c, **{'foo': "1,2,3"})
 
-        r = foo(c, **{'foo': 1})
+        r = await foo(c, **{'foo': 1})
         self.assertEqual([1], r)
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': 3})
+            await foo(c, **{'foo': 3})
 
-    def test_param_dest(self):
+    async def test_param_dest(self):
         """make sure the dest=... argument works"""
         # https://docs.python.org/2/library/argparse.html#dest
         c = self.create_controller()
@@ -760,78 +779,72 @@ class ParamTest(TestCase):
         @param('foo', dest='bar')
         def foo(self, *args, **kwargs):
             return kwargs.get('bar')
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 1})
+        r = await foo(c, **{'foo': 1})
         self.assertEqual(1, r)
 
-    def test_param_multiple_names(self):
+    async def test_param_multiple_names(self):
         c = self.create_controller()
 
         @param('foo', 'foos', 'foo3', type=int)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 1})
+        r = await foo(c, **{'foo': 1})
         self.assertEqual(1, r)
 
-        r = foo(c, **{'foos': 2})
+        r = await foo(c, **{'foos': 2})
         self.assertEqual(2, r)
 
-        r = foo(c, **{'foo3': 3})
+        r = await foo(c, **{'foo3': 3})
         self.assertEqual(3, r)
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo4': 0})
+            await foo(c, **{'foo4': 0})
 
-    def test_param_callable_default(self):
+    async def test_param_callable_default(self):
         c = self.create_controller()
 
         @param('foo', default=time.time)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
         start = time.time()
-        r1 = foo(c, **{})
+        r1 = await foo(c, **{})
         self.assertLess(start, r1)
 
         time.sleep(0.1)
-        r2 = foo(c, **{})
+        r2 = await foo(c, **{})
         self.assertLess(r1, r2)
 
-    def test_param_not_required(self):
+    async def test_param_not_required(self):
         c = self.create_controller()
 
         @param('foo', required=False)
         def foo(self, *args, **kwargs):
             return 'foo' in kwargs
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 1})
+        r = await foo(c, **{'foo': 1})
         self.assertTrue(r)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertFalse(r)
 
         @param('foo', required=False, default=5)
         def foo(self, *args, **kwargs):
             return 'foo' in kwargs
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertTrue(r)
 
         @param('foo', type=int, required=False)
         def foo(self, *args, **kwargs):
             return 'foo' in kwargs
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertFalse(r)
 
-    def test_param_unicode(self):
+    async def test_param_unicode(self):
         c = self.create_controller()
         r = Request()
         r.set_header("content-type", "application/json;charset=UTF-8")
@@ -841,351 +854,203 @@ class ParamTest(TestCase):
         @param('foo', type=str)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
-        words = testdata.get_unicode_words()
-        ret = foo(c, **{"foo": words})
+        words = self.get_unicode_words()
+        ret = await foo(c, **{"foo": words})
         self.assertEqual(String(ret), String(words))
 
-    def test_param_1(self):
+    async def test_param_1(self):
         c = self.create_controller()
 
         @param('foo', type=int)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': 0})
+            r = await foo(c, **{'foo': 0})
 
         @param('foo', default=0)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(0, r)
 
         @param('foo', type=int, choices=set([1, 2, 3]))
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
 
         c.request.method = 'POST'
         c.request.body_kwargs = {'foo': '1'}
-        r = foo(c, **c.request.body_kwargs)
+        r = await foo(c, **c.request.body_kwargs)
         self.assertEqual(1, r)
 
         c.request.body_kwargs = {}
-        r = foo(c, **{'foo': '2'})
+        r = await foo(c, **{'foo': '2'})
         self.assertEqual(2, r)
 
-#     def test_post_param_body(self):
-#         c = self.create_controller()
-#         c.request.method = 'POST'
-# 
-#         @param_body('foo', type=int, choices=set([1, 2, 3]))
-#         def foo(self, *args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-# 
-#         with self.assertRaises(CallError):
-#             r = foo(c)
-# 
-#         c.request.query_kwargs['foo'] = '1'
-#         with self.assertRaises(CallError):
-#             r = foo(c, **{'foo': '1'})
-# 
-#         c.request.body_kwargs = {'foo': '8'}
-#         with self.assertRaises(CallError):
-#             r = foo(c, **c.request.body_kwargs)
-# 
-#         c.request.query_kwargs = {}
-#         c.request.body_kwargs = {'foo': '1'}
-#         r = foo(c, **c.request.body_kwargs)
-#         self.assertEqual(1, r)
-# 
-#         c.request.query_kwargs = {'foo': '1'}
-#         c.request.body_kwargs = {'foo': '3'}
-#         r = foo(c, **{'foo': '3'})
-#         self.assertEqual(3, r)
-# 
-#     def test_param_query(self):
-#         c = self.create_controller()
-# 
-#         c.request.query_kwargs = {'foo': '8'}
-#         @param_query('foo', type=int, choices=set([1, 2, 3]))
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         with self.assertRaises(endpoints.CallError):
-#             r = foo(c, **c.request.query_kwargs)
-# 
-#         c.request.query_kwargs = {'foo': '1'}
-#         @param_query('foo', type=int, choices=set([1, 2, 3]))
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c, **c.request.query_kwargs)
-#         self.assertEqual(1, r)
-# 
-#         c.request.query_kwargs = {'foo': '1', 'bar': '1.5'}
-#         @param_query('foo', type=int)
-#         @param_query('bar', type=float)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo'], kwargs['bar']
-#         foo = self.mock_async(foo)
-#         r = foo(c, **c.request.query_kwargs)
-#         self.assertEqual(1, r[0])
-#         self.assertEqual(1.5, r[1])
-# 
-#         c.request.query_kwargs = {'foo': '1'}
-#         @param_query('foo', type=int, action='blah')
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         with self.assertRaises(RuntimeError):
-#             r = foo(c, **c.request.query_kwargs)
-# 
-#         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-#         @param_query('foo', type=int, action='store_list')
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         with self.assertRaises(CallError):
-#             r = foo(c, **c.request.query_kwargs)
-# 
-#         c.request.query_kwargs = {'foo': ['1,2,3,4', '5']}
-#         @param_query('foo', type=int, action='append_list')
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c, **c.request.query_kwargs)
-#         self.assertEqual(list(range(1, 6)), r)
-# 
-#         c.request.query_kwargs = {'foo': '1,2,3,4'}
-#         @param_query('foo', type=int, action='store_list')
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c, **c.request.query_kwargs)
-#         self.assertEqual(list(range(1, 5)), r)
-# 
-#         c.request.query_kwargs = {}
-# 
-#         @param_query('foo', type=int, default=1, required=False)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c)
-#         self.assertEqual(1, r)
-# 
-#         @param_query('foo', type=int, default=1, required=True)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c)
-#         self.assertEqual(1, r)
-# 
-#         @param_query('foo', type=int, default=1)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c)
-#         self.assertEqual(1, r)
-# 
-#         @param_query('foo', type=int)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         with self.assertRaises(CallError):
-#             r = foo(c)
-# 
-#         c.request.query_kwargs = {'foo': '1'}
-#         @param_query('foo', type=int)
-#         def foo(*args, **kwargs):
-#             return kwargs['foo']
-#         foo = self.mock_async(foo)
-#         r = foo(c, **c.request.query_kwargs)
-#         self.assertEqual(1, r)
-
-    def test_param_size(self):
+    async def test_param_size(self):
         c = self.create_controller()
 
         @param('foo', type=int, min_size=100)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': 0})
-        r = foo(c, **{'foo': 200})
+            await foo(c, **{'foo': 0})
+        r = await foo(c, **{'foo': 200})
         self.assertEqual(200, r)
 
         @param('foo', type=int, max_size=100)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': 200})
-        r = foo(c, **{'foo': 20})
+            await foo(c, **{'foo': 200})
+        r = await foo(c, **{'foo': 20})
         self.assertEqual(20, r)
 
         @param('foo', type=int, min_size=100, max_size=200)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
-        r = foo(c, **{'foo': 120})
+        r = await foo(c, **{'foo': 120})
         self.assertEqual(120, r)
 
         @param('foo', type=str, min_size=2, max_size=4)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
-        r = foo(c, **{'foo': 'bar'})
+        r = await foo(c, **{'foo': 'bar'})
         self.assertEqual('bar', r)
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': 'barbar'})
+            await foo(c, **{'foo': 'barbar'})
 
-    def test_param_lambda_type(self):
+    async def test_param_lambda_type(self):
         c = self.create_controller()
 
         @param('foo', type=lambda x: x.upper())
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
-        r = foo(c, **{'foo': 'bar'})
+        r = await foo(c, **{'foo': 'bar'})
         self.assertEqual('BAR', r)
 
-    def test_param_empty_default(self):
+    async def test_param_empty_default(self):
         c = self.create_controller()
 
         @param('foo', default=None)
         def foo(self, *args, **kwargs):
             return kwargs.get('foo')
-        foo = self.mock_async(foo)
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(None, r)
 
-    def test_param_reference_default(self):
+    async def test_param_reference_default(self):
         c = self.create_controller()
 
         @param('foo', default={})
         def foo(self, *args, **kwargs):
             kwargs['foo'][testdata.get_ascii()] = testdata.get_ascii()
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(1, len(r))
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(1, len(r))
 
         @param('foo', default=[])
         def foo(self, *args, **kwargs):
             kwargs['foo'].append(testdata.get_ascii())
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(1, len(r))
 
-        r = foo(c, **{})
+        r = await foo(c, **{})
         self.assertEqual(1, len(r))
 
-    def test_param_regex(self):
+    async def test_param_regex(self):
         c = self.create_controller()
 
         @param('foo', regex=r"^\S+@\S+$")
         def foo(self, *args, **kwargs):
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 'foo@bar.com'})
+        r = await foo(c, **{'foo': 'foo@bar.com'})
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': ' foo@bar.com'})
+            r = await foo(c, **{'foo': ' foo@bar.com'})
 
-        @endpoints.decorators.param('foo', regex=re.compile(r"^\S+@\S+$", re.I))
+        @param('foo', regex=re.compile(r"^\S+@\S+$", re.I))
         def foo(self, *args, **kwargs):
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 'foo@bar.com'})
+        r = await foo(c, **{'foo': 'foo@bar.com'})
 
         with self.assertRaises(CallError):
-            r = foo(c, **{'foo': ' foo@bar.com'})
+            await foo(c, **{'foo': ' foo@bar.com'})
 
-    def test_param_bool(self):
+    async def test_param_bool(self):
         c = self.create_controller()
 
         @param('foo', type=bool, allow_empty=True)
         def foo(self, *args, **kwargs):
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': 'true'})
+        r = await foo(c, **{'foo': 'true'})
         self.assertEqual(True, r)
 
-        r = foo(c, **{'foo': 'True'})
+        r = await foo(c, **{'foo': 'True'})
         self.assertEqual(True, r)
 
-        r = foo(c, **{'foo': '1'})
+        r = await foo(c, **{'foo': '1'})
         self.assertEqual(True, r)
 
-        r = foo(c, **{'foo': 'false'})
+        r = await foo(c, **{'foo': 'false'})
         self.assertEqual(False, r)
 
-        r = foo(c, **{'foo': 'False'})
+        r = await foo(c, **{'foo': 'False'})
         self.assertEqual(False, r)
 
-        r = foo(c, **{'foo': '0'})
+        r = await foo(c, **{'foo': '0'})
         self.assertEqual(False, r)
 
         @param('bar', type=bool, require=True)
         def bar(self, *args, **kwargs):
             return kwargs['bar']
-        bar = self.mock_async(bar)
 
-        r = bar(c, **{'bar': 'False'})
+        r = await bar(c, **{'bar': 'False'})
         self.assertEqual(False, r)
 
-    def test_param_list(self):
+    async def test_param_list(self):
         c = self.create_controller()
 
         @param('foo', type=list)
         def foo(self, *args, **kwargs):
             return kwargs['foo']
-        foo = self.mock_async(foo)
 
-        r = foo(c, **{'foo': ['bar', 'baz']})
+        r = await foo(c, **{'foo': ['bar', 'baz']})
         self.assertEqual(r, ['bar', 'baz'])
 
-    def test_param_arg(self):
+    async def test_param_arg(self):
         """Make sure positional args work"""
         c = self.create_controller()
 
         @param(0)
         def foo(self, *args, **kwargs):
             return list(args)
-        foo = self.mock_async(foo)
 
-        r = foo(c, 1)
+        r = await foo(c, 1)
         self.assertEqual([1], r)
 
         with self.assertRaises(CallError):
-            foo(c)
+            await foo(c)
 
         @param(0, type=str)
         @param(1, default=20, type=int)
         def foo(self, *args, **kwargs):
             return list(args)
-        foo = self.mock_async(foo)
 
-        r = foo(c, 1)
+        r = await foo(c, 1)
         self.assertEqual(["1", 20], r)
 
-        r = foo(c, 1, 2)
+        r = await foo(c, 1, 2)
         self.assertEqual(["1", 2], r)
 
         @param(0, type=str)
@@ -1194,15 +1059,14 @@ class ParamTest(TestCase):
         def foo(self, *args, **kwargs):
             r = list(args) + [kwargs["foo"]]
             return r
-        foo = self.mock_async(foo)
 
-        r = foo(c, 1, 2, foo="che")
+        r = await foo(c, 1, 2, foo="che")
         self.assertEqual(["1", 2, "che"], r)
 
-        r = foo(c, 1, foo="che")
+        r = await foo(c, 1, foo="che")
         self.assertEqual(["1", 20, "che"], r)
 
-        r = foo(c, 1)
+        r = await foo(c, 1)
         self.assertEqual(["1", 20, "bar"], r)
 
 

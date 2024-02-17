@@ -24,6 +24,7 @@ from datatypes import (
     Dirpath,
     ReflectModule,
     DictTree,
+    Profiler,
 )
 
 from .compat import *
@@ -40,8 +41,6 @@ from .utils import (
 logger = logging.getLogger(__name__)
 
 
-
-
 class Param(object):
     """Check a value against criteria
 
@@ -50,10 +49,12 @@ class Param(object):
     :example:
 
         p = Param('name', type=int, action='store_list')
+        args, kwargs = p.handle(args, kwargs)
 
-    Check .__init__ to see what you can pass into the contructor
+    Check .__init__ to see what you can pass into the contructor. Check the
+    decorators.utils.param to see how this is used
     """
-    encoding = "UTF-8"
+    encoding = environ.ENCODING
 
     def __init__(self, *names, **flags):
         """
@@ -363,12 +364,6 @@ class Param(object):
                         )
                     )
 
-        # TODO -- looks like this has been fixed in python 3
-        # at some point this if statement is just going to be too ridiculous
-        # FieldStorage check is because of this bug
-        # https://bugs.python.org/issue19097
-#         if not isinstance(val, cgi.FieldStorage):
-
         if not allow_empty and val is not False and not val:
             if 'default' not in flags:
                 raise ValueError("param was empty")
@@ -396,20 +391,6 @@ class Param(object):
                 raise ValueError("param was bigger than {}".format(max_size))
 
         return val
-
-
-
-
-
-
-
-
-
-
-
-
-
-
 
 
 class Router(object):
@@ -1065,28 +1046,20 @@ class Controller(object):
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""
-        if not self.logger.isEnabledFor(logging.INFO): return
+        if not self.logger.isEnabledFor(logging.INFO):
+            return
 
         try:
             req = self.request
-            uuid = getattr(req, "uuid", "")
-            if uuid:
+            if uuid := getattr(req, "uuid", ""):
                 uuid += " "
 
-            if req.query:
-                self.logger.info("Request {}method: {} {}?{}".format(
-                    uuid,
-                    req.method,
-                    req.path,
-                    req.query
-                ))
-
-            else:
-                self.logger.info("Request {}method: {} {}".format(
-                    uuid,
-                    req.method,
-                    req.path
-                ))
+            self.logger.info("Request {}{} {}{}".format(
+                uuid,
+                req.method,
+                req.path,
+                f"?{req.query}" if req.query else "",
+            ))
 
             self.logger.info("Request {}date: {}".format(
                 uuid,
@@ -1133,29 +1106,34 @@ class Controller(object):
         this is separate from log_start so it can be easily overridden in
         children
         """
-        if not self.logger.isEnabledFor(logging.DEBUG): return
+        if not self.logger.isEnabledFor(logging.DEBUG):
+            return
 
         req = self.request
-        uuid = getattr(req, "uuid", "")
-        if uuid:
+        if uuid := getattr(req, "uuid", ""):
             uuid += " "
 
-        if req.has_body():
-            try:
+        try:
+            if req.has_body():
                 self.logger.debug(
                     "Request {}body: {}".format(uuid, req.body_kwargs)
                 )
 
-            except Exception:
+            elif req.is_post():
                 self.logger.debug(
-                    "Request {}body raw: {}".format(uuid, req.body)
+                    "Request {}body: <EMPTY>".format(uuid)
                 )
-                #logger.debug("RAW REQUEST: {}".format(req.raw_request))
-                raise
+
+        except Exception:
+            self.logger.debug(
+                "Request {}body raw: {}".format(uuid, req.body)
+            )
+            raise
 
     def log_stop(self, start):
         """log a summary line on how the request went"""
-        if not self.logger.isEnabledFor(logging.INFO): return
+        if not self.logger.isEnabledFor(logging.INFO):
+            return
 
         res = self.response
         req = self.request
@@ -1166,16 +1144,18 @@ class Controller(object):
             self.logger.info("Response {}header {}: {}".format(uuid, k, v))
 
         stop = time.time()
-        def get_elapsed(start, stop, multiplier, rnd):
-            return round(abs(stop - start) * float(multiplier), rnd)
-        elapsed = get_elapsed(start, stop, 1000.00, 1)
-        total = "%0.1f ms" % (elapsed)
-        self.logger.info("Response {}{} {} in {}".format(
-            uuid,
-            self.response.code,
-            self.response.status,
-            total
-        ))
+
+        self.logger.info(
+            "Response {}{} {} in {} for Request {} {}{}".format(
+                uuid,
+                self.response.code,
+                self.response.status,
+                Profiler.get_output(start, stop),
+                req.method,
+                req.path,
+                f"?{req.query}" if req.query else "",
+            )
+        )
 
 
 class Call(object):
@@ -1571,8 +1551,20 @@ class Request(Call):
         return v
 
     def is_method(self, method):
-        """return True if the request method matches the passed in method"""
+        """return True if the request method matches the passed in method
+
+        :param method: str, something like "GET" or "POST"
+        :return: bool
+        """
         return self.method.upper() == method.upper()
+
+    def is_get(self):
+        """Return true if the request is a GET request"""
+        return self.is_method("GET")
+
+    def is_post(self):
+        """Return True if the request is a POST request"""
+        return self.is_method("POST")
 
     def has_body(self):
         #return self.method.upper() in set(['POST', 'PUT'])

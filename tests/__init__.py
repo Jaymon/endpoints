@@ -2,6 +2,7 @@
 import asyncio
 
 import testdata
+from testdata import IsolatedAsyncioTestCase as BaseAsyncTestCase
 
 from endpoints.config import environ
 from endpoints.interface.base import BaseApplication
@@ -150,4 +151,8 @@ class TestCase(testdata.TestCase):
 
     def create_application(self, *args, **kwargs):
         return self.application_class(*args, **kwargs)
+
+
+class IsolatedAsyncioTestCase(BaseAsyncTestCase, TestCase):
+    pass
 
