@@ -390,26 +390,37 @@ class BaseApplication(ApplicationABC):
         :returns: Controller, this Controller instance should be able to handle
             the request
         """
-        try:
-            request.controller_info = self.find_controller_info(
-                request,
-                **kwargs
-            )
+        request.controller_info = self.find_controller_info(
+            request,
+            **kwargs
+        )
 
-        except (ImportError, AttributeError, TypeError) as e:
-            raise CallError(
-                404,
-                "Path {} could not resolve to a controller".format(
-                    request.path,
-                ) 
-            ) from e
+        controller = request.controller_info['class'](
+            request,
+            response,
+            **kwargs
+        )
 
-        else:
-            controller = request.controller_info['class'](
-                request,
-                response,
-                **kwargs
-            )
+#         try:
+#             request.controller_info = self.find_controller_info(
+#                 request,
+#                 **kwargs
+#             )
+# 
+#         except (ImportError, AttributeError, TypeError) as e:
+#             raise CallError(
+#                 404,
+#                 "Path {} could not resolve to a controller".format(
+#                     request.path,
+#                 ) 
+#             ) from e
+# 
+#         else:
+#             controller = request.controller_info['class'](
+#                 request,
+#                 response,
+#                 **kwargs
+#             )
 
         return controller
 
@@ -501,82 +512,88 @@ class BaseApplication(ApplicationABC):
             e_msg = String(e)
             controller_info = req.controller_info
 
-            # filter out TypeErrors raised from non handler methods
-            correct_prefix = controller_info["method_name"] in e_msg
-            if correct_prefix and 'argument' in e_msg:
-                # there are subtle messaging differences between py2 and py3
-                errs = [
-                    "takes exactly",
-                    "takes no arguments",
-                    "positional argument"
-                ]
-                if (
-                    errs[0] in e_msg
-                    or errs[1] in e_msg
-                    or errs[2] in e_msg
-                ):
-                    # TypeError: <METHOD>() takes exactly M argument (N given)
-                    # TypeError: <METHOD>() takes no arguments (N given)
-                    # TypeError: <METHOD>() takes M positional arguments but N
-                    #   were given
-                    # TypeError: <METHOD>() takes 1 positional argument but N
-                    #   were given
-                    # we shouldn't ever get the "takes no arguments" case
-                    # because of self, but just in case check if there are
-                    # path args, if there are then 404, if not then 405
-                    #logger.debug(e_msg, exc_info=True)
-                    logger.debug(e_msg)
+            if controller_info:
+                # filter out TypeErrors raised from non handler methods
+                correct_prefix = controller_info["method_name"] in e_msg
+                if correct_prefix and 'argument' in e_msg:
+                    # there are subtle messaging differences between py2 and py3
+                    errs = [
+                        "takes exactly",
+                        "takes no arguments",
+                        "positional argument"
+                    ]
+                    if (
+                        errs[0] in e_msg
+                        or errs[1] in e_msg
+                        or errs[2] in e_msg
+                    ):
+                        # TypeError: <METHOD>() takes exactly M argument (N
+                        #   given)
+                        # TypeError: <METHOD>() takes no arguments (N given)
+                        # TypeError: <METHOD>() takes M positional arguments
+                        #   but N were given
+                        # TypeError: <METHOD>() takes 1 positional argument but
+                        #   N were given
+                        # we shouldn't ever get the "takes no arguments" case
+                        # because of self, but just in case check if there are
+                        # path args, if there are then 404, if not then 405
+                        #logger.debug(e_msg, exc_info=True)
+                        logger.debug(e_msg)
 
-                    if len(controller_info["method_args"]):
-                        res.code = 404
+                        if len(controller_info["method_args"]):
+                            res.code = 404
+
+                        else:
+                            res.code = 405
+
+                    elif "unexpected keyword argument" in e_msg:
+                        # TypeError: <METHOD>() got an unexpected keyword
+                        # argument '<NAME>'
+
+                        try:
+                            # if the binding of just the *args works then the
+                            # problem is the **kwargs so a 405 is appropriate,
+                            # otherwise return a 404
+                            inspect.getcallargs(
+                                controller_info["method"],
+                                *controller_info["method_args"]
+                            )
+                            res.code = 405
+
+                            logger.warning("Controller method {}.{}.{}".format(
+                                controller_info['module_name'],
+                                controller_info['class_name'],
+                                e_msg
+                            ))
+
+                        except TypeError:
+                            res.code = 404
+
+                    elif "multiple values" in e_msg:
+                        # TypeError: <METHOD>() got multiple values for keyword
+                        # argument '<NAME>'
+                        try:
+                            inspect.getcallargs(
+                                controller_info["method"],
+                                *controller_info["method_args"]
+                            )
+                            res.code = 409
+                            logger.warning(e)
+
+                        except TypeError:
+                            res.code = 404
 
                     else:
-                        res.code = 405
-
-                elif "unexpected keyword argument" in e_msg:
-                    # TypeError: <METHOD>() got an unexpected keyword argument
-                    # '<NAME>'
-
-                    try:
-                        # if the binding of just the *args works then the
-                        # problem is the **kwargs so a 405 is appropriate,
-                        # otherwise return a 404
-                        inspect.getcallargs(
-                            controller_info["method"],
-                            *controller_info["method_args"]
-                        )
-                        res.code = 405
-
-                        logger.warning("Controller method {}.{}.{}".format(
-                            controller_info['module_name'],
-                            controller_info['class_name'],
-                            e_msg
-                        ))
-
-                    except TypeError:
-                        res.code = 404
-
-                elif "multiple values" in e_msg:
-                    # TypeError: <METHOD>() got multiple values for keyword
-                    # argument '<NAME>'
-                    try:
-                        inspect.getcallargs(
-                            controller_info["method"],
-                            *controller_info["method_args"]
-                        )
-                        res.code = 409
-                        logger.warning(e)
-
-                    except TypeError:
-                        res.code = 404
+                        res.code = 500
+                        logger.exception(e)
 
                 else:
                     res.code = 500
                     logger.exception(e)
 
             else:
-                res.code = 500
-                logger.exception(e)
+                res.code = 404
+                logger.warning(e)
 
         else:
             res.code = 500
