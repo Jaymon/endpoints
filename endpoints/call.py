@@ -8,6 +8,7 @@ import json
 import re
 import io
 import sys
+from collections import defaultdict
 
 from .compat import *
 from .utils import AcceptHeader
@@ -784,6 +785,18 @@ class Controller(object):
 
     @classmethod
     def get_module_path_args(cls, controller_prefixes=None):
+        """Get the path args that represent the module portion of a requested
+        path
+
+        :param controller_prefixes: list[str], a list of the controller
+            prefixes, these are used to decide which part of a module path is
+            actually a path that can be requestable. if a prefix begins with a
+            period then it represents the end of the controller prefix path (eg
+            .che on a module path of foo.bar.che.boo would strip foo.bar.che
+            and return boo as the path)
+        :returns: list[str], a list of path args that are needed to request this
+            controller
+        """
         path_args = []
         path = modpath = cls.__module__
         controller_prefixes = controller_prefixes or []
@@ -807,6 +820,14 @@ class Controller(object):
 
     @classmethod
     def get_class_path_args(cls, default_class_name=""):
+        """Similar to .get_module_path_args but returns the class portion of the
+        path
+
+        :param default_class_name: str, the name of the default class that would
+            not factor into the path
+        :returns: list[str], the class portion of a full set of requestable path
+            args
+        """
         path_args = []
         class_name = cls.__name__ # TODO: use __qualname__ instead? 
 
@@ -817,6 +838,16 @@ class Controller(object):
 
     @classmethod
     def get_method_names(cls, method_prefix):
+        """An HTTP method (eg GET or POST) needs to be handled by a controller
+        class. So a controller can have a method named GET and that will be
+        called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
+        there can actually be multiple methods defined that all start with
+        <HTTP-METHOD> (eg, GET_1, GET_2, etc), this method returns all the
+        methods that begin with the method_prefix
+
+        :param method_prefix: str, something like GET, POST, PUT, etc
+        :returns: set[str], a set of method names starting with method_prefix
+        """
         method_names = set()
 
         members = inspect.getmembers(cls)
@@ -923,7 +954,92 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def handle(self, *controller_args, **controller_kwargs):
+    async def handle(
+        self,
+        controller_method_names,
+        *controller_args,
+        **controller_kwargs
+    ):
+        """handles the request and sets the response
+
+        This should set any response information directly onto self.response
+
+        This method relies on .request.controller_info being populated
+
+        :param *controller_args: tuple, the path arguments that will be passed
+            to the request handling method (eg, GET, POST)
+        :param **controller_kwargs: dict, the query and body params merged
+            together
+        """
+        if self.cors:
+            self.handle_cors()
+
+        self.prepare_response()
+
+        req = self.request
+        res = self.response
+        exceptions = defaultdict(list)
+
+        for controller_method_name in controller_method_names:
+            controller_method = getattr(self, controller_method_name)
+
+            req.controller_info["method_name"] = controller_method_name
+            req.controller_info["method"] = controller_method
+
+            try:
+                self.logger.debug("Request Controller method: {}:{}.{}".format(
+                    req.controller_info['module_name'],
+                    req.controller_info['class_name'],
+                    controller_method_name
+                ))
+
+                # we use the inspect method here instead of asyncio.iscoroutine
+                # because the controller method can return a generator and
+                # the asyncio function thinks any generator is a coroutine
+                # https://docs.python.org/3/library/asyncio-task.html#asyncio.iscoroutine
+                if inspect.iscoroutinefunction(controller_method):
+                    res.body = await controller_method(
+                        *controller_args,
+                        **controller_kwargs
+                    )
+
+                else:
+                    res.body = controller_method(
+                        *controller_args,
+                        **controller_kwargs
+                    )
+
+#                 body = controller_method(
+#                     *controller_args,
+#                     **controller_kwargs
+#                 )
+#                 pout.v(body)
+#                 pout.v(asyncio.iscoroutine(body))
+#                 while asyncio.iscoroutine(body):
+#                     body = await body
+# 
+#                 res.body = body
+
+                exceptions = []
+                break
+
+            except Exception as e:
+                exceptions[e.__class__.__name__].append(e)
+
+        if exceptions:
+            if len(exceptions) == 1:
+                raise list(exceptions.values())[0][0]
+
+            else:
+                raise CallError(
+                    400,
+                    "Could not find a method to satisfy {} {}".format(
+                        req.method,
+                        req.path
+                    )
+                )
+
+    async def xhandle(self, *controller_args, **controller_kwargs):
         """handles the request and returns the response
 
         This should set any response information directly onto self.response
@@ -1033,74 +1149,6 @@ class Controller(object):
         :param **kwargs: dict, any other information that might be handy
         """
         pass
-
-#     def find_methods(self):
-#         """Find the methods that could satisfy this request
-# 
-#         This will go through and find any method that starts with the
-#         request.method, so if the request was GET /foo then this would find any
-#         methods that start with GET
-# 
-#         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
-# 
-#         :returns: list of tuples (method_name, method), all the found methods
-#         """
-#         methods = []
-#         req = self.request
-#         controller_info = req.controller_info
-#         method_name = controller_info["method_prefix"]
-#         method_names = set()
-# 
-#         members = inspect.getmembers(self)
-#         for member_name, member in members:
-#             if member_name.startswith(method_name):
-#                 if member:
-#                     methods.append((member_name, member))
-#                     method_names.add(member_name)
-# 
-#         if len(methods) == 0:
-#             fallback_method_name = controller_info["method_fallback"]
-#             any_method = getattr(self, fallback_method_name, "")
-#             if any_method:
-#                 methods.append((fallback_method_name, any_method))
-# 
-#             else:
-#                 if len(controller_info["method_args"]):
-#                     # if we have method args and we don't have a method to even
-#                     # answer the request it should be a 404 since the path is
-#                     # invalid
-#                     raise CallError(
-#                         404,
-#                         "Could not find a {} method for path {}".format(
-#                             method_name,
-#                             req.path,
-#                         )
-#                     )
-# 
-#                 else:
-#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                     # and 501 (Not Implemented) if the method is unrecognized or
-#                     # not implemented by the origin server
-#                     self.logger.warning(
-#                         "No methods to handle {} found".format(method_name)
-#                     )
-#                     raise CallError(
-#                         501,
-#                         "{} {} not implemented".format(req.method, req.path)
-#                     )
-# 
-#         elif len(methods) > 1 and method_name in method_names:
-#             raise ValueError(
-#                 " ".join([
-#                     f"A multi method {method_name} request should not have any",
-#                     f"methods named {method_name}. Instead, all {method_name}",
-#                     "methods should use use an appropriate decorator like",
-#                     "@route or @version and have a unique name starting with",
-#                     f"{method_name}_"
-#                 ])
-#             )
-# 
-#         return methods
 
     def create_logger(self, request, response):
         # we use self.logger and set the name to endpoints.call.module.class so

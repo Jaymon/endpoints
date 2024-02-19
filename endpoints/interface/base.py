@@ -401,27 +401,6 @@ class BaseApplication(ApplicationABC):
             **kwargs
         )
 
-#         try:
-#             request.controller_info = self.find_controller_info(
-#                 request,
-#                 **kwargs
-#             )
-# 
-#         except (ImportError, AttributeError, TypeError) as e:
-#             raise CallError(
-#                 404,
-#                 "Path {} could not resolve to a controller".format(
-#                     request.path,
-#                 ) 
-#             ) from e
-# 
-#         else:
-#             controller = request.controller_info['class'](
-#                 request,
-#                 response,
-#                 **kwargs
-#             )
-
         return controller
 
     async def handle(self, request, response, **kwargs):
@@ -433,6 +412,7 @@ class BaseApplication(ApplicationABC):
             controller = self.create_controller(request, response)
             controller.log_start(start)
 
+            controller_method_names = request.controller_info["method_names"]
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
             controller_method = getattr(controller, "handle")
@@ -442,7 +422,11 @@ class BaseApplication(ApplicationABC):
                 controller.__class__.__name__,
                 controller_method.__name__
             ))
-            await controller_method(*controller_args, **controller_kwargs)
+            await controller_method(
+                controller_method_names,
+                *controller_args,
+                **controller_kwargs
+            )
 
         except Exception as e:
             await self.handle_error(

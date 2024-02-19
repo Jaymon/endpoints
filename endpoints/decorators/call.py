@@ -173,7 +173,26 @@ class version(route):
         raise e
 
     async def handle(self, controller, **kwargs):
-        req_version = controller.request.version(controller.content_type)
+        req = controller.request
+        req_version = req.version(controller.content_type)
         if req_version not in self.versions:
-            raise VersionError(self, req_version, self.versions)
+            logger.debug(
+                " ".join([
+                    "Request Controller method: {}.{}.{}".format(
+                        req.controller_info['module_name'],
+                        req.controller_info['class_name'],
+                        req.controller_info['method_name'],
+                    ),
+                    "failed version check ({} not in {})".format(
+                        req_version,
+                        self.versions,
+                    ),
+                ])
+            )
+            raise VersionError(
+                self,
+                req_version,
+                self.versions,
+                code=self.error_code
+            )
 

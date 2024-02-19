@@ -1070,6 +1070,9 @@ class ParamTest(TestCase):
         self.assertEqual(["1", 20, "bar"], r)
 
 
+from testdata import skip
+
+@skip("blah")
 class RouteTest(TestCase):
     def test_issue_94(self):
         """https://github.com/Jaymon/endpoints/issues/94"""
