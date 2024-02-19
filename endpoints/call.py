@@ -14,7 +14,6 @@ from .compat import *
 from .utils import AcceptHeader
 from .exception import (
     CallError,
-    RouteError,
     VersionError,
 )
 from .config import environ
@@ -846,7 +845,9 @@ class Controller(object):
         methods that begin with the method_prefix
 
         :param method_prefix: str, something like GET, POST, PUT, etc
-        :returns: set[str], a set of method names starting with method_prefix
+        :returns: list[str], a set of method names starting with method_prefix,
+            these will be in alphabetical order to make it so they can always be
+            checked in the same order
         """
         method_names = set()
 
@@ -855,6 +856,9 @@ class Controller(object):
             if member_name.startswith(method_prefix):
                 if callable(member):
                     method_names.add(member_name)
+
+        method_names = list(method_names)
+        method_names.sort()
 
         return method_names
 
@@ -966,6 +970,10 @@ class Controller(object):
 
         This method relies on .request.controller_info being populated
 
+        :param controller_method_names: sequence[str], a list of controller
+            method names to be ran, if one of them succeeds then the request is
+            considered successful, if all raise an error than an error will be
+            raised
         :param *controller_args: tuple, the path arguments that will be passed
             to the request handling method (eg, GET, POST)
         :param **controller_kwargs: dict, the query and body params merged
@@ -1009,18 +1017,7 @@ class Controller(object):
                         **controller_kwargs
                     )
 
-#                 body = controller_method(
-#                     *controller_args,
-#                     **controller_kwargs
-#                 )
-#                 pout.v(body)
-#                 pout.v(asyncio.iscoroutine(body))
-#                 while asyncio.iscoroutine(body):
-#                     body = await body
-# 
-#                 res.body = body
-
-                exceptions = []
+                exceptions = None
                 break
 
             except Exception as e:
@@ -1038,108 +1035,6 @@ class Controller(object):
                         req.path
                     )
                 )
-
-    async def xhandle(self, *controller_args, **controller_kwargs):
-        """handles the request and returns the response
-
-        This should set any response information directly onto self.response
-
-        this method has the same signature as the request handling methods
-        (eg, GET, POST) so subclasses can override this method and add
-        decorators
-
-        :param *controller_args: tuple, the path arguments that will be passed
-            to the request handling method (eg, GET, POST)
-        :param **controller_kwargs: dict, the query and body params merged
-            together
-        """
-        if self.cors:
-            self.handle_cors()
-
-        self.prepare_response()
-
-        req = self.request
-        res = self.response
-
-        # the @route* and @version decorators have a catastrophic error handler
-        # that will be called if all found methods failed to resolve
-        res_error_handler = None
-
-#         controller_methods = self.find_methods()
-#         for controller_method_name, controller_method in controller_methods:
-        for controller_method_name in req.controller_info["method_names"]:
-            controller_method = getattr(self, controller_method_name)
-
-            req.controller_info["method_name"] = controller_method_name
-            req.controller_info["method"] = controller_method
-            # VersionError and RouteError handling is here because they can be
-            # raised multiple times in this one request and handled each time,
-            # any exceptions that can't be handled are bubbled up
-            try:
-                self.logger.debug("Request Controller method: {}.{}.{}".format(
-                    req.controller_info['module_name'],
-                    req.controller_info['class_name'],
-                    controller_method_name
-                ))
-
-                if inspect.iscoroutinefunction(controller_method):
-                    res.body = await controller_method(
-                        *controller_args,
-                        **controller_kwargs
-                    )
-
-                else:
-                    res.body = controller_method(
-                        *controller_args,
-                        **controller_kwargs
-                    )
-
-                res_error_handler = None
-                break
-
-            except VersionError as e:
-                if not res_error_handler:
-                    res_error_handler = getattr(
-                        e.instance,
-                        "handle_failure",
-                        None
-                    )
-
-                self.logger.debug(
-                    " ".join([
-                        "Request Controller method: {}.{}.{}".format(
-                            req.controller_info['module_name'],
-                            req.controller_info['class_name'],
-                            controller_method_name,
-                        ),
-                        "failed version check [{} not in {}]".format(
-                            e.request_version,
-                            e.versions,
-                        ),
-                    ])
-                )
-
-            except RouteError as e:
-                if not res_error_handler:
-                    res_error_handler = getattr(
-                        e.instance,
-                        "handle_failure",
-                        None
-                    )
-
-                self.logger.debug(
-                    " ".join([
-                        "Request Controller method: {}.{}.{}".format(
-                            req.controller_info['module_name'],
-                            req.controller_info['class_name'],
-                            controller_method_name,
-                        ),
-                        "failed routing check",
-                    ])
-                )
-
-        if res_error_handler:
-            await res_error_handler(self)
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will

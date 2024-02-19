@@ -1,12 +1,12 @@
 # -*- coding: utf-8 -*-
 import logging
 
-from ..exception import CallError, RouteError, VersionError
+from ..exception import CallError, VersionError
 from ..utils import Url
 from .base import ControllerDecorator
 
 
-logger = logging.getLogger(__name__)
+# logger = logging.getLogger(__name__)
 
 
 class route(ControllerDecorator):
@@ -37,113 +37,21 @@ class route(ControllerDecorator):
         return self.callback(controller.request)
 
     async def handle_error(self, controller, e):
-        if isinstance(e, CallError):
-            await super().handle_error(controller, e)
+        req = controller.request
 
-        else:
-            raise RouteError(instance=self) from e
+        e_msg = " ".join([
+            "Request Controller method: {}:{}.{}".format(
+                req.controller_info['module_name'],
+                req.controller_info['class_name'],
+                req.controller_info['method_name'],
+            ),
+            "failed routing check",
+        ])
 
-    async def handle_failure(self, controller):
-        """This is called if all routes fail, it's purpose is to completely
-        fail the request
-
-        This is not a great solution because it uses the assumption that all the
-        route decorators for a given set of methods on the controller (ie all the
-        GET_* methods) will be the same, so if the first failing instance of this
-        decorator will have its failure method set as the global failure method
-        and it will be called if all the potential routes fail
-
-        :param controller: Controller, the controller that was trying to find a 
-            method to route to
-        """
-        request = controller.request
-
-        # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-        # An origin server SHOULD return the status code 405 (Method Not Allowed)
-        # if the method is known by the origin server but not allowed for the
-        # requested resource
         raise CallError(
             self.error_code,
-            "Could not find a method to satisfy {}".format(
-                request.path
-            )
-        )
-
-
-class route_path(route):
-    """easier route decorator that will check the sub paths to make sure they
-    are part of the full endpoint path
-
-    :Example:
-
-        class Foo(Controller):
-            @path_route("bar", "che")
-            def GET(self, *args):
-                # you can only get here by requesting /foo/bar/che where /foo is
-                # the controller path and /bar/che is the path_route
-    """
-    def definition(self, *paths, **kwargs):
-        self.paths = paths
-        self.error_code = kwargs.pop("error_code", 404)
-
-    async def handle(self, controller, **kwargs):
-        ret = True
-        request = controller.request
-        pas = Url.normalize_paths(self.paths)
-        method_args = request.controller_info["method_args"]
-        for i, p in enumerate(pas):
-            try:
-                if method_args[i] != p:
-                    ret = False
-                    break
-
-            except IndexError:
-                ret = False
-                break
-
-        return ret
-
-
-class route_param(route):
-    """easier route decorator that will check the parameters to make sure they
-    are part of the request
-
-    :Example:
-
-        class Foo(Controller):
-            @route_param(bar="che")
-            def GET(self, **kwargs):
-                # you can only get here by requesting /foo?bar=che where /foo is
-                # the controller path and ?bar=che is one of the query parameters
-    """
-    def definition(self, *keys, **matches):
-        self.keys = keys
-        self.matches = matches
-
-        # we throw a 400 here to match @param failures
-        self.error_code = 400
-
-    async def handle(self, controller, **kwargs):
-        ret = True
-        request = controller.request
-        method_kwargs = request.controller_info["method_kwargs"]
-        for k in self.keys:
-            if k not in method_kwargs:
-                ret = False
-                break
-
-        if ret:
-            for k, v in self.matches.items():
-                try:
-                    if type(v)(method_kwargs[k]) != v:
-                        ret = False
-                        break
-
-                except KeyError:
-                    ret = False
-                    break
-
-        return ret
+            e_msg
+        ) from e
 
 
 class version(route):
@@ -169,30 +77,30 @@ class version(route):
         self.versions = set(versions)
         self.error_code = kwargs.pop("error_code", 404)
 
-    async def handle_error(self, controller, e):
-        raise e
-
     async def handle(self, controller, **kwargs):
+        req_version = controller.request.version(controller.content_type)
+        return req_version in self.versions
+
+    async def handle_error(self, controller, e):
         req = controller.request
         req_version = req.version(controller.content_type)
-        if req_version not in self.versions:
-            logger.debug(
-                " ".join([
-                    "Request Controller method: {}.{}.{}".format(
-                        req.controller_info['module_name'],
-                        req.controller_info['class_name'],
-                        req.controller_info['method_name'],
-                    ),
-                    "failed version check ({} not in {})".format(
-                        req_version,
-                        self.versions,
-                    ),
-                ])
-            )
-            raise VersionError(
-                self,
+
+        e_msg = " ".join([
+            "Request Controller method: {}:{}.{}".format(
+                req.controller_info['module_name'],
+                req.controller_info['class_name'],
+                req.controller_info['method_name'],
+            ),
+            "failed version check ({} not in {})".format(
                 req_version,
                 self.versions,
-                code=self.error_code
-            )
+            ),
+        ])
+
+        raise VersionError(
+            req_version,
+            self.versions,
+            code=self.error_code,
+            msg=e_msg
+        ) from e
 

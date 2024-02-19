@@ -5,7 +5,6 @@ from .exception import (
     Redirect,
     CallStop,
     AccessDenied,
-    RouteError,
     VersionError,
     CloseConnection,
 )

@@ -206,13 +206,13 @@ class ControllerTest(TestCase):
 
         for c in [controller_class, controller_class(None, None)]:
             method_names = c.get_method_names("GET")
-            self.assertEqual(set(["GET_two", "GET_one", "GET"]), method_names)
+            self.assertEqual(["GET", "GET_one", "GET_two"], method_names)
 
             method_names = c.get_method_names("POST")
-            self.assertEqual(set(["POST_one"]), method_names)
+            self.assertEqual(["POST_one"], method_names)
 
             method_names = c.get_method_names("ANY")
-            self.assertEqual(set(["ANY"]), method_names)
+            self.assertEqual(["ANY"], method_names)
 
 
 class RouterTest(TestCase):

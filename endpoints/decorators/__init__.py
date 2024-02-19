@@ -27,14 +27,10 @@ from .utils import (
     nohttpcache,
     code_error,
     param,
-#     param_query,
-#     param_body,
 )
 
 from .call import (
     route,
-    route_path,
-    route_param,
     version
 )
 

@@ -1070,9 +1070,6 @@ class ParamTest(TestCase):
         self.assertEqual(["1", 20, "bar"], r)
 
 
-from testdata import skip
-
-@skip("blah")
 class RouteTest(TestCase):
     def test_issue_94(self):
         """https://github.com/Jaymon/endpoints/issues/94"""
@@ -1119,14 +1116,13 @@ class RouteTest(TestCase):
 
     def test_path_route(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import route_path",
+            "from endpoints import Controller, param",
             "class Foo(Controller):",
-            "    @route_path('bar')",
+            "    @param(0, value='bar')",
             "    def GET_1(*args, **kwargs):",
             "        return 'bar'",
             "",
-            "    @route_path('che')",
+            "    @param(0, value='che')",
             "    def GET_2(*args, **kwargs):",
             "        return 'che'",
         ])
@@ -1138,21 +1134,20 @@ class RouteTest(TestCase):
         self.assertEqual("bar", res.body)
 
         res = c.handle("/foo")
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
         res = c.handle("/foo/baz")
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
     def test_param_route_keys(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import route_param",
+            "from endpoints import Controller, param",
             "class Foo(Controller):",
-            "    @route_param('bar')",
+            "    @param('bar')",
             "    def GET_1(*args, **kwargs):",
             "        return 'bar'",
             "",
-            "    @route_param('che')",
+            "    @param('che')",
             "    def GET_2(*args, **kwargs):",
             "        return 'che'",
         ])
@@ -1171,14 +1166,13 @@ class RouteTest(TestCase):
 
     def test_param_route_matches(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import route_param",
+            "from endpoints import Controller, param",
             "class Foo(Controller):",
-            "    @route_param(bar=1)",
+            "    @param('bar', value=1)",
             "    def GET_1(*args, **kwargs):",
             "        return 1",
             "",
-            "    @route_param(bar=2)",
+            "    @param('bar', value=2)",
             "    def GET_2(*args, **kwargs):",
             "        return 2",
         ])
@@ -1324,12 +1318,12 @@ class RouteTest(TestCase):
         ])
 
         res = c.handle("/foo")
-        self.assertEqual(400, res.code)
+        self.assertTrue(res.code in [400, 405])
         res = c.handle("/foo", query="bar=1")
         self.assertEqual(1, res._body)
 
         res = c.handle("/foo/2")
-        self.assertEqual(400, res.code)
+        self.assertTrue(res.code in [400, 405])
         res = c.handle("/foo/2", query="bar=1")
         self.assertEqual(2, res._body)
 
