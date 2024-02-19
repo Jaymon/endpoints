@@ -86,6 +86,32 @@ class ControllerDecoratorTest(TestCase):
 
         self.assertEqual(1, await func(c))
 
+    async def test_generator(self):
+        """asyncio.iscoroutine treats any generator like a coroutine, this makes
+        sure wrapped controller methods function as expected if the controller
+        method returns a decorator"""
+        c = self.create_controller()
+
+        @ControllerDecorator
+        async def func(self):
+            for x in range(10):
+                yield x
+
+        count = 0
+        async for x in await func(c):
+            count += 1
+        self.assertEqual(10, count)
+
+        @ControllerDecorator
+        def func(self):
+            for x in range(10):
+                yield x
+
+        count = 0
+        for x in await func(c):
+            count += 1
+        self.assertEqual(10, count)
+
 
 class BackendDecoratorTest(TestCase):
     async def test_async_handle(self):

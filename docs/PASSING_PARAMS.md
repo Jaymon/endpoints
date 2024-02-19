@@ -112,33 +112,3 @@ class Foo(Controller):
         pass
 ```
 
-
-## param_query decorator
-
-Same as **param** but only checks **GET** query arguments passed in the actual url:
-
-```python
-from endpoints import Controller
-from endpoints.decorators import param_query
-
-class Foo(Controller):
-    @param_query('bar', help="the ?bar=... part of the url")
-    async def GET(self, **kwargs):
-        pass
-```
-
-
-## param_body decorator
-
-Same as **param** but only checks **POST** body arguments posted to the given url.
-
-```python
-from endpoints import Controller
-from endpoints.decorators import param_body
-
-class Foo(Controller):
-    @param_body('bar', help="must be sent in the body of the request")
-    async def POST(self, **kwargs):
-        pass
-```
-

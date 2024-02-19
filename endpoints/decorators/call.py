@@ -6,12 +6,14 @@ from ..utils import Url
 from .base import ControllerDecorator
 
 
-# logger = logging.getLogger(__name__)
-
-
 class route(ControllerDecorator):
     """Used to decide if the Controller's method should be used to satisfy the
     request
+
+    TODO? Honestly, I don't think this is very useful anymore, routing between
+    the various methods is more just built-in now, I'll keep this for now but
+    I think I'll probably be removing it in the future, version is still really
+    handy though (2024-02-19)
 
     :example:
         class Default(Controller):
@@ -30,6 +32,11 @@ class route(ControllerDecorator):
     GET_1, etc.)
     """
     def definition(self, callback, *args, **kwargs):
+        """
+        :param callback: callable[Request]
+        :param *args: any other values passed into the decorator
+        :param **kwargs: any other keyword values passed into the decorator
+        """
         self.callback = callback
         self.error_code = kwargs.pop("error_code", 405)
 

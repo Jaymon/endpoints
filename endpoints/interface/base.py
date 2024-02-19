@@ -259,7 +259,7 @@ class BaseApplication(ApplicationABC):
         it is a bytes string because wsgiref requires an actual bytes instance,
         a child class won't work
 
-        :returns: a generator that yields bytes strings
+        :returns: generator[bytes], a generator that yields bytes strings
         """
         if response.has_body():
 
@@ -271,22 +271,21 @@ class BaseApplication(ApplicationABC):
                         "cannot read streaming body because pointer is closed"
                     )
 
-                # http://stackoverflow.com/questions/15599639/
-                for chunk in iter(functools.partial(body.read, 8192), ''):
-                    yield ByteString(chunk, response.encoding).raw()
+                body_iterator = functools.partial(body.read, 8192)
+
+                if "b" in body.mode:
+                    for chunk in iter(body_iterator, b""):
+                        yield chunk
+
+                else:
+                    # http://stackoverflow.com/questions/15599639/
+                    for chunk in iter(body_iterator, ""):
+                        yield ByteString(chunk, response.encoding).raw()
 
                 # close the pointer since we've consumed it
                 body.close()
 
             elif response.is_json():
-                # TODO ???
-                # I don't like this, if we have a content type but it isn't one
-                # of the supported ones we were returning the exception, which
-                # threw Jarid off, but now it just returns a string, which is
-                # not best either my thought is we could have a
-                # body_type_subtype method that would make it possible to easily
-                # handle custom types, eg, "application/json" would become:
-                #    self.body_application_json(b, is_error)
                 body = json.dumps(body, cls=json_encoder)
                 yield ByteString(body, response.encoding).raw()
 
@@ -364,11 +363,6 @@ class BaseApplication(ApplicationABC):
                         request.path
                     )
                 )
-
-        # these are the keys I didn't bother to set, they might be needed
-#                         named_ret["controller_prefix"] = controller_prefix
-#                 ret["module"] = ReflectModule(ret["module_name"]).get_module()
-#                     ret["controller_prefix"] = controller_prefix
 
         # we merge the leftover path args with the body kwargs
         ret['method_args'].extend(request.body_args)

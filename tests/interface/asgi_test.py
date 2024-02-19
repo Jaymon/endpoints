@@ -49,13 +49,12 @@ class Server(Command):
         r = self.wait_for(regex)
 
         m = regex.search(r)
-        if not m:
-            pout.v(r)
-            raise RuntimeError("Looks like ASGI server failed with {}".format(
-                r.returncode
-            ))
+        if m:
+            self.host = Host(m.group(2), m.group(3)).client()
 
-        self.host = Host(m.group(2), m.group(3)).client()
+        else:
+            self.murder()
+            self.start()
 
 
 class HTTPApplicationTest(_HTTPTestCase):

@@ -95,16 +95,6 @@ class CallStop(CallError):
         super().__init__(code, msg, **kwargs)
 
 
-# class RouteError(CallError):
-#     """Raised when @route fails on a Controller method"""
-#     def __init__(self, instance, **kwargs):
-#         self.instance = instance
-#         super().__init__(
-#             code=kwargs.get("code", -1),
-#             msg=kwargs.get("msg", "")
-#         )
-
-
 class VersionError(CallError):
     """Raised when @version fails on a Controller method"""
     def __init__(self, request_version, versions, **kwargs):

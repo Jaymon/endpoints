@@ -334,6 +334,59 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
 
+    def test_io_streaming_1(self):
+        """Make sure a binary file doesn't get into an infinite loop
+
+        https://github.com/Jaymon/endpoints/issues/122
+        """
+        fp = self.create_file("hello world")
+        s = self.create_server([
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self):",
+            "        return open('{}', 'rb')".format(fp),
+        ])
+        c = self.create_client()
+
+        r = c.get("/foo")
+        self.assertEqual("hello world", r.body)
+
+    def test_io_streaming_2(self):
+        """Make sure a binary file opened through path.Filepath doesn't get
+        into an infinite loop
+
+        https://github.com/Jaymon/endpoints/issues/122
+        """
+        fp = self.create_file("hello world")
+        s = self.create_server([
+            "from endpoints import Controller",
+            "from datatypes import Filepath",
+            "class Foo(Controller):",
+            "    def GET(self):",
+            "        return Filepath('{}').open()".format(fp),
+        ])
+        c = self.create_client()
+
+        r = c.get("/foo")
+        self.assertEqual("hello world", r.body)
+
+    def test_io_streaming_3(self):
+        """Make sure a non-binary file doesn't get into an infinite loop
+
+        https://github.com/Jaymon/endpoints/issues/122
+        """
+        fp = self.create_file("hello world")
+        s = self.create_server([
+            "from endpoints import Controller",
+            "class Foo(Controller):",
+            "    def GET(self):",
+            "        return open('{}', 'r')".format(fp),
+        ])
+        c = self.create_client()
+
+        r = c.get("/foo")
+        self.assertEqual("hello world", r.body)
+
 
 class _WebSocketTestCase(TestCase):
     """Base class for the actual interfaces, this contains common tests for any

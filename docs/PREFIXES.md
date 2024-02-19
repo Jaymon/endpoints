@@ -2,7 +2,7 @@
 
 The controller prefix is a [module search path](https://docs.python.org/3/tutorial/modules.html#the-module-search-path) that tells Endpoints where you have defined all your [Controllers](CONTROLLERS.md).
 
-Endpoints will only route to Controllers defined in these prefixes.
+Endpoints will only route to Controllers defined in these prefixes. If no prefixes are defined Endpoints will check the current working directory for an importable `controllers` module.
 
 
 ## Defining Controller prefixes

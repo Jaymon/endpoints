@@ -466,6 +466,7 @@ class Router(object):
         :param controller_prefix: str, a module path like `foo.bar.che`
         :returns: generator[ModuleType]
         """
+        logger.debug(f"Checking controller prefix: {controller_prefix}")
         rm = ReflectModule(controller_prefix)
         for m in rm.get_modules():
             yield m
@@ -650,7 +651,9 @@ class Router(object):
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
-        :param controller_class: type, the controller class
+        :param controller_class: type, the controller class that will be checked
+            for method_prefix
+        :param method_prefix: str, the http method of the request (eg GET)
         :returns: set, a list of string names
         """
         fallback_method_prefix = "ANY"
@@ -970,7 +973,7 @@ class Controller(object):
 
         This method relies on .request.controller_info being populated
 
-        :param controller_method_names: sequence[str], a list of controller
+        :param controller_method_names: list[str], a list of controller
             method names to be ran, if one of them succeeds then the request is
             considered successful, if all raise an error than an error will be
             raised
@@ -991,6 +994,8 @@ class Controller(object):
         for controller_method_name in controller_method_names:
             controller_method = getattr(self, controller_method_name)
 
+            # we update the controller info so error handlers know what method
+            # failed, which is useful for determining how to handle the error
             req.controller_info["method_name"] = controller_method_name
             req.controller_info["method"] = controller_method
 
@@ -1553,7 +1558,7 @@ class Request(Call):
             info, by default this checks all content types, which is probably
             what most want, since if you're doing accept header versioning
             you're probably only passing up one content type
-        :returns: string, the found version
+        :returns: str, the found version
         """
         v = ""
         accept_header = self.get_header('accept', "")
@@ -1561,7 +1566,8 @@ class Request(Call):
             a = AcceptHeader(accept_header)
             for mt in a.filter(content_type):
                 v = mt[2].get("version", "")
-                if v: break
+                if v:
+                    break
 
         return v
 

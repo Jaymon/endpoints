@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
 import asyncio
+import inspect
 
 from datatypes.decorators import FuncDecorator
 
@@ -28,17 +29,20 @@ class ControllerDecorator(FuncDecorator):
             that will be passed to .handle() as **kwargs. You would override
             this method if you wanted your child decorator to have a custom
             .handle() definition
-        3. .handle() is called with the return value of .handle_kwargs(). If
-            this method returns False then .handle_error() will be called. If
-            this method returns True or None then the wrapped controller method
-            will be called
+        3. .handle() is called with the return value of .handle_kwargs() as 
+            **kwargs passed into .handle(). If this method returns False then
+            .handle_error() will be called. If this method returns True or None
+            then the wrapped controller method will be called
         4. .handle_request() is called with the controller instance and the 
-            args (as a list) and kwargs (as a dict). It should return a
-            tuple[list, dict] where index 0 represents that *args that will be
-            passed to wrapped method and index 1 represents the **kwargs that
-            will be passed to the wrapped method
+            controller args (as a list, not as *args) and the controller kwargs
+            (as a dict, not as **kwargs). It should return a tuple[list, dict]
+            where index 0 represents that *args that will be passed to wrapped
+            method and index 1 represents the **kwargs that will be passed to
+            the wrapped method
         5. .handle_response() is called with the controller instance and the
-            response from whatever controller method was called
+            body from the controller method that handled the request, if it
+            returns a body then that body will be used instead of what was
+            returned from the controller method
     """
     def get_wrapped_method(self, func):
         """Find the original wrapped function. This takes advantage of 
@@ -197,13 +201,22 @@ class ControllerDecorator(FuncDecorator):
         :returns: Any, whatever the func returns
         """
         try:
-            controller_response = func(
-                controller,
-                *controller_args,
-                **controller_kwargs
-            )
-            while asyncio.iscoroutine(controller_response):
-                controller_response = await controller_response
+            if inspect.iscoroutinefunction(func):
+                controller_response = await func(
+                    controller,
+                    *controller_args,
+                    **controller_kwargs
+                )
+
+            else:
+                controller_response = func(
+                    controller,
+                    *controller_args,
+                    **controller_kwargs
+                )
+
+#             while asyncio.iscoroutine(controller_response):
+#                 controller_response = await controller_response
 
             return controller_response
 
