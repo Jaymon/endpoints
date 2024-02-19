@@ -96,8 +96,9 @@ class ControllerDecorator(FuncDecorator):
             except Exception as e:
                 return await self.handle_error(controller, e)
 
-            # actually call the controller, this calls the controller method
-            # and handles any errors, that's why it isn't wrapped in try/catch
+            # actually call the controller, .handle_controller calls the
+            # controller method and handles any errors, that's why it isn't
+            # wrapped in try/catch
             controller_response = await self.handle_controller(
                 func,
                 controller,

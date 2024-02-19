@@ -80,6 +80,8 @@ class Param(object):
             - required: bool, True if param is required, default is True
             - choices: set, a set of values to be in tested against (eg, val in
                 choices)
+            - value: str, it's the one-off of `choices`, equivalent to
+                choices=["<VALUE>"]
             - allow_empty: bool, True allows values like False, 0, '' through,
                 default is False, this will also let through any empty value
                 that was set via the default flag
@@ -270,7 +272,7 @@ class Param(object):
         flags = self.flags
         paction = flags['action']
         ptype = flags['type']
-        pchoices = flags.get('choices', None)
+        pchoices = set(flags.get('choices', []))
         allow_empty = flags.get('allow_empty', False)
         min_size = flags.get('min_size', None)
         max_size = flags.get('max_size', None)
@@ -344,6 +346,10 @@ class Param(object):
                 else:
                     val = ptype(val)
 
+
+        if "value" in flags:
+            pchoices.add(flags["value"])
+
         if pchoices:
             if isinstance(val, list) and ptype != list:
                 for v in val:
@@ -371,10 +377,12 @@ class Param(object):
         if min_size is not None:
             failed = False
             if isinstance(val, (int, float)):
-                if val < min_size: failed = True
+                if val < min_size:
+                    failed = True
 
             else:
-                if len(val) < min_size: failed = True
+                if len(val) < min_size:
+                    failed = True
 
             if failed:
                 raise ValueError("param was smaller than {}".format(min_size))
@@ -382,10 +390,12 @@ class Param(object):
         if max_size is not None:
             failed = False
             if isinstance(val, (int, float)):
-                if val > max_size: failed = True
+                if val > max_size:
+                    failed = True
 
             else:
-                if len(val) > max_size: failed = True
+                if len(val) > max_size:
+                    failed = True
 
             if failed:
                 raise ValueError("param was bigger than {}".format(max_size))
@@ -430,12 +440,15 @@ class Router(object):
         self._controller_modules = {}
 
         for m in self.get_modules_from_prefixes(self._controller_prefixes):
+            logger.debug(f"Registering controller module: {m.__name__}")
             self._controller_modules[m.__name__] = m
 
         for m in self.get_modules_from_paths(self._paths):
+            logger.debug(f"Registering controller module: {m.__name__}")
             self._controller_modules[m.__name__] = m
 
         self._controller_pathfinder = self.get_pathfinder()
+        self._controller_method_names = {}
 
     def __iter__(self):
         """Iterate through all the cached Controller classes
@@ -562,6 +575,14 @@ class Router(object):
 
             path_args.extend(class_path_args)
 
+            logger.debug(
+                "Registering path: /{} to controller: {}:{}".format(
+                    "/".join(filter(None, path_args)),
+                    controller_class.__module__,
+                    controller_class.__name__
+                )
+            )
+
             pathfinder.set(path_args, controller_class)
 
         return pathfinder
@@ -618,6 +639,42 @@ class Router(object):
             )
 
         return controller_class, controller_args, info
+
+    def find_controller_method_names(self, controller_class, method_prefix):
+        """Find the method names that could satisfy this request according to
+        the HTTP method prefix
+
+        This will go through and find any methods that start with method_prefix,
+        so if the request was GET /foo then this would find any methods that
+        start with GET
+
+        https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+
+        :param controller_class: type, the controller class
+        :returns: set, a list of string names
+        """
+        fallback_method_prefix = "ANY"
+
+        key = "{}:{}.{}".format(
+            controller_class.__module__,
+            controller_class.__qualname__,
+            method_prefix
+        )
+
+        if key in self._controller_method_names:
+            method_names = self._controller_method_names[key]
+
+        else:
+            method_names = controller_class.get_method_names(method_prefix)
+            self._controller_method_names[key] = method_names
+
+        if not method_names and method_prefix != fallback_method_prefix:
+            method_names = self.find_controller_method_names(
+                controller_class,
+                fallback_method_prefix
+            )
+
+        return method_names
 
 
 class Controller(object):
@@ -758,6 +815,18 @@ class Controller(object):
 
         return path_args
 
+    @classmethod
+    def get_method_names(cls, method_prefix):
+        method_names = set()
+
+        members = inspect.getmembers(cls)
+        for member_name, member in members:
+            if member_name.startswith(method_prefix):
+                if callable(member):
+                    method_names.add(member_name)
+
+        return method_names
+
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
@@ -880,8 +949,11 @@ class Controller(object):
         # that will be called if all found methods failed to resolve
         res_error_handler = None
 
-        controller_methods = self.find_methods()
-        for controller_method_name, controller_method in controller_methods:
+#         controller_methods = self.find_methods()
+#         for controller_method_name, controller_method in controller_methods:
+        for controller_method_name in req.controller_info["method_names"]:
+            controller_method = getattr(self, controller_method_name)
+
             req.controller_info["method_name"] = controller_method_name
             req.controller_info["method"] = controller_method
             # VersionError and RouteError handling is here because they can be
@@ -962,73 +1034,73 @@ class Controller(object):
         """
         pass
 
-    def find_methods(self):
-        """Find the methods that could satisfy this request
-
-        This will go through and find any method that starts with the
-        request.method, so if the request was GET /foo then this would find any
-        methods that start with GET
-
-        https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
-
-        :returns: list of tuples (method_name, method), all the found methods
-        """
-        methods = []
-        req = self.request
-        controller_info = req.controller_info
-        method_name = controller_info["method_prefix"]
-        method_names = set()
-
-        members = inspect.getmembers(self)
-        for member_name, member in members:
-            if member_name.startswith(method_name):
-                if member:
-                    methods.append((member_name, member))
-                    method_names.add(member_name)
-
-        if len(methods) == 0:
-            fallback_method_name = controller_info["method_fallback"]
-            any_method = getattr(self, fallback_method_name, "")
-            if any_method:
-                methods.append((fallback_method_name, any_method))
-
-            else:
-                if len(controller_info["method_args"]):
-                    # if we have method args and we don't have a method to even
-                    # answer the request it should be a 404 since the path is
-                    # invalid
-                    raise CallError(
-                        404,
-                        "Could not find a {} method for path {}".format(
-                            method_name,
-                            req.path,
-                        )
-                    )
-
-                else:
-                    # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                    # and 501 (Not Implemented) if the method is unrecognized or
-                    # not implemented by the origin server
-                    self.logger.warning(
-                        "No methods to handle {} found".format(method_name)
-                    )
-                    raise CallError(
-                        501,
-                        "{} {} not implemented".format(req.method, req.path)
-                    )
-
-        elif len(methods) > 1 and method_name in method_names:
-            raise ValueError(
-                " ".join([
-                    f"A multi method {method_name} request should not have any",
-                    f"methods named {method_name}. Instead, all {method_name}",
-                    "methods should use use an appropriate decorator like",
-                    "@route or @version and have a unique name starting with",
-                    f"{method_name}_"
-                ])
-            )
-
-        return methods
+#     def find_methods(self):
+#         """Find the methods that could satisfy this request
+# 
+#         This will go through and find any method that starts with the
+#         request.method, so if the request was GET /foo then this would find any
+#         methods that start with GET
+# 
+#         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+# 
+#         :returns: list of tuples (method_name, method), all the found methods
+#         """
+#         methods = []
+#         req = self.request
+#         controller_info = req.controller_info
+#         method_name = controller_info["method_prefix"]
+#         method_names = set()
+# 
+#         members = inspect.getmembers(self)
+#         for member_name, member in members:
+#             if member_name.startswith(method_name):
+#                 if member:
+#                     methods.append((member_name, member))
+#                     method_names.add(member_name)
+# 
+#         if len(methods) == 0:
+#             fallback_method_name = controller_info["method_fallback"]
+#             any_method = getattr(self, fallback_method_name, "")
+#             if any_method:
+#                 methods.append((fallback_method_name, any_method))
+# 
+#             else:
+#                 if len(controller_info["method_args"]):
+#                     # if we have method args and we don't have a method to even
+#                     # answer the request it should be a 404 since the path is
+#                     # invalid
+#                     raise CallError(
+#                         404,
+#                         "Could not find a {} method for path {}".format(
+#                             method_name,
+#                             req.path,
+#                         )
+#                     )
+# 
+#                 else:
+#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                     # and 501 (Not Implemented) if the method is unrecognized or
+#                     # not implemented by the origin server
+#                     self.logger.warning(
+#                         "No methods to handle {} found".format(method_name)
+#                     )
+#                     raise CallError(
+#                         501,
+#                         "{} {} not implemented".format(req.method, req.path)
+#                     )
+# 
+#         elif len(methods) > 1 and method_name in method_names:
+#             raise ValueError(
+#                 " ".join([
+#                     f"A multi method {method_name} request should not have any",
+#                     f"methods named {method_name}. Instead, all {method_name}",
+#                     "methods should use use an appropriate decorator like",
+#                     "@route or @version and have a unique name starting with",
+#                     f"{method_name}_"
+#                 ])
+#             )
+# 
+#         return methods
 
     def create_logger(self, request, response):
         # we use self.logger and set the name to endpoints.call.module.class so

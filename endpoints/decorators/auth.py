@@ -32,12 +32,13 @@ class AuthDecorator(BackendDecorator):
     """
     handy auth decorator that makes doing basic or token auth easy peasy
 
-    This is more of a base class for the other auth decorators, but it can be used
-    on its own if you want, but I would look at using the other decorators first
-    before deciding to use this one
+    This is more of a base class for the other auth decorators, but it can be
+    used on its own if you want, but I would look at using the other decorators
+    first before deciding to use this one
 
     the request .get_auth_client(), .get_auth_basic(), .get_auth_schem(), and 
-    .get_auth_bearer() methods and .access_token property should come in handy here
+    .get_auth_bearer() methods and .access_token property should come in handy
+    here
 
     :example:
         # create a token auth decorator
@@ -54,7 +55,10 @@ class AuthDecorator(BackendDecorator):
                 return "hello world"
     """
     scheme = ""
-    """Needed for WWW-Authenticate header https://tools.ietf.org/html/rfc7235#section-4.1"""
+    """Needed for WWW-Authenticate header
+
+    https://tools.ietf.org/html/rfc7235#section-4.1
+    """
 
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
@@ -89,7 +93,8 @@ class AuthDecorator(BackendDecorator):
 
 class auth_basic(AuthDecorator):
     """
-    handy basic auth decorator that checks for username, password in an auth header
+    handy basic auth decorator that checks for username, password in an auth
+    header
 
     :example:
 
@@ -126,7 +131,8 @@ class auth_basic(AuthDecorator):
 
 class auth_client(auth_basic):
     """
-    handy OAuth client auth decorator that checks for client_id and client_secret
+    handy OAuth client auth decorator that checks for client_id and
+    client_secret
 
     :example:
 

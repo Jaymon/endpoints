@@ -1,16 +1,10 @@
 # -*- coding: utf-8 -*-
-import re
-import cgi
-import logging
 
 from .base import ControllerDecorator
 
 from ..compat import *
 from ..exception import CallError
 from ..call import Param
-
-
-logger = logging.getLogger(__name__)
 
 
 class httpcache(ControllerDecorator):
@@ -110,7 +104,7 @@ class param(ControllerDecorator):
         if self.param_count == 1:
             # tricksy pointers, we use the original function as the source of
             # truth but we keep a reference pointer to those params so we can
-            # access it in self in order to actually check the params
+            # access it in self in order to actually check the params at runtime
             self.params = params
 
         return super().decorate(func, *args, **kwargs)

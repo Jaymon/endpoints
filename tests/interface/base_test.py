@@ -349,11 +349,13 @@ class BaseApplicationTest(TestCase):
         self.create_modules({
             "foo": [
                 "from endpoints import Controller",
-                "class Default(Controller): pass",
+                "class Default(Controller):",
+                "    def GET(self): pass",
             ],
             "bar": [
                 "from endpoints import Controller",
-                "class User(Controller): pass",
+                "class User(Controller):",
+                "    def GET(self): pass",
             ],
         })
 

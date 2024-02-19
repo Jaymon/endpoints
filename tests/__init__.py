@@ -88,7 +88,7 @@ class Server(object):
         return self.application.find_controller_info(**kwargs)
 
 
-class TestCase(testdata.TestCase):
+class TestCase(BaseAsyncTestCase):
     server = None
 
     server_class = Server
@@ -153,6 +153,6 @@ class TestCase(testdata.TestCase):
         return self.application_class(*args, **kwargs)
 
 
-class IsolatedAsyncioTestCase(BaseAsyncTestCase, TestCase):
+class IsolatedAsyncioTestCase(TestCase):
     pass
 

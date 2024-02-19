@@ -1237,7 +1237,7 @@ class RouteTest(TestCase):
             "class Foo2(Foo1):",
             "    GET = None",
             "    @route(lambda req: len(req.path_args) == 1)",
-            "    def GET_1(self): return super(Foo2, self).GET()",
+            "    def GET_1(self): return super().GET()",
             "    @route(lambda req: len(req.path_args) == 2)",
             "    def GET_2(*args, **kwargs): return len(args)",
             "",
@@ -1300,7 +1300,7 @@ class RouteTest(TestCase):
         self.assertEqual(1, res._body)
 
         res = c.handle("/foo2")
-        self.assertEqual(500, res.code)
+        self.assertEqual(200, res.code)
 
     def test_mixed(self):
         """make sure plays nice with param"""

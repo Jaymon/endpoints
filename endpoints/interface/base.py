@@ -333,9 +333,38 @@ class BaseApplication(ApplicationABC):
             request.path_args
         )
 
+        ret["method_prefix"] = request.method.upper()
         ret["module_name"] = controller_class.__module__
         ret["class"] = controller_class
         ret["method_args"] = controller_args
+
+        ret['method_names'] = self.router.find_controller_method_names(
+            controller_class,
+            ret["method_prefix"]
+        )
+
+        if len(ret["method_names"]) == 0:
+            if len(ret["method_args"]) > 0:
+                # if we have method args and we don't have a method to even
+                # answer the request it should be a 404 since the path is
+                # invalid
+                raise TypeError(
+                    "Could not find a {} method for path {}".format(
+                        request.method,
+                        request.path,
+                    )
+                )
+
+            else:
+                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+                # and 501 (Not Implemented) if the method is unrecognized or
+                # not implemented by the origin server
+                raise NotImplementedError(
+                    "{} {} not implemented".format(
+                        request.method,
+                        request.path
+                    )
+                )
 
         # these are the keys I didn't bother to set, they might be needed
 #                         named_ret["controller_prefix"] = controller_prefix
@@ -347,7 +376,6 @@ class BaseApplication(ApplicationABC):
 
         ret['method_kwargs'] = request.kwargs
 
-        ret["method_prefix"] = request.method.upper()
         ret["method_fallback"] = kwargs.get("method_fallback", "ANY")
 
         ret['class_name'] = ret["class"].__name__
