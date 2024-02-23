@@ -23,6 +23,7 @@ class TestCase(BaseTestCase):
             self.server.stop()
 
     def create_client(self, **kwargs):
+        kwargs.setdefault("json", True)
         kwargs.setdefault("host", self.server.host)
         client = self.client_class(**kwargs)
         return client
@@ -241,7 +242,6 @@ class _HTTPTestCase(TestCase):
 
     def test_post_body_plain_without_content_type(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, **kwargs):",
             "        self.response.headers['content-type'] = 'text/plain'",
@@ -249,8 +249,7 @@ class _HTTPTestCase(TestCase):
         ])
 
         body = "plain text body"
-        #c = self.create_client(headers={"content-type": "text/plain"})
-        c = self.create_client()
+        c = self.create_client(json=False)
         r = c.post("/", body)
         self.assertEqual(200, r.code)
         self.assertEqual(body, r.body)
@@ -282,6 +281,25 @@ class _HTTPTestCase(TestCase):
         r = c.post('/', {'content_type': 'application/json', 'body': {}})
         self.assertEqual("{}", r.body)
 
+    def test_response_body_json_error(self):
+        """
+        https://github.com/Jaymon/endpoints/issues/112
+        """
+        server = self.create_server(contents=[
+            "class Default(Controller):",
+            "    def GET(self, **kwargs):",
+            "        class Foo(object):",
+            "            pass",
+            "        return {",
+            "            'foo': Foo()",
+            "        }",
+        ])
+
+        c = self.create_client()
+
+        r = c.get('/')
+        self.assertEqual(500, r.code)
+
     def test_versioning(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
@@ -298,9 +316,6 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
         r = c.post('/', None, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
-        return
-
-
 
         c = self.create_client()
         r = c.post(

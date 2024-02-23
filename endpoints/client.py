@@ -60,6 +60,8 @@ class HTTPClient(object):
         if headers:
             self.headers.update(headers)
 
+        self.timeout = kwargs.get("timeout", self.timeout)
+
     def get(self, uri, query=None, **kwargs):
         """make a GET request"""
         return self.fetch('get', uri, query, **kwargs)

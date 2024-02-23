@@ -1135,9 +1135,25 @@ class Controller(object):
 
         try:
             if req.has_body():
-                self.logger.debug(
-                    "Request {}body: {}".format(uuid, req.body_kwargs)
-                )
+                body_args = req.body_args
+                body_kwargs = req.body_kwargs
+
+                if body_args or body_kwargs:
+                    self.logger.debug(
+                        "Request {}body args: {}, body kwargs: {}".format(
+                            uuid,
+                            req.body_args,
+                            req.body_kwargs
+                        )
+                    )
+
+                else:
+                    self.logger.debug(
+                        "Request {}body: {}".format(
+                            uuid,
+                            req.body,
+                        )
+                    )
 
             elif req.is_post():
                 self.logger.debug(
@@ -1588,8 +1604,9 @@ class Request(Call):
         return self.is_method("POST")
 
     def has_body(self):
+        return True if self.body else False
         #return self.method.upper() in set(['POST', 'PUT'])
-        return True if (self.body_kwargs or self.body_args) else False
+        #return True if (self.body_kwargs or self.body_args) else False
         #return True if self.body_kwargs else False
         #return self.method.upper() not in set(['GET'])
 

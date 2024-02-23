@@ -57,12 +57,12 @@ class Server(Command):
             self.start()
 
 
-class HTTPApplicationTest(_HTTPTestCase):
+class HTTPTest(_HTTPTestCase):
     server_class = Server
     application_class = Application
 
 
-class WebSocketApplicationTest(_WebSocketTestCase):
+class WebSocketTest(_WebSocketTestCase):
     server_class = Server
     application_class = Application
 

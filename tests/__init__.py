@@ -105,9 +105,6 @@ class TestCase(BaseAsyncTestCase):
         # if we don't pass in module contents then we will want to start with
         # a blank slate module, this is because we don't want the autodiscover
         # functionality to trigger during tests
-        if not contents:
-            contents = [""]
-
         tdm = self.create_controller_module(contents, **kwargs)
         kwargs["cwd"] = tdm.basedir
         kwargs["controller_prefix"] = tdm
@@ -131,20 +128,35 @@ class TestCase(BaseAsyncTestCase):
         # we reset all the controller classes because if we are requesting a new
         # a new controller module then we probably want a fresh new start with
         # the loaded controllers
+        if not contents:
+            contents = [""]
+
         Controller.controller_classes = {}
         controller_prefix = kwargs.get("controller_prefix", "")
+
+        if "header" in kwargs:
+            header = kwargs["header"]
+
+        else:
+            header = [
+                "from endpoints import *",
+            ]
 
         if isinstance(contents, dict):
             if not controller_prefix:
                 controller_prefix = testdata.get_module_name()
 
-            basedir = testdata.create_modules({controller_prefix: contents})
+            basedir = testdata.create_modules(
+                {controller_prefix: contents},
+                header=header
+            )
             controller_prefix = basedir.modpath(controller_prefix)
 
         else:
             controller_prefix = testdata.create_module(
                 data=contents,
-                modpath=controller_prefix
+                modpath=controller_prefix,
+                header=header
             )
 
         return controller_prefix

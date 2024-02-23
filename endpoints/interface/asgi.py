@@ -31,6 +31,13 @@ class Application(BaseApplication):
     def is_websocket_call(self, scope, **kwargs):
         return scope["type"] == "websocket"
 
+    async def start_response(self, send, response):
+        await send({
+            "type": "http.response.start",
+            "status": response.code,
+            "headers": list(response.headers.asgi()),
+        })
+
     async def handle_http(self, **kwargs):
         request = self.create_request(**kwargs)
 
@@ -45,26 +52,36 @@ class Application(BaseApplication):
         response = self.create_response()
         await self.handle(request, response)
 
-        await kwargs["send"]({
-            "type": "http.response.start",
-            "status": response.code,
-            "headers": list(response.headers.asgi()),
-        })
+        sent_response = False
 
-        # https://peps.python.org/pep-0525/
-        # https://stackoverflow.com/a/37550568
-        async for body in self.get_response_body(response):
+        try:
+            # https://peps.python.org/pep-0525/
+            # https://stackoverflow.com/a/37550568
+            async for body in self.get_response_body(response):
+                if not sent_response:
+                    await self.start_response(kwargs["send"], response)
+                    sent_response = True
+
+                await kwargs["send"]({
+                    "type": "http.response.body",
+                    "body": body,
+                    "more_body": True,
+                })
+
+        except Exception:
+            response.code = 500
+            raise
+
+        finally:
+            if not sent_response:
+                await self.start_response(kwargs["send"], response)
+                sent_response = True
+
             await kwargs["send"]({
                 "type": "http.response.body",
-                "body": body,
-                "more_body": True,
+                "body": b"",
+                "more_body": False,
             })
-
-        await kwargs["send"]({
-            "type": "http.response.body",
-            "body": b"",
-            "more_body": False,
-        })
 
     def is_websocket_recv(self, data, **kwargs):
         return data["type"] == "websocket.receive"
