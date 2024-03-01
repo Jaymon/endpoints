@@ -23,7 +23,7 @@ class ControllerDecorator(FuncDecorator):
 
         1. .definition() is called with any arguments that were passed in when
             the decorator is first created, by default, the instance properties
-            .decorator_args and .decorator_kwargs will be set
+            .definition_args and .definition_kwargs will be set
         2. .handle_kwargs() is called when a Controller method that is wrapped
             by the decorator is called. This method should return any arguments
             that will be passed to .handle() as **kwargs. You would override
@@ -152,8 +152,8 @@ class ControllerDecorator(FuncDecorator):
         :param **kwargs: these are the named arguments passed into the decorator
             __init__ method
         """
-        self.decorator_args = args
-        self.decorator_kwargs = kwargs
+        self.definition_args = args
+        self.definition_kwargs = kwargs
 
     async def handle_kwargs(self, controller, controller_args, controller_kwargs):
         """Returns the **kwargs part that will be passed into the .handle()
@@ -328,8 +328,8 @@ class BackendDecorator(ControllerDecorator):
 
     async def handle(self, *args, **kwargs):
         backend = await self.get_backend(
-            *self.decorator_args,
-            **self.decorator_kwargs,
+            *self.definition_args,
+            **self.definition_kwargs,
         )
         return backend.handle(*args, **kwargs)
 

@@ -3,32 +3,32 @@ import logging
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
-from .base import BackendDecorator
+from .base import BackendDecorator, ControllerDecorator
 
 
 logger = logging.getLogger(__name__)
 
 
-class AuthBackend(object):
-    async def handle(self, method_name, **kwargs):
-        callback = getattr(self, method_name)
-        return callback(**kwargs)
+# class AuthBackend(object):
+#     async def handle(self, method_name, **kwargs):
+#         callback = getattr(self, method_name)
+#         return callback(**kwargs)
+# 
+#     async def auth_basic(self, controller, username, password):
+#         raise NotImplementedError()
+# 
+#     async def auth_client(self, controller, client_id, client_secret):
+#         return await self.auth_basic(
+#             controller=controller,
+#             username=client_id,
+#             password=client_secret,
+#         )
+# 
+#     async def auth_token(self, controller, access_token):
+#         raise NotImplementedError()
 
-    async def auth_basic(self, controller, username, password):
-        raise NotImplementedError()
 
-    async def auth_client(self, controller, client_id, client_secret):
-        return await self.auth_basic(
-            controller=controller,
-            username=client_id,
-            password=client_secret,
-        )
-
-    async def auth_token(self, controller, access_token):
-        raise NotImplementedError()
-
-
-class AuthDecorator(BackendDecorator):
+class AuthDecorator(ControllerDecorator):
     """
     handy auth decorator that makes doing basic or token auth easy peasy
 
@@ -36,7 +36,7 @@ class AuthDecorator(BackendDecorator):
     used on its own if you want, but I would look at using the other decorators
     first before deciding to use this one
 
-    the request .get_auth_client(), .get_auth_basic(), .get_auth_schem(), and 
+    the Request .get_auth_client(), .get_auth_basic(), .get_auth_schem(), and 
     .get_auth_bearer() methods and .access_token property should come in handy
     here
 
@@ -50,7 +50,7 @@ class AuthDecorator(BackendDecorator):
                 raise ValueError("invalid access token")
 
         class Default(Controller):
-            @auth("Bearer", target=target)
+            @AuthDecorator(target=target)
             def GET(self):
                 return "hello world"
     """
@@ -63,15 +63,20 @@ class AuthDecorator(BackendDecorator):
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
 
-    backend_class = AuthBackend
+#     async def handle_kwargs(self, controller, **kwargs):
+#         return {
+#             "controller": controller,
+#             "controller_args": kwargs["controller_args"],
+#             "controller_kwargs": kwargs["controller_kwargs"],
+#         }
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
-        return {
-            "method_name": self.__class__.__name__,
-            "controller": controller,
-            "controller_args": controller_args,
-            "controller_kwargs": controller_kwargs,
-        }
+    async def handle(self, *args, **kwargs):
+        target = self.definition_kwargs.get("target", None)
+        if target:
+            return target(*args, **kwargs)
+
+        else:
+            raise NotImplementedError()
 
     async def handle_error(self, controller, e):
         if isinstance(e, CallError):
@@ -112,7 +117,7 @@ class auth_basic(AuthDecorator):
     """
     scheme = AccessDenied.SCHEME_BASIC
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, **kwargs):
         username, password = controller.request.get_auth_basic()
 
         if not username:
@@ -122,7 +127,6 @@ class auth_basic(AuthDecorator):
             raise ValueError("password is required")
 
         return {
-            "method_name": "auth_basic",
             "controller": controller,
             "username": username,
             "password": password,
@@ -148,7 +152,7 @@ class auth_client(auth_basic):
             def GET(self):
                 return "hello world"
     """
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, **kwargs):
         client_id, client_secret = controller.request.client_tokens
 
         if not client_id:
@@ -158,7 +162,6 @@ class auth_client(auth_basic):
             raise ValueError("client_secret is required")
 
         return {
-            "method_name": "auth_client",
             "controller": controller,
             "client_id": client_id,
             "client_secret": client_secret,
@@ -176,7 +179,7 @@ class auth_token(AuthDecorator):
         from endpoints import Controller
         from endpoints.decorators.auth import auth_token
 
-        def target(request, access_token):
+        def target(controller, access_token):
             return access_token == "foo"
 
         class Default(Controller):
@@ -186,14 +189,13 @@ class auth_token(AuthDecorator):
     """
     scheme = AccessDenied.SCHEME_BEARER
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, **kwargs):
         access_token = controller.request.access_token
 
         if not access_token:
             raise ValueError("access_token is required")
 
         return {
-            "method_name": "auth_token",
             "controller": controller,
             "access_token": access_token,
         }

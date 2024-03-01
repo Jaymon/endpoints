@@ -25,7 +25,7 @@ from endpoints.decorators.limit import (
     ratelimit_param_ip,
 )
 from endpoints.decorators.auth import (
-    AuthBackend,
+#     AuthBackend,
     AuthDecorator,
     auth_basic,
     auth_client,
@@ -410,20 +410,19 @@ class AuthDecoratorTest(TestCase):
         return 'Bearer {}'.format(access_token)
 
     async def test_bad_setup(self):
-        class Backend(AuthBackend):
-            async def handle(*args, **kwargs):
-                return False
+        async def target(*args, **kwargs):
+            return False
 
         class MockObject(object):
-            @auth_token(backend_class=Backend)
+            @auth_token(target=target)
             def foo_token(self):
                 pass
 
-            @auth_client(backend_class=Backend)
+            @auth_client(target=target)
             async def foo_client(self):
                 pass
 
-            @auth_basic(backend_class=Backend)
+            @auth_basic(target=target)
             def foo_basic(self):
                 pass
 
@@ -435,19 +434,18 @@ class AuthDecoratorTest(TestCase):
                 await getattr(c, m)()
 
     async def test_auth_token(self):
-        class Backend(AuthBackend):
-            async def auth_token(self, controller, access_token):
-                if access_token == "foo":
-                    raise ValueError()
+        async def target(controller, access_token):
+            if access_token == "foo":
+                raise ValueError()
 
-                if access_token == "bar":
-                    return True
+            if access_token == "bar":
+                return True
 
-                elif access_token == "che":
-                    return False
+            elif access_token == "che":
+                return False
 
         class MockObject(object):
-            @auth_token(backend_class=Backend)
+            @auth_token(target=target)
             def foo(self):
                 pass
 
@@ -488,12 +486,11 @@ class AuthDecoratorTest(TestCase):
             await c.foo()
 
     async def test_auth_client(self):
-        class Backend(AuthBackend):
-            async def auth_client(self, controller, client_id, client_secret):
-                return client_id == "foo" and client_secret == "bar"
+        async def target(controller, client_id, client_secret):
+            return client_id == "foo" and client_secret == "bar"
 
         class MockObject(object):
-            @auth_client(backend_class=Backend)
+            @auth_client(target=target)
             async def foo(self):
                 pass
 
@@ -519,19 +516,18 @@ class AuthDecoratorTest(TestCase):
         await c.foo()
 
     async def test_auth_basic_simple(self):
-        class Backend(AuthBackend):
-            async def auth_basic(self, controller, username, password):
-                if username == "foo":
-                    raise ValueError()
+        async def target(controller, username, password):
+            if username == "foo":
+                raise ValueError()
 
-                elif username == "bar":
-                    return True
+            elif username == "bar":
+                return True
 
-                else:
-                    return False
+            else:
+                return False
 
         class MockObject(object):
-            @auth_basic(backend_class=Backend)
+            @auth_basic(target=target)
             async def foo(self):
                 pass
 
@@ -564,19 +560,18 @@ class AuthDecoratorTest(TestCase):
             await c.foo()
 
     async def test_auth_basic_same_kwargs(self):
-        class Backend(AuthBackend):
-            async def auth_basic(self, controller, username, password):
-                if username == "foo":
-                    raise ValueError()
+        async def target(controller, username, password):
+            if username == "foo":
+                raise ValueError()
 
-                elif username == "bar":
-                    return True
+            elif username == "bar":
+                return True
 
-                else:
-                    return False
+            else:
+                return False
 
         class MockObject(object):
-            @auth_basic(backend_class=Backend)
+            @auth_basic(target=target)
             async def foo(self, **kwargs):
                 return 1
 
@@ -595,8 +590,18 @@ class AuthDecoratorTest(TestCase):
         self.assertEqual(1, r)
 
     async def test_auth_extend(self):
-        class Backend(AuthBackend):
-            async def auth(self, controller, controller_args, controller_kwargs):
+#         async def target(controller, controller_args, controller_kwargs):
+#             if controller.request.body_kwargs["foo"] == "bar":
+#                 return True
+# 
+#             elif controller.request.body_kwargs["foo"] == "che":
+#                 raise ValueError()
+# 
+#             else:
+#                 return False
+
+        class auth(AuthDecorator):
+            async def handle(self, controller, **kwargs):
                 if controller.request.body_kwargs["foo"] == "bar":
                     return True
 
@@ -606,11 +611,8 @@ class AuthDecoratorTest(TestCase):
                 else:
                     return False
 
-        class auth(AuthDecorator):
-            pass
-
         class MockObject(object):
-            @auth(backend_class=Backend)
+            @auth
             def foo(self):
                 pass
 
