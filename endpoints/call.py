@@ -485,7 +485,7 @@ class Router(object):
                 yield m
 
     def get_modules_from_paths(self, paths):
-        """Internal method. Load the first `controllers` module found in the
+        """Internal method. Load any `controllers` modules found in the
         various paths
 
         This method incorporates this functionality:
@@ -496,7 +496,7 @@ class Router(object):
         :param paths: list[str], the paths to check, if empty and there aren't
             any controller_prefixes either then the current working directory
             will be checked. This is done here so it can be easily overridden
-            by a child class if someone wants to customize path auto-discovery
+            by a child class in order to customize path auto-discovery
         :returns: generator[ModuleType]
         """
         if not self._controller_prefixes and not paths:
@@ -517,8 +517,6 @@ class Router(object):
                     piter.nin_basename(regex=r"^[_\.]")
                     # we only want dir/file fileroots with this name
                     piter.eq_fileroot("controllers")
-                    #piter.regex(r"(?:^|/)controllers(?:\.|$)")
-                    #piter.pattern("controllers", fileroot=True)
 
                     for sp in piter:
                         modparts = sp.parent.relative_parts(path)
@@ -530,9 +528,6 @@ class Router(object):
 
                         for m in self.get_modules_from_prefix(prefix):
                             yield m
-
-                        # we only want the first match
-                        break
 
     def get_pathfinder(self):
         """Internal method. Create the tree that will be used to resolve a
