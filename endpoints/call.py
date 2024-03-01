@@ -1001,21 +1001,15 @@ class Controller(object):
                     controller_method_name
                 ))
 
-                # we use the inspect method here instead of asyncio.iscoroutine
-                # because the controller method can return a generator and
-                # the asyncio function thinks any generator is a coroutine
-                # https://docs.python.org/3/library/asyncio-task.html#asyncio.iscoroutine
-                if inspect.iscoroutinefunction(controller_method):
-                    res.body = await controller_method(
-                        *controller_args,
-                        **controller_kwargs
-                    )
+                body = controller_method(
+                    *controller_args,
+                    **controller_kwargs
+                )
 
-                else:
-                    res.body = controller_method(
-                        *controller_args,
-                        **controller_kwargs
-                    )
+                while inspect.iscoroutine(body):
+                    body = await body
+
+                res.body = body
 
                 exceptions = None
                 break

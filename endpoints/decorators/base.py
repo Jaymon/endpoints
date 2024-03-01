@@ -1,6 +1,5 @@
 # -*- coding: utf-8 -*-
 import logging
-import asyncio
 import inspect
 
 from datatypes.decorators import FuncDecorator
@@ -200,20 +199,6 @@ class ControllerDecorator(FuncDecorator):
         :returns: Any, whatever the func returns
         """
         try:
-#             if inspect.iscoroutinefunction(func):
-#                 controller_response = await func(
-#                     controller,
-#                     *controller_args,
-#                     **controller_kwargs
-#                 )
-# 
-#             else:
-#                 controller_response = func(
-#                     controller,
-#                     *controller_args,
-#                     **controller_kwargs
-#                 )
-
             controller_response = func(
                 controller,
                 *controller_args,
