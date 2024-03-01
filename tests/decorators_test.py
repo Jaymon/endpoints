@@ -25,7 +25,6 @@ from endpoints.decorators.limit import (
     ratelimit_param_ip,
 )
 from endpoints.decorators.auth import (
-#     AuthBackend,
     AuthDecorator,
     auth_basic,
     auth_client,
@@ -36,12 +35,9 @@ from endpoints.decorators.utils import (
     nohttpcache,
     code_error,
     param,
-#     param_body,
-#     param_query
 )
 
 from . import (
-#     TestCase as BaseTestCase,
     testdata,
     IsolatedAsyncioTestCase,
 )
@@ -590,16 +586,6 @@ class AuthDecoratorTest(TestCase):
         self.assertEqual(1, r)
 
     async def test_auth_extend(self):
-#         async def target(controller, controller_args, controller_kwargs):
-#             if controller.request.body_kwargs["foo"] == "bar":
-#                 return True
-# 
-#             elif controller.request.body_kwargs["foo"] == "che":
-#                 raise ValueError()
-# 
-#             else:
-#                 return False
-
         class auth(AuthDecorator):
             async def handle(self, controller, **kwargs):
                 if controller.request.body_kwargs["foo"] == "bar":

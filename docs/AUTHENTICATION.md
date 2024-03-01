@@ -5,7 +5,7 @@ Validating access to certain resources is pretty common and so _endpoints_ provi
 
 ## Http basic authentication
 
-Want to have the browser prompt for a username and password? Use the `endpoints.decorators.auth.auth_basic` decorator:
+Want to require a simple username and password? Use the `endpoints.decorators.auth.auth_basic` decorator:
 
 ```python
 # controller.py
@@ -14,17 +14,17 @@ Want to have the browser prompt for a username and password? Use the `endpoints.
 from endpoints import Controller
 from endpoints.decorators.auth import AuthBackend, auth_basic
 
-class Backend(AuthBackend):
-    async def auth_basic(self, controller, username, password):
-        return username == "foo" and password == "bar"
+
+async def target(self, controller, username, password):
+    return username == "foo" and password == "bar"
 
 class Default(Controller):
-    @basic_auth(backend_class=Backend)
+    @auth_basic(target=target)
     async def GET(self):
         return "hello world"
 ```
 
-That's it, now any request to `/` will prompt for username and password if not provided.
+That's it, now any request to `/` will required a username and password.
 
 
 ## Other authentication
@@ -40,38 +40,33 @@ Check out the `endpoints.decorators.auth` module for other authentication decora
 You can extend any of the auth decorators to fit them into your own system:
 
 ```python
-from endpoints.decorators.auth import AuthBackend, auth_basic
+from endpoints.decorators.auth import auth_basic
 
-class Backend(AuthBackend):
-    async def auth_user(self, controller, username, password):
-        # validate username and password using app specific db or whatnot
-        user = magical_db_check(username, password)
-        request.user = user
-        return True # true if user is valid, false otherwise
 
 class auth_user(auth_basic):
     """validate a user in our system and set request.user if a valid user is found"""
-    backend_class = Backend
+    async def auth_user(self, controller, username, password):
+        # validate username and password using app specific db or whatnot
+        user = magical_db_check(username, password)
+        controller.request.user = user
+        return True # true if user is valid, false otherwise
 ``` 
 
 There is also an `AuthDecorator` specifically designed for easy overriding for general purpose authentication:
 
 ```python
 from endpoints import Controller
-from endpoints.decorators.auth import AuthBackend, AuthDecorator
+from endpoints.decorators.auth import AuthDecorator
 
-class Backend(AuthBackend):
-    async def auth(self, controller, controller_args, controller_kwargs):
+
+class auth(AuthDecorator):
+    async def handle(self, controller, **kwargs):
         # check something or do something to validate the request
         # return True if auth was valid, False otherwise
-        
-    
-class auth(AuthDecorator):
-    backend_class = Backend
 
 
 class Default(Controller):
-    @auth()
+    @auth
     def GET(self):
         return "hello world"
 ```
@@ -85,37 +80,36 @@ Sometimes, you might only want certain users to be able to access certain endpoi
 ```python
 from endpoints.decorators.auth import AuthBackend, AuthDecorator
 
-class Backend(AuthBackend):
-    async def perm_auth(self, user_perms, valid_perms):
-        return len(user_perms.intersection(valid_perms)) > 0
 
-class perm_auth(AuthDecorator):
+class auth_perm(AuthDecorator):
     backend_class = Backend
     
     def definition(self, *perms):
         self.perms = perms
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
-        user = await get_user(request)
+    async def handle_kwargs(self, controller, **kwargs):
+        user = await get_user(request) # magically fetch a user
         return {
-            'method_name': "perm_auth",
             'user_perms': set(user.perms),
             'valid_perms': set(self.perms),
         }
+    
+    async def handle(self, user_perms, valid_perms):
+        return len(user_perms.intersection(valid_perms)) > 0
 ```
 
-First, we setup our `PermAuth` decorator to accept one or more permissions, we do this by overriding the `definition` method and saving those passed in permissions for later use:
+First, we setup our `auth_perm` decorator to accept one or more permissions, we do this by overriding the `definition` method and saving those passed in permissions for later use:
 
 ```python
 def definition(self, *perms):
     self.perms = perms
 ```
 
-Next, we override `handle_kwargs` to setup the params that will be sent to our `Backend.auth` method, this method returns a `dict` that will get sent to our `Backend.auth` method in the form of: `**kwargs`.
+Next, we override `handle_kwargs` to setup the params that will be sent to our `handle` method, this method returns a `dict` that will get sent to our `handle` method in the form of: `**kwargs`.
 
 In this instance, our `handle_kwargs` pulls our user out from some magical async `get_user` method and then returns that user's permissions along with our saved permissions set in the `definition` method.
 
-And finally, we add our `Backend.auth` method to check the values `handle_kwargs` gave us.
+And finally, we have our `handle` method to check the values `handle_kwargs` gave us.
 
 Now, we can use this decorator on our Controller methods:
 
@@ -123,11 +117,11 @@ Now, we can use this decorator on our Controller methods:
 from endpoints import Controller
 
 class Default(Controller):
-    @perm_auth("bar", "che") # bar and che can access GET
+    @auth_perm("bar", "che") # `bar` and `che` permissions can access GET
     async def GET(self):
         return "user can GET\n"
 
-    @perm_auth("bar") # you must have bar perms to POST
+    @auth_perm("bar") # you must have `bar` perms to POST
     async def POST(self, **kwargs):
         return "user can POST\n"
 

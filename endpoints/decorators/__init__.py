@@ -15,7 +15,6 @@ from .limit import (
 )
 
 from .auth import (
-#     AuthBackend,
     AuthDecorator,
     auth_basic,
     auth_client,

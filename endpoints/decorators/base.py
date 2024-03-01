@@ -215,9 +215,6 @@ class ControllerDecorator(FuncDecorator):
                     **controller_kwargs
                 )
 
-#             while asyncio.iscoroutine(controller_response):
-#                 controller_response = await controller_response
-
             return controller_response
 
         except Exception as e:
@@ -301,7 +298,13 @@ class ControllerDecorator(FuncDecorator):
 
 
 class BackendDecorator(ControllerDecorator):
+    """Create decorators that depend on a backend
 
+    You can set the .backend_class class variable on a child decorator or you
+    could also pass `backend_class` to the decorator to be able to use your
+    backend, .create_backend is where the backend_class is found and an instance
+    is created
+    """
     backend_class = None
 
     async def get_backend(self, *args, **kwargs):

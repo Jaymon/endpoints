@@ -1,31 +1,8 @@
 # -*- coding: utf-8 -*-
-import logging
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
-from .base import BackendDecorator, ControllerDecorator
-
-
-logger = logging.getLogger(__name__)
-
-
-# class AuthBackend(object):
-#     async def handle(self, method_name, **kwargs):
-#         callback = getattr(self, method_name)
-#         return callback(**kwargs)
-# 
-#     async def auth_basic(self, controller, username, password):
-#         raise NotImplementedError()
-# 
-#     async def auth_client(self, controller, client_id, client_secret):
-#         return await self.auth_basic(
-#             controller=controller,
-#             username=client_id,
-#             password=client_secret,
-#         )
-# 
-#     async def auth_token(self, controller, access_token):
-#         raise NotImplementedError()
+from .base import ControllerDecorator
 
 
 class AuthDecorator(ControllerDecorator):
@@ -62,13 +39,6 @@ class AuthDecorator(ControllerDecorator):
 
     realm = ""
     """Optional namespace for WWW-Authenticate header"""
-
-#     async def handle_kwargs(self, controller, **kwargs):
-#         return {
-#             "controller": controller,
-#             "controller_args": kwargs["controller_args"],
-#             "controller_kwargs": kwargs["controller_kwargs"],
-#         }
 
     async def handle(self, *args, **kwargs):
         target = self.definition_kwargs.get("target", None)
