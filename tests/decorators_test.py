@@ -613,6 +613,24 @@ class AuthDecoratorTest(TestCase):
         r.body_kwargs = {"foo": "bar"}
         await c.foo()
 
+    def test_no_call(self):
+        c = self.create_server([
+            "from endpoints import Controller",
+            "from endpoints.decorators import AuthDecorator",
+            "class auth(AuthDecorator):",
+            "    async def handle(self, controller, **kwargs):",
+            "        return True",
+            "",
+            "class Foo(Controller):",
+            "    @auth",
+            "    async def GET(self):",
+            "        return 1",
+        ])
+
+        r = c.handle("/foo")
+        self.assertEqual(200, r.code)
+        self.assertEqual(1, r.body)
+
 
 class CacheTest(TestCase):
     async def test_httpcache(self):

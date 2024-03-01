@@ -75,7 +75,6 @@ class ControllerDecorator(FuncDecorator):
         self.definition(*args, **kwargs)
 
         async def decorated(controller, *controller_args, **controller_kwargs):
-
             # handle the decorator's .handle_kwargs() and .handle() calls, this
             # isn't wrapped in try/catch because .handle_call takes care of that
             await self.handle_call(
@@ -201,19 +200,27 @@ class ControllerDecorator(FuncDecorator):
         :returns: Any, whatever the func returns
         """
         try:
-            if inspect.iscoroutinefunction(func):
-                controller_response = await func(
-                    controller,
-                    *controller_args,
-                    **controller_kwargs
-                )
+#             if inspect.iscoroutinefunction(func):
+#                 controller_response = await func(
+#                     controller,
+#                     *controller_args,
+#                     **controller_kwargs
+#                 )
+# 
+#             else:
+#                 controller_response = func(
+#                     controller,
+#                     *controller_args,
+#                     **controller_kwargs
+#                 )
 
-            else:
-                controller_response = func(
-                    controller,
-                    *controller_args,
-                    **controller_kwargs
-                )
+            controller_response = func(
+                controller,
+                *controller_args,
+                **controller_kwargs
+            )
+            while inspect.iscoroutine(controller_response):
+                controller_response = await controller_response
 
             return controller_response
 
@@ -235,7 +242,7 @@ class ControllerDecorator(FuncDecorator):
             )
 
             ret = self.handle(**handle_kwargs)
-            while asyncio.iscoroutine(ret):
+            while inspect.iscoroutine(ret):
                 ret = await ret
 
             if ret is not None and not ret:

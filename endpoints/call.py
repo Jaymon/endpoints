@@ -1073,7 +1073,7 @@ class Controller(object):
                 uuid,
                 req.method,
                 req.path,
-                f"?{req.query}" if req.query else "",
+                f"?{String(req.query)}" if req.query else "",
             ))
 
             self.logger.info("Request {}date: {}".format(
@@ -1184,7 +1184,7 @@ class Controller(object):
                 Profiler.get_output(start, stop),
                 req.method,
                 req.path,
-                f"?{req.query}" if req.query else "",
+                f"?{String(req.query)}" if req.query else "",
             )
         )
 

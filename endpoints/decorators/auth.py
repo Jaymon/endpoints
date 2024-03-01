@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import inspect
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
@@ -43,14 +44,18 @@ class AuthDecorator(ControllerDecorator):
     async def handle(self, *args, **kwargs):
         target = self.definition_kwargs.get("target", None)
         if target:
-            return target(*args, **kwargs)
+            if inspect.iscoroutinefunction(target):
+                return await target(*args, **kwargs)
+
+            else:
+                return target(*args, **kwargs)
 
         else:
             raise NotImplementedError()
 
     async def handle_error(self, controller, e):
         if isinstance(e, CallError):
-            super().handle_error(controller, e)
+            await super().handle_error(controller, e)
 
         elif isinstance(e, NotImplementedError):
             raise CallError(
@@ -124,6 +129,7 @@ class auth_client(auth_basic):
     """
     async def handle_kwargs(self, controller, **kwargs):
         client_id, client_secret = controller.request.client_tokens
+
 
         if not client_id:
             raise ValueError("client_id is required")
