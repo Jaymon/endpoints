@@ -533,6 +533,9 @@ class Router(object):
         """Internal method. Create the tree that will be used to resolve a
         requested path to a found controller
 
+        The class fallback is the name of the default controller class, it
+        defaults to `Default` and should probably never be changed
+
         :returns: DictTree, basically a dictionary of dictionaries where each
             key represents a part of a path, the final key is the name of the
             class, an empty string represents a Default controller for that
@@ -646,6 +649,9 @@ class Router(object):
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
+        The method_fallback is the name of the fallback controller method, it
+        defaults to ANY and should probably never be changed
+
         :param controller_class: type, the controller class that will be checked
             for method_prefix
         :param method_prefix: str, the http method of the request (eg GET)
@@ -673,6 +679,20 @@ class Router(object):
             )
 
         return method_names
+
+    def find_controller_method_name(self, controller_class):
+        """Find the wrapper method that will be used to attempt all the found
+        method names.
+
+        This is just here for completeness since it used to be set in
+        BaseApplication but this class now sets all the defaults so it made more
+        sence to move this here also
+
+        :param controller_class: type, the controller class that will handle
+            the request
+        :returns: str, the wrapper method name
+        """
+        return "handle"
 
 
 class Controller(object):
@@ -958,7 +978,7 @@ class Controller(object):
 
     async def handle(
         self,
-        controller_method_names,
+#         controller_method_names,
         *controller_args,
         **controller_kwargs
     ):
@@ -966,7 +986,7 @@ class Controller(object):
 
         This should set any response information directly onto self.response
 
-        This method relies on .request.controller_info being populated
+        NOTE -- This method relies on .request.controller_info being populated
 
         :param controller_method_names: list[str], a list of controller
             method names to be ran, if one of them succeeds then the request is
@@ -985,6 +1005,8 @@ class Controller(object):
         req = self.request
         res = self.response
         exceptions = defaultdict(list)
+
+        controller_method_names = req.controller_info["method_names"]
 
         for controller_method_name in controller_method_names:
             controller_method = getattr(self, controller_method_name)

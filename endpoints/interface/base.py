@@ -317,10 +317,6 @@ class BaseApplication(ApplicationABC):
 
         :param request: Request
         :param **kwargs:
-            * class_fallback: str, the name of the default controller class, it
-                defaults to Default and should probably never be changed
-            * method_fallback: str, the name of the fallback controller method,
-                it defaults to ANY and should probably never be changed
         :returns: dict
         """
         logger.debug("Compiling Controller info using path: {}".format(
@@ -331,10 +327,17 @@ class BaseApplication(ApplicationABC):
             request.path_args
         )
 
-        ret["method_prefix"] = request.method.upper()
         ret["module_name"] = controller_class.__module__
         ret["class"] = controller_class
+
         ret["method_args"] = controller_args
+
+        # we merge the leftover path args with the body kwargs
+        ret['method_args'].extend(request.body_args)
+
+        ret['method_kwargs'] = request.kwargs
+
+        ret["method_prefix"] = request.method.upper()
 
         ret['method_names'] = self.router.find_controller_method_names(
             controller_class,
@@ -364,12 +367,9 @@ class BaseApplication(ApplicationABC):
                     )
                 )
 
-        # we merge the leftover path args with the body kwargs
-        ret['method_args'].extend(request.body_args)
-
-        ret['method_kwargs'] = request.kwargs
-
-        ret["method_fallback"] = kwargs.get("method_fallback", "ANY")
+        ret['method_name'] = self.router.find_controller_method_name(
+            controller_class
+        )
 
         ret['class_name'] = ret["class"].__name__
         ret['module_path'] = "/".join(ret["module_path_args"])
@@ -405,10 +405,13 @@ class BaseApplication(ApplicationABC):
             controller = self.create_controller(request, response)
             controller.log_start(start)
 
-            controller_method_names = request.controller_info["method_names"]
+#             controller_method_names = request.controller_info["method_names"]
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
-            controller_method = getattr(controller, "handle")
+            controller_method = getattr(
+                controller,
+                request.controller_info["method_name"]
+            )
 
             logger.debug("Request handle method: {}.{}.{}".format(
                 controller.__class__.__module__,
@@ -416,7 +419,7 @@ class BaseApplication(ApplicationABC):
                 controller_method.__name__
             ))
             await controller_method(
-                controller_method_names,
+#                 controller_method_names,
                 *controller_args,
                 **controller_kwargs
             )
