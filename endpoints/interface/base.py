@@ -405,7 +405,6 @@ class BaseApplication(ApplicationABC):
             controller = self.create_controller(request, response)
             controller.log_start(start)
 
-#             controller_method_names = request.controller_info["method_names"]
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
             controller_method = getattr(
@@ -419,7 +418,6 @@ class BaseApplication(ApplicationABC):
                 controller_method.__name__
             ))
             await controller_method(
-#                 controller_method_names,
                 *controller_args,
                 **controller_kwargs
             )

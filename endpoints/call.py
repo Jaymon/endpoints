@@ -976,12 +976,7 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def handle(
-        self,
-#         controller_method_names,
-        *controller_args,
-        **controller_kwargs
-    ):
+    async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
 
         This should set any response information directly onto self.response
@@ -1117,15 +1112,12 @@ class Controller(object):
                 'host',
                 'x-forwarded-for'
             ])
-            #hs = []
             for k, v in req.headers.items():
                 if k not in ignore_hs:
                     self.logger.info(
                         "Request {}header {}: {}".format(uuid, k, v)
                     )
-                    #hs.append("Request header: {}: {}".format(k, v))
 
-            #self.logger.info(os.linesep.join(hs))
             self.log_start_body()
 
         except Exception as e:
