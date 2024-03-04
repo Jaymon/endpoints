@@ -23,6 +23,7 @@ from datatypes import (
     property as cachedproperty,
     Dirpath,
     ReflectModule,
+    ReflectPath,
     DictTree,
     Profiler,
 )
@@ -506,28 +507,9 @@ class Router(object):
             paths = [Dirpath.cwd()]
 
         for path in paths:
-            for p in (Dirpath(p) for p in sys.path):
-                if p.is_relative_to(path):
-                    dirparts = p.relative_parts(path)
-
-                    piter = p.iterator
-                    # we only want to look a few folders deep
-                    piter.depth(2)
-                    # ignore any folders that begin with an underscore or period
-                    piter.nin_basename(regex=r"^[_\.]")
-                    # we only want dir/file fileroots with this name
-                    piter.eq_fileroot("controllers")
-
-                    for sp in piter:
-                        modparts = sp.parent.relative_parts(path)
-                        # trim the directory parts of our module path so we have
-                        # a real module path we can import
-                        modparts = modparts[len(dirparts):]
-                        modparts.append(sp.fileroot)
-                        prefix = ".".join(modparts)
-
-                        for m in self.get_modules_from_prefix(prefix):
-                            yield m
+            rp = ReflectPath(path)
+            for m in rp.find_modules("controllers"):
+                yield m
 
     def get_pathfinder(self):
         """Internal method. Create the tree that will be used to resolve a
@@ -1158,7 +1140,7 @@ class Controller(object):
                         )
                     )
 
-            elif req.is_post():
+            elif req.should_have_body():
                 self.logger.debug(
                     "Request {}body: <EMPTY>".format(uuid)
                 )
@@ -1612,6 +1594,14 @@ class Request(Call):
         #return True if (self.body_kwargs or self.body_args) else False
         #return True if self.body_kwargs else False
         #return self.method.upper() not in set(['GET'])
+
+    def should_have_body(self):
+        """Returns True if the request should normally have a body"""
+        for m in ["POST", "PATCH", "PUT"]:
+            if self.is_method(m):
+                return True
+
+        return False
 
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""
