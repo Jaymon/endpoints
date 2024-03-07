@@ -1180,10 +1180,10 @@ class Controller(object):
 
 
 class Call(object):
-    header_class = Headers
+    headers_class = Headers
 
     def __init__(self):
-        self.headers = Headers()
+        self.headers = self.headers_class()
 
     def has_header(self, header_name):
         """return true if the header is set"""
@@ -1238,23 +1238,6 @@ class Call(object):
         """return name=val&name2=val2 strings into {name: val} dict"""
         u = Url(query=query)
         return u.query_kwargs
-
-    def _build_body_str(self, b):
-        # we are returning the body, let's try and be smart about it and match
-        # content type
-        ct = self.get_header('content-type')
-        if ct:
-            ct = ct.lower()
-            if ct.rfind("json") >= 0:
-                if b:
-                    b = json.dumps(b)
-                else:
-                    b = None
-
-            elif ct.rfind("x-www-form-urlencoded") >= 0:
-                b = urlencode(b, doseq=True)
-
-        return b
 
     def copy(self):
         """nice handy wrapper around the deepcopy"""
@@ -1376,9 +1359,7 @@ class Request(Call):
         """return an Oauth 2.0 Bearer access token if it can be found"""
         access_token = self.get_auth_bearer()
         if not access_token:
-            access_token = self.query_kwargs.get('access_token', '')
-            if not access_token:
-                access_token = self.body_kwargs.get('access_token', '')
+            access_token = self.get("access_token", "")
 
         return access_token
 
@@ -1392,14 +1373,10 @@ class Request(Call):
         client_id, client_secret = self.get_auth_basic()
 
         if not client_id:
-            client_id = self.query_kwargs.get('client_id', '')
-            if not client_id:
-                client_id = self.body_kwargs.get('client_id', '')
+            client_id = self.get("client_id", "")
 
         if not client_secret:
-            client_secret = self.query_kwargs.get('client_secret', '')
-            if not client_secret:
-                client_secret = self.body_kwargs.get('client_secret', '')
+            client_secret = self.get("client_secret", "")
 
         return client_id, client_secret
 
@@ -1409,8 +1386,9 @@ class Request(Call):
         and private ips"""
         r = []
         names = ['X_FORWARDED_FOR', 'CLIENT_IP', 'X_REAL_IP', 'X_FORWARDED', 
-               'X_CLUSTER_CLIENT_IP', 'FORWARDED_FOR', 'FORWARDED', 'VIA',
-               'REMOTE_ADDR']
+            'X_CLUSTER_CLIENT_IP', 'FORWARDED_FOR', 'FORWARDED', 'VIA',
+            'REMOTE_ADDR'
+        ]
 
         for name in names:
             vs = self.get_header(name, '')
@@ -1547,6 +1525,52 @@ class Request(Call):
         self.body_kwargs = {}
         super().__init__()
 
+    def get(self, name="", default_val=None, **kwargs):
+        """Get a value
+
+        Order of preference: body, query, header
+
+        :param name: str, the name of the query or body key to check, a header
+            named "X-<NAME>" will also be checked if name is not found in the
+            body or query parameters
+        :param default_val: Any, the default value if the name isn't found
+            anywhere
+                * names: list[str], want to check multiple names instead of
+                    just one name?
+                * header_names: list[str], similar to names, check multiple
+                    header names in one call
+                * query_kwargs: dict, children can customize query kwargs so
+                    this allows them to be passed in so children's internal
+                    methods can customize behavior
+                * body_kwargs: dict, same as query_kwargs
+        :returns: Any
+        """
+        header_names = kwargs.get("header_names", [])
+        if v := kwargs.get("header_name", None):
+            header_names.append(header_name)
+
+        names = kwargs.get("names", [])
+        if name:
+            names.append(name)
+
+        kwargs = {}
+        if query_kwargs := kwargs.get("query_kwargs", {}):
+            kwargs = query_kwargs
+
+        if body_kwargs := kwargs.get("body_kwargs", {}):
+            kwargs.update(body_kwargs)
+
+        if not kwargs:
+            kwargs = self.kwargs
+
+        for name in names:
+            if v := kwargs.get(name, None):
+                return v
+
+            header_names.append(f"X-{name}")
+
+        return self.find_header(header_names, default_val)
+
     def version(self, content_type="*/*"):
         """by default, versioning is based off of this post 
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
@@ -1597,11 +1621,7 @@ class Request(Call):
 
     def should_have_body(self):
         """Returns True if the request should normally have a body"""
-        for m in ["POST", "PATCH", "PUT"]:
-            if self.is_method(m):
-                return True
-
-        return False
+        return self.method.upper() in set(["POST", "PATCH", "PUT"])
 
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""

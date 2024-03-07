@@ -52,15 +52,16 @@ class HTTPClient(object):
         })
 
         if kwargs.get("json", False):
-            self.headers.update({
-                "content-type": "application/json",
-            })
+            self.set_json_request()
 
         headers = kwargs.get("headers", {})
         if headers:
             self.headers.update(headers)
 
         self.timeout = kwargs.get("timeout", self.timeout)
+
+    def set_json_request(self, value="application/json"):
+        self.headers.set_header("content-type", value)
 
     def get(self, uri, query=None, **kwargs):
         """make a GET request"""
