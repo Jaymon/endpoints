@@ -958,6 +958,31 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
+    async def handle_method_input(self, *controller_args, **controller_kwargs):
+        """Called right before the controller's requested method is called
+        (eg GET, POST). It's meant for children controllers to be able to
+        customize the arguments that are passed into the method
+
+        :param *controller_args:
+        :param **controller_kwargs:
+        :returns: tuple[tuple, dict], whatever is returned from this method is
+            passed into the controller request method as *args, **kwargs
+        """
+        return controller_args, controller_kwargs
+
+    async def handle_method_output(self, body):
+        """Called right after the controller's request method (eg GET, POST)
+        returns with the body that it returned
+
+        NOTE -- this is called before Response.body is set, the value returned
+        from this method will be set in Response.body
+
+        :param body: Any, the value returned from the requested method before
+            it is set into Response.body
+        :return: Any
+        """
+        return body
+
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
 
@@ -985,20 +1010,28 @@ class Controller(object):
 
         controller_method_names = req.controller_info["method_names"]
 
+        controller_args, controller_kwargs = await self.handle_method_input(
+            *controller_args,
+            **controller_kwargs
+        )
+
         for controller_method_name in controller_method_names:
             controller_method = getattr(self, controller_method_name)
 
-            # we update the controller info so error handlers know what method
-            # failed, which is useful for determining how to handle the error
+            # we update the controller info so error handlers know what
+            # method failed, which is useful for determining how to handle
+            # the error
             req.controller_info["method_name"] = controller_method_name
             req.controller_info["method"] = controller_method
 
             try:
-                self.logger.debug("Request Controller method: {}:{}.{}".format(
-                    req.controller_info['module_name'],
-                    req.controller_info['class_name'],
-                    controller_method_name
-                ))
+                self.logger.debug(
+                    "Request Controller method: {}:{}.{}".format(
+                        req.controller_info['module_name'],
+                        req.controller_info['class_name'],
+                        controller_method_name
+                    )
+                )
 
                 body = controller_method(
                     *controller_args,
@@ -1007,8 +1040,6 @@ class Controller(object):
 
                 while inspect.iscoroutine(body):
                     body = await body
-
-                res.body = body
 
                 exceptions = None
                 break
@@ -1028,6 +1059,9 @@ class Controller(object):
                         req.path
                     )
                 )
+
+        else:
+            res.body = await self.handle_method_output(body)
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
