@@ -25,11 +25,11 @@ from .utils import (
     httpcache,
     nohttpcache,
     code_error,
-    param,
 )
 
 from .call import (
     route,
-    version
+    version,
+    param,
 )
 

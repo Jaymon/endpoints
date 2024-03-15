@@ -53,7 +53,7 @@ class AuthDecorator(ControllerDecorator):
         else:
             raise NotImplementedError()
 
-    async def handle_error(self, controller, e):
+    async def handle_handle_error(self, controller, e):
         if isinstance(e, CallError):
             await super().handle_error(controller, e)
 

@@ -34,8 +34,11 @@ from endpoints.decorators.utils import (
     httpcache,
     nohttpcache,
     code_error,
+)
+from endpoints.decorators.call import (
     param,
 )
+
 
 from . import (
     testdata,

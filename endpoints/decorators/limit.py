@@ -1,8 +1,7 @@
 # -*- coding: utf-8 -*-
 import logging
-import datetime
 
-from datatypes import Pool
+from datatypes import Pool, Datetime
 
 from ..compat import *
 from ..exception import CallError
@@ -46,7 +45,7 @@ class Backend(RateLimitBackend):
     """class dictionary that will hold all limiting keys"""
 
     async def handle(self, request, key, limit, ttl):
-        now = datetime.datetime.utcnow()
+        now = Datetime()
         count = 1
 
         calls = type(self)._calls
@@ -109,14 +108,13 @@ class RateLimitDecorator(BackendDecorator):
         """
         raise NotImplementedError()
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+    async def handle_kwargs(self, controller, **kwargs):
         """These arguments will be passed to the .handle() method"""
         request = controller.request
 
         key = await self.normalize_key(
             request,
-            controller_args=controller_args,
-            controller_kwargs=controller_kwargs,
+            **kwargs
         )
 
         return {
@@ -127,9 +125,9 @@ class RateLimitDecorator(BackendDecorator):
         }
 
     async def handle(self, request, key, limit, ttl):
-        """this will only run the request if the key has a value, if you want to
-        fail if the key doesn't have a value, then normalize_key() should raise
-        an exception
+        """this will only run the request if the key has a value, if you want
+        to fail if the key doesn't have a value, then normalize_key() should
+        raise an exception
 
         :param request: Request, the request instance
         :param key: string, the unique key for the endpoint, this is generated
@@ -144,11 +142,13 @@ class RateLimitDecorator(BackendDecorator):
             ret = await super().handle(request, key, limit, ttl)
 
         else:
-            logger.warning("No ratelimit key found for {}".format(request.path))
+            logger.warning(
+                "No ratelimit key found for {}".format(request.path)
+            )
 
         return ret
 
-    async def handle_error(self, controller, e):
+    async def handle_handle_error(self, controller, e):
         """all exceptions should generate 429 responses"""
         if isinstance(e, CallError):
             await super().handle_error(controller, e)
