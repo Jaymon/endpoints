@@ -38,10 +38,10 @@ class template(ControllerDecorator):
 
         return super().definition(**kwargs)
 
-    async def handle_request(self, controller, controller_args, controller_kwargs):
+    async def handle_method_input(self, controller, *args, **kwargs):
         controller.response.set_header("Content-Type", self.content_type)
 
-    async def handle_response(self, controller, controller_response):
+    async def handle_method_output(self, controller, body):
         # let's return the rendered template using whatever the controller
         # method gave us
 
@@ -54,6 +54,6 @@ class template(ControllerDecorator):
             "response": controller.response,
         }
 
-        d.update(controller_response)
+        d.update(body)
         return self.renderer.render(template_name, d)
 

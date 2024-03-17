@@ -38,8 +38,9 @@ class RateLimitBackend(object):
 
 class Backend(RateLimitBackend):
     """This is the default backend the limit decorators use, it just uses an in
-    memory class dictionary to hold values, while this does work, it is more for
-    demonstration purposes since it tracks keys in memory and per process"""
+    memory class dictionary to hold values, while this does work, it is more
+    for demonstration purposes since it tracks keys in memory and per
+    process"""
 
     _calls = Pool(5000)
     """class dictionary that will hold all limiting keys"""
@@ -208,8 +209,8 @@ class ratelimit_param(RateLimitDecorator):
 
 
 class ratelimit_param_ip(ratelimit_param):
-    """this is a combination of the limit_param and limit_ip decorators, it will
-    allow the param N times on the given unique ip
+    """this is a combination of the limit_param and limit_ip decorators, it
+    will allow the param N times on the given unique ip
     """
     async def normalize_key(self, request, controller_args, controller_kwargs):
         try:

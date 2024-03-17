@@ -43,12 +43,16 @@ class AuthDecorator(ControllerDecorator):
 
     async def handle(self, *args, **kwargs):
         target = self.definition_kwargs.get("target", None)
-        if target:
-            if inspect.iscoroutinefunction(target):
-                return await target(*args, **kwargs)
+        if not target:
+            if self.definition_args and callable(self.definition_args[0]):
+                target = self.definition_args[0]
 
-            else:
-                return target(*args, **kwargs)
+        if target:
+            ret = target(*args, **kwargs)
+            while inspect.iscoroutine(ret):
+                ret = await ret
+
+            return ret
 
         else:
             raise NotImplementedError()

@@ -634,6 +634,42 @@ class AuthDecoratorTest(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual(1, r.body)
 
+    async def test_auth_unrelated_error(self):
+        """There was an earlier iteration of AuthDecorator that wrapped every
+        single exceptions, even errors that were raised in like a POST method
+        body in AccessDenied. This makes sure that is fixed"""
+        async def target(controller, **kwargs):
+            return True
+
+        class MockObject(object):
+            @auth_basic(target=target)
+            async def foo_basic(self):
+                raise ValueError("foo_basic")
+
+            @auth_client(target=target)
+            async def foo_client(self):
+                raise ValueError("foo_client")
+
+            @auth_token(target=target)
+            async def foo_token(self):
+                raise ValueError("foo_token")
+
+        c = MockObject()
+        c.request = self.mock(
+            get_auth_basic=("foo", "bar"),
+            client_tokens=("foo", "bar"),
+            get_auth_bearer="foobar",
+        )
+
+        with self.assertRaises(ValueError):
+            await c.foo_basic()
+
+        with self.assertRaises(ValueError):
+            await c.foo_client()
+
+        with self.assertRaises(ValueError):
+            await c.foo_token()
+
 
 class CacheTest(TestCase):
     async def test_httpcache(self):
