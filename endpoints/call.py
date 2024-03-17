@@ -9,6 +9,7 @@ import re
 import io
 import sys
 from collections import defaultdict
+from configparser import RawConfigParser
 
 from .compat import *
 from .utils import AcceptHeader
@@ -324,11 +325,9 @@ class Param(object):
             else:
                 if isinstance(ptype, type):
                     if issubclass(ptype, bool):
-                        if val in set(['true', 'True', '1']):
-                            val = True
-
-                        elif val in set(['false', 'False', '0']):
-                            val = False
+                        key = val.lower()
+                        if key in RawConfigParser.BOOLEAN_STATES:
+                            val = RawConfigParser.BOOLEAN_STATES[key]
 
                         else:
                             val = ptype(val)
