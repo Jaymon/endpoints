@@ -248,50 +248,94 @@ class BaseApplication(ApplicationABC):
         return output to the client"""
         return self.response_class()
 
-    async def get_response_body(
-        self,
-        response,
-        json_encoder=JSONEncoder,
-        **kwargs
-    ):
+    async def get_response_body(self, response, **kwargs):
         """usually when iterating this object it means we are returning the
         response of a wsgi request, so this will iterate the body and make sure
         it is a bytes string because wsgiref requires an actual bytes instance,
         a child class won't work
 
+        This will call one of three internal methods:
+
+            * get_response_file - if response body is a file
+            * get_response_json - if response body is a jsonable object
+            * get_response_value - catchall for any other response bodies
+
+        :param **kwargs: passed through to one of the three internal methods
         :returns: generator[bytes], a generator that yields bytes strings
         """
         if response.has_body():
 
-            body = response.body
+#             body = response.body
 
             if response.is_file():
-                if body.closed:
-                    raise IOError(
-                        "cannot read streaming body because pointer is closed"
-                    )
-
-                body_iterator = functools.partial(body.read, 8192)
-
-                if "b" in body.mode:
-                    for chunk in iter(body_iterator, b""):
-                        yield chunk
-
-                else:
-                    # http://stackoverflow.com/questions/15599639/
-                    for chunk in iter(body_iterator, ""):
-                        yield ByteString(chunk, response.encoding).raw()
-
-                # close the pointer since we've consumed it
-                body.close()
+                chunks = self.get_response_file(response, **kwargs)
+#                 async for chunk in self.get_response_file(response, **kwargs):
+#                     yield chunk
 
             elif response.is_json():
-                body = json.dumps(body, cls=json_encoder)
-                yield ByteString(body, response.encoding).raw()
+                chunks = self.get_response_json(response, **kwargs)
+
+#                 body = json.dumps(body, cls=json_encoder)
+#                 yield ByteString(body, response.encoding).raw()
 
             else:
-                # just return a string representation of body if no content type
-                yield ByteString(body, response.encoding).raw()
+                chunks = self.get_response_value(response, **kwargs)
+
+            async for chunk in chunks:
+                yield chunk
+
+                # just return a string representation of body if no content
+                # type
+#                 yield ByteString(body, response.encoding).raw()
+
+    async def get_response_file(self, response, **kwargs):
+        """Internal method called when response body is a file
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        body = response.body
+
+        if body.closed:
+            raise IOError(
+                "cannot read streaming body because pointer is closed"
+            )
+
+        body_iterator = functools.partial(body.read, 8192)
+        try:
+            if "b" in body.mode:
+                for chunk in iter(body_iterator, b""):
+                    yield chunk
+
+            else:
+                # http://stackoverflow.com/questions/15599639/
+                for chunk in iter(body_iterator, ""):
+                    yield ByteString(chunk, response.encoding).raw()
+
+        finally:
+            # close the pointer since we've consumed it
+            body.close()
+
+    async def get_response_json(self, response, **kwargs):
+        """Internal method called when response body should be dumped to
+        json
+
+        :param **kwargs:
+            * json_encoder: JSONEncoder
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        body = response.body
+        json_encoder = kwargs.get("json_encoder", JSONEncoder)
+        body = json.dumps(body, cls=json_encoder)
+        yield ByteString(body, response.encoding).raw()
+
+    async def get_response_value(self, response, **kwargs):
+        """Internal method called when response body is unknown, it will be
+        treated like a string by default but child classes could customize
+        this method if they want to
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        yield ByteString(response.body, response.encoding).raw()
 
     def create_router(self):
         return self.router_class(
