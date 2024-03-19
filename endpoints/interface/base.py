@@ -55,8 +55,8 @@ class ApplicationABC(object):
 
         :param *args: passed into __call__ as positional arguments
         :param **kwargs: passed into __call__ as keyword arguments
-        :returns: dict[str, Any], a dict that can be used as **kwargs to further
-            downstream methods in the child interface
+        :returns: dict[str, Any], a dict that can be used as **kwargs to
+            further downstream methods in the child interface
         """
         raise NotImplementedError()
 
@@ -99,9 +99,9 @@ class BaseApplication(ApplicationABC):
     methods, this ensures a similar interface among all the different servers
 
     A server is different from the interface because the server is actually
-    responsible for serving the requests, while the interface will translate the
-    requests to and from endpoints itself into something the server backend can
-    understand
+    responsible for serving the requests, while the interface will translate
+    the requests to and from endpoints itself into something the server backend
+    can understand
 
     webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
 
@@ -186,8 +186,8 @@ class BaseApplication(ApplicationABC):
                 body = body.read(length)
 
             else:
-                # since there is no content length we can conclude that we don't
-                # actually have a body
+                # since there is no content length we can conclude that we
+                # don't actually have a body
                 body = None
 
         args = []
@@ -244,8 +244,8 @@ class BaseApplication(ApplicationABC):
         request.body_kwargs = kwargs
 
     def create_response(self, **kwargs):
-        """create the endpoints understandable response instance that is used to
-        return output to the client"""
+        """create the endpoints understandable response instance that is used
+        to return output to the client"""
         return self.response_class()
 
     async def get_response_body(self, response, **kwargs):
@@ -264,29 +264,17 @@ class BaseApplication(ApplicationABC):
         :returns: generator[bytes], a generator that yields bytes strings
         """
         if response.has_body():
-
-#             body = response.body
-
             if response.is_file():
                 chunks = self.get_response_file(response, **kwargs)
-#                 async for chunk in self.get_response_file(response, **kwargs):
-#                     yield chunk
 
             elif response.is_json():
                 chunks = self.get_response_json(response, **kwargs)
-
-#                 body = json.dumps(body, cls=json_encoder)
-#                 yield ByteString(body, response.encoding).raw()
 
             else:
                 chunks = self.get_response_value(response, **kwargs)
 
             async for chunk in chunks:
                 yield chunk
-
-                # just return a string representation of body if no content
-                # type
-#                 yield ByteString(body, response.encoding).raw()
 
     async def get_response_file(self, response, **kwargs):
         """Internal method called when response body is a file
@@ -347,8 +335,9 @@ class BaseApplication(ApplicationABC):
         """returns all the information needed to create a controller and handle
         the request
 
-        This is where all the routing magic happens, this takes the request.path
-        and gathers the information needed to turn that path into a Controller
+        This is where all the routing magic happens, this takes the
+        request.path and gathers the information needed to turn that path into
+        a Controller
 
         we always translate an HTTP request using this pattern:
 
@@ -538,7 +527,8 @@ class BaseApplication(ApplicationABC):
                 # filter out TypeErrors raised from non handler methods
                 correct_prefix = controller_info["method_name"] in e_msg
                 if correct_prefix and 'argument' in e_msg:
-                    # there are subtle messaging differences between py2 and py3
+                    # there are subtle messaging differences between py2 and
+                    # py3
                     errs = [
                         "takes exactly",
                         "takes no arguments",
@@ -690,7 +680,8 @@ class BaseApplication(ApplicationABC):
 
     @classmethod
     def get_websocket_loads(cls, body):
-        """Given a received websocket body this will convert it back into a dict
+        """Given a received websocket body this will convert it back into a
+        dict
 
         This isn't asyncronouse because it is used in ..client.WebSocketClient
         to read websocket bodies sent from the server
