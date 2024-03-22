@@ -38,10 +38,10 @@ class template(ControllerDecorator):
 
         return super().definition(**kwargs)
 
-    async def handle_method_input(self, controller, *args, **kwargs):
+    async def handle(self, controller, **kwargs):
         controller.response.set_header("Content-Type", self.content_type)
 
-    async def handle_method_output(self, controller, body):
+    async def get_response_body(self, controller, body):
         # let's return the rendered template using whatever the controller
         # method gave us
 

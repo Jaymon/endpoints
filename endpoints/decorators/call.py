@@ -49,7 +49,7 @@ class param(ControllerDecorator):
 
         return super().decorate(func, *args, **kwargs)
 
-    async def handle_method_input(self, controller, *controller_args, **controller_kwargs):
+    async def get_controller_params(self, controller, *controller_args, **controller_kwargs):
         """this is where all the magic happens, this will try and find the
         param and put its value in kwargs if it has a default and stuff"""
         # the first param decorator on the wrapped method is the one that will

@@ -32,12 +32,12 @@ class ControllerDecorator(FuncDecorator):
             **kwargs passed into .handle(). If this method returns False then
             .handle_handle_error() will be called. If this method returns True
             or None then the wrapped controller method will be called
-        4. .handle_method_input() is called with the controller instance and
+        4. .get_controller_params() is called with the controller instance and
             the controller args and the controller kwargs. It should return a
             tuple[list, dict] where index 0 represents that *args that will be
             passed to wrapped method and index 1 represents the **kwargs that
             will be passed to the wrapped method
-        5. .handle_method_output() is called with the controller instance and
+        5. .get_reponse_body() is called with the controller instance and
             the body from the controller method that handled the request, if it
             returns a body then that body will be used instead of what was
             returned from the controller method
@@ -187,15 +187,15 @@ class ControllerDecorator(FuncDecorator):
         :returns: Any, whatever the func returns
         """
         try:
-            crequest = await self.handle_method_input(
+            params = await self.get_controller_params(
                 controller,
                 *controller_args,
                 **controller_kwargs
             )
 
-            if crequest is not None:
-                controller_args = crequest[0]
-                controller_kwargs = crequest[1]
+            if params is not None:
+                controller_args = params[0]
+                controller_kwargs = params[1]
 
             body = func(
                 controller,
@@ -205,7 +205,7 @@ class ControllerDecorator(FuncDecorator):
             while inspect.iscoroutine(body):
                 body = await body
 
-            cbody = await self.handle_method_output(
+            cbody = await self.get_response_body(
                 controller,
                 body,
             )
@@ -218,14 +218,14 @@ class ControllerDecorator(FuncDecorator):
         except Exception as e:
             return await self.handle_controller_error(controller, e)
 
-    async def handle_method_input(self, controller, *controller_args, **controller_kwargs):
+    async def get_controller_params(self, controller, *controller_args, **controller_kwargs):
         """This is called right before the controller method is called, this is
         for decorators that want to normalize the controller method request in
         some way
 
         NOTE -- This has roughly the same signature as:
 
-            Controller.handle_method_input
+            Controller.get_controller_params
 
         if this raises an error it will be passed to .handle_controller_error()
 
@@ -242,7 +242,7 @@ class ControllerDecorator(FuncDecorator):
         """
         return controller_args, controller_kwargs
 
-    async def handle_method_output(self, controller, body):
+    async def get_response_body(self, controller, body):
         """This is called right after the controller method is called, this is
         for decorators that want to normalize the controller method return value
         in some way

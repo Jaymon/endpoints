@@ -18,7 +18,7 @@ class httpcache(ControllerDecorator):
         self.ttl = int(ttl)
         super().definition(**kwargs)
 
-    async def handle_method_input(self, controller, *args, **kwargs):
+    async def handle(self, controller, **kwargs):
         controller.response.add_headers({
             "Cache-Control": "max-age={}".format(self.ttl),
         })
@@ -32,7 +32,7 @@ class nohttpcache(ControllerDecorator):
 
     https://devcenter.heroku.com/articles/increasing-application-performance-with-http-cache-headers#cache-prevention
     """
-    async def handle_method_input(self, controller, *args, **kwargs):
+    async def handle(self, controller, **kwargs):
         controller.response.add_headers({
             "Cache-Control": "no-cache, no-store, must-revalidate",
             "Pragma": "no-cache", 

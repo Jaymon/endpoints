@@ -880,7 +880,6 @@ class Controller(object):
         """Called at the beginning of the handle() call, use to prepare the
         response instance with defaults that can be overridden in the
         controller's actual http handle method"""
-        req = self.request
         res = self.response
 
         encoding = self.encoding
@@ -957,10 +956,12 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def handle_method_input(self, *controller_args, **controller_kwargs):
+    async def get_controller_params(self, *controller_args, **controller_kwargs):
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
         customize the arguments that are passed into the method
+
+        This is ran before any decorators
 
         :param *controller_args:
         :param **controller_kwargs:
@@ -969,9 +970,12 @@ class Controller(object):
         """
         return controller_args, controller_kwargs
 
-    async def handle_method_output(self, body):
+    async def get_response_body(self, body):
         """Called right after the controller's request method (eg GET, POST)
         returns with the body that it returned
+
+        This is called after all similar decorators methods, it's the last
+        stop before body is sent to the client by the interface
 
         NOTE -- this is called before Response.body is set, the value returned
         from this method will be set in Response.body
@@ -1009,7 +1013,7 @@ class Controller(object):
 
         controller_method_names = req.controller_info["method_names"]
 
-        controller_args, controller_kwargs = await self.handle_method_input(
+        controller_args, controller_kwargs = await self.get_controller_params(
             *controller_args,
             **controller_kwargs
         )
@@ -1060,7 +1064,7 @@ class Controller(object):
                 )
 
         else:
-            res.body = await self.handle_method_output(body)
+            res.body = await self.get_response_body(body)
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
