@@ -162,11 +162,120 @@ class BaseApplication(ApplicationABC):
 
         :params raw_request: mixed, this is the request given by backend
         :params **kwargs:
-            :returns: an http.Request instance that endpoints understands
+        :returns: an http.Request instance that endpoints understands
         """
         request = self.request_class()
         request.raw_request = raw_request
         return request
+
+    def get_request_urlencoded(self, request, body, **kwargs):
+        """Parse a form encoded body
+
+        A form encoded body has a content-type of:
+
+            application/x-www-form-urlencoded
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict
+        """
+        return request._parse_query_str(body)
+
+    def get_request_json(self, request, body, **kwargs):
+        """Parse a json encoded body
+
+        A json encoded body has a content-type of:
+
+            application/json
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict|list|Any
+        """
+        return json.loads(body)
+
+    def get_request_multipart(self, request, body, **kwargs):
+        """Parse a multipart form encoded body, this usually means the body
+        contains an uploaded file
+
+        A form encoded body has a content-type of:
+
+            multipart/form-data
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict
+        """
+        ret = {}
+        em = email.message_from_bytes(bytes(request.headers) + body)
+        for part in em.walk():
+            if not part.is_multipart():
+                data = part.get_payload(decode=True)
+                params = {}
+                for header_name in part:
+                    for k, v in part.get_params(header=header_name)[1:]:
+                        params[k] = v
+
+                if "name" not in params:
+                    raise IOError("Bad body data")
+
+                if "filename" in params:
+                    fp = io.BytesIO(data)
+                    fp.filename = params["filename"]
+                    ret[params["name"]] = fp
+
+                else:
+                    ret[params["name"]] = String(data)
+
+        return ret
+
+    def get_request_plain(self, request, body, **kwargs):
+        """Parse a plain encoded body
+
+        A plain encoded body has a content-type of:
+
+            text/plain
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: str
+        """
+        return String(body, encoding=request.encoding)
+
+    def get_request_chunked(self, request, body, **kwargs):
+        """Do something with a chunked body, right now this just fails
+
+        A body is chunked if the Transfer-Encoding header has a value of
+        chunked
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: str, if this actually returned something it should be the
+            raw body that can be processed further
+        """
+        raise IOError("Chunked bodies are not supported")
+
+    def get_request_file(self, request, body, **kwargs):
+        """Read the body into memory since it's a file pointer
+
+        :param request: Request
+        :param body: IOBase
+        :returns: str, the raw body that can be processed further
+        """
+        length = int(request.get_header(
+            "Content-Length",
+            -1,
+            allow_empty=False
+        ))
+        if length > 0:
+            body = body.read(length)
+
+        else:
+            # since there is no content length we can conclude that we
+            # don't actually have a body
+            body = None
+
+        return body
 
     def set_request_body(self, request, body, **kwargs):
         """
@@ -174,21 +283,10 @@ class BaseApplication(ApplicationABC):
             body_kwargs
         """
         if request.headers.is_chunked():
-            raise IOError("Chunked bodies are not supported")
+            body = self.get_request_chunked(request, body, **kwargs)
 
         if isinstance(body, io.IOBase):
-            length = int(request.get_header(
-                "Content-Length",
-                -1,
-                allow_empty=False
-            ))
-            if length > 0:
-                body = body.read(length)
-
-            else:
-                # since there is no content length we can conclude that we
-                # don't actually have a body
-                body = None
+            body = self.get_request_file(request, body, **kwargs)
 
         args = []
         kwargs = {}
@@ -201,7 +299,7 @@ class BaseApplication(ApplicationABC):
                 args = body
 
             elif request.headers.is_json():
-                jb = json.loads(body)
+                jb = self.get_request_json(request, body, **kwargs)
 
                 if isinstance(jb, dict):
                     kwargs = jb
@@ -213,31 +311,14 @@ class BaseApplication(ApplicationABC):
                     args = [jb]
 
             elif request.headers.is_urlencoded():
-                kwargs = request._parse_query_str(body)
+                kwargs = self.get_request_urlencoded(request, body, **kwargs)
 
             elif request.headers.is_multipart():
-                em = email.message_from_bytes(bytes(request.headers) + body)
-                for part in em.walk():
-                    if not part.is_multipart():
-                        data = part.get_payload(decode=True)
-                        params = {}
-                        for header_name in part:
-                            for k, v in part.get_params(header=header_name)[1:]:
-                                params[k] = v
-
-                        if "name" not in params:
-                            raise IOError("Bad body data")
-
-                        if "filename" in params:
-                            fp = io.BytesIO(data)
-                            fp.filename = params["filename"]
-                            kwargs[params["name"]] = fp
-
-                        else:
-                            kwargs[params["name"]] = String(data)
+                kwargs = self.get_request_multipart(request, body, **kwargs)
 
             elif request.headers.is_plain():
                 body = String(body, encoding=request.encoding)
+                args = [body]
 
         request.body = body
         request.body_args = args
