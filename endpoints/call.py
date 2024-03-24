@@ -868,8 +868,9 @@ class Controller(object):
 
     def __init_subclass__(cls):
         """When a child class is loaded into memory it will be saved into
-        .controller_classes, this way every orm class knows about all the other
-        classes, this is the method that makes that possible magically
+        .controller_classes, this way every controller class knows about all
+        the other classes, this is the method that makes a lot of the magic
+        of endpoints possible
 
         https://peps.python.org/pep-0487/
         """
@@ -907,9 +908,9 @@ class Controller(object):
         origin = req.get_header('origin')
         if self.handle_origin(origin):
             if origin:
-                # your server must read the value of the request's Origin header
-                # and use that value to set Access-Control-Allow-Origin, and
-                # must also set a Vary: Origin header to indicate that some
+                # your server must read the value of the request's Origin
+                # header and use that value to set Access-Control-Allow-Origin,
+                # and must also set a Vary: Origin header to indicate that some
                 # headers are being set dynamically depending on the origin.
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
