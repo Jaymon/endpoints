@@ -28,7 +28,6 @@ from .utils import (
 )
 
 from .call import (
-    route,
     version,
     param,
 )
