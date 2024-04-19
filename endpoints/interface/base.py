@@ -568,19 +568,19 @@ class BaseApplication(ApplicationABC):
         if isinstance(e, CloseConnection):
             raise
 
-        res.body = e
+        res.set_body(e)
 
         if isinstance(e, CallStop):
             logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
-            res.body = e.body
+            res.set_body(e.body)
 
         elif isinstance(e, Redirect):
             logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
-            res.body = None
+            res.set_body(None)
 
         elif isinstance(e, (AccessDenied, CallError)):
             if logger.isEnabledFor(logging.WARNING):

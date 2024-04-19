@@ -65,6 +65,10 @@ class Server(object):
         request = self.create_request(path, method, **kwargs)
         response = self.application.create_response()
         asyncio.run(self.application.handle(request, response))
+
+        # makes call.Response look more like client response
+        response._body = response.body
+
         return response
 
     def post(self, path, body_kwargs, **kwargs):

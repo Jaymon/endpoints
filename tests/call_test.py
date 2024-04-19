@@ -675,7 +675,7 @@ class ResponseTest(TestCase):
 
         path = testdata.create_file("12345", ext="jpg")
         with path.open() as fp:
-            r.body = fp
+            r.set_body(fp)
             mt = r.headers["Content-Type"]
             fs = r.headers["Content-Length"]
             self.assertEqual("image/jpeg", mt)
@@ -683,7 +683,7 @@ class ResponseTest(TestCase):
 
         path = testdata.create_file("123", ext="txt")
         with path.open() as fp:
-            r.body = fp
+            r.set_body(fp)
             mt = r.headers["Content-Type"]
             fs = r.headers["Content-Length"]
             self.assertEqual("text/plain", mt)

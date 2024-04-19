@@ -1065,7 +1065,7 @@ class Controller(object):
                 )
 
         else:
-            res.body = await self.get_response_body(body)
+            res.set_body(await self.get_response_body(body))
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
@@ -1220,6 +1220,9 @@ class Controller(object):
 class Call(object):
     headers_class = Headers
 
+    body = None
+    """Any, Holds the body for this instance"""
+
     def __init__(self):
         self.headers = self.headers_class()
 
@@ -1302,14 +1305,14 @@ class Request(Call):
 
     an instance of this class is used by the endpoints Call instance to decide
     where endpoints should route requests, so, many times, you'll need to write
-    a glue function that takes however your request data is passed to Python and
-    convert it into a Request instance that endpoints can understand
+    a glue function that takes however your request data is passed to Python
+    and convert it into a Request instance that endpoints can understand
 
     properties:
         * headers -- a dict of all the request headers
         * path -- the /path/part/of/the/url
-        * path_args -- tied to path, it's path, but divided by / so all the path
-            bits are returned as a list
+        * path_args -- tied to path, it's path, but divided by / so all the
+            path bits are returned as a list
         * query -- the ?name=val portion of a url
         * query_kwargs -- tied to query, the values in query but converted to a
             dict {name: val}
@@ -1554,13 +1557,16 @@ class Request(Call):
     def kwargs(self):
         """combine GET and POST params to be passed to the controller"""
         kwargs = dict(self.query_kwargs)
-        kwargs.update(self.body_kwargs)
+        kwargs.update(self.body_kwargs or {})
         return kwargs
 
     def __init__(self):
-        self.body = None
+        # Holds the parsed positional arguments parsed from .body
         self.body_args = []
+
+        # Holds the parsed keyword arguments parsed from .body
         self.body_kwargs = {}
+
         super().__init__()
 
     def get(self, name="", default_val=None, **kwargs):
@@ -1660,16 +1666,12 @@ class Request(Call):
         :param body_args: list, any parsed positional arguments from `body`
         :param body_kwargs: dict, any parsed keyword arguments from `body`
         """
-        self.body = None
+        self.body = body
         self.body_args = body_args or []
         self.body_kwargs = body_kwargs or {}
 
     def has_body(self):
         return True if self.body else False
-        #return self.method.upper() in set(['POST', 'PUT'])
-        #return True if (self.body_kwargs or self.body_args) else False
-        #return True if self.body_kwargs else False
-        #return self.method.upper() not in set(['GET'])
 
     def should_have_body(self):
         """Returns True if the request should normally have a body"""
@@ -1800,11 +1802,14 @@ class Response(Call):
         response)"""
         return Status(self.code)
 
-    @cachedproperty(setter="_body")
-    def body(self, v):
-        self._body = v
+    def set_body(self, body):
+        """Set the body onto this instance
+
+        :param body: Any, the raw body for the response
+        """
+        self.body = body
         if self.is_file():
-            filepath = getattr(v, "name", "")
+            filepath = getattr(body, "name", "")
             if filepath:
                 mt = MimeType.find_type(filepath)
                 filesize = os.path.getsize(filepath)
@@ -1818,17 +1823,17 @@ class Response(Call):
 
             else:
                 logger.warn(
-                    "Response body is a filestream that has no .filepath property"
+                    "Response body is a filestream with no .filepath property"
                 )
 
     def has_body(self):
         """return True if there is an actual response body"""
-        return getattr(self, "_body", None) is not None
+        return self.body is not None
 
     def is_file(self):
         """return True if the response body is a file pointer"""
         # http://stackoverflow.com/questions/1661262/check-if-object-is-file-like-in-python
-        return isinstance(getattr(self, "_body", None), io.IOBase)
+        return isinstance(self.body, io.IOBase)
         #return hasattr(self._body, "read") if self.has_body() else False
 
     def is_success(self):
