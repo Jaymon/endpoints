@@ -1650,6 +1650,20 @@ class Request(Call):
         """Return True if the request is a POST request"""
         return self.is_method("POST")
 
+    def set_body(self, body, body_args=None, body_kwargs=None):
+        """Set the body onto this instance
+
+        Interfaces are responsible for parsing the body so should always pass
+        body_args and body_kwargs
+
+        :param body: Any, the raw body for the request
+        :param body_args: list, any parsed positional arguments from `body`
+        :param body_kwargs: dict, any parsed keyword arguments from `body`
+        """
+        self.body = None
+        self.body_args = body_args or []
+        self.body_kwargs = body_kwargs or {}
+
     def has_body(self):
         return True if self.body else False
         #return self.method.upper() in set(['POST', 'PUT'])

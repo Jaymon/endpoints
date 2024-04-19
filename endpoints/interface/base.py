@@ -320,9 +320,7 @@ class BaseApplication(ApplicationABC):
                 body = String(body, encoding=request.encoding)
                 args = [body]
 
-        request.body = body
-        request.body_args = args
-        request.body_kwargs = kwargs
+        request.set_body(body, args, kwargs)
 
     def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used
