@@ -124,11 +124,14 @@ class Param(object):
             flags['default'] = False
             flags['type'] = bool
 
-        prequired = False if 'default' in flags else flags.get('required', True)
+        if 'default' in flags:
+            prequired = False
+
+        else:
+            prequired = flags.get('required', True)
 
         flags["action"] = paction
         flags["required"] = prequired
-        #flags["encoding"] = flags.pop("encoding", flags.pop("charset", "UTF-8"))
 
         self.flags = flags
 
@@ -185,7 +188,7 @@ class Param(object):
         except IndexError as e:
             if flags["required"]:
                 raise ValueError(
-                    f"required positional param at index {index} does not exist"
+                    f"Positional param at index {index} does not exist"
                 ) from e
 
             else:
@@ -249,9 +252,9 @@ class Param(object):
                 kwargs.pop(found_name)
 
             else:
-                # we still want to run a default value through normalization but
-                # if we didn't find a value and don't have a default, don't set
-                # any value
+                # we still want to run a default value through normalization
+                # but if we didn't find a value and don't have a default, don't
+                # set any value
                 has_val = 'default' in flags
 
             if has_val:
@@ -569,8 +572,8 @@ class Router(object):
 
     def find_controller(self, path_args):
         """Where all the magic happens, this takes a requested path_args and
-        checks the internal tree to find the right path or raises a TypeError if
-        the path can't be resolved
+        checks the internal tree to find the right path or raises a TypeError
+        if the path can't be resolved
 
         :param path_args: list[str], so path `/foo/bar/che` would be passed to
             this method as `["foo", "bar", "che"]`
@@ -592,12 +595,16 @@ class Router(object):
                 pathfinder = pathfinder[controller_args[offset]] 
                 if isinstance(pathfinder, Mapping):
                     info["module_path_args"].append(controller_args[offset])
-                    info["controller_path_args"].append(controller_args[offset])
+                    info["controller_path_args"].append(
+                        controller_args[offset]
+                    )
 
                     offset += 1
 
                 else:
-                    info["controller_path_args"].append(controller_args[offset])
+                    info["controller_path_args"].append(
+                        controller_args[offset]
+                    )
 
                     controller_class = pathfinder
                     controller_args = controller_args[offset + 1:]
@@ -624,17 +631,17 @@ class Router(object):
         """Find the method names that could satisfy this request according to
         the HTTP method prefix
 
-        This will go through and find any methods that start with method_prefix,
-        so if the request was GET /foo then this would find any methods that
-        start with GET
+        This will go through and find any methods that start with
+        method_prefix, so if the request was GET /foo then this would find any
+        methods that start with GET
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
 
         The method_fallback is the name of the fallback controller method, it
         defaults to ANY and should probably never be changed
 
-        :param controller_class: type, the controller class that will be checked
-            for method_prefix
+        :param controller_class: type, the controller class that will be
+            checked for method_prefix
         :param method_prefix: str, the http method of the request (eg GET)
         :returns: set, a list of string names
         """
@@ -666,8 +673,8 @@ class Router(object):
         method names.
 
         This is just here for completeness since it used to be set in
-        BaseApplication but this class now sets all the defaults so it made more
-        sence to move this here also
+        BaseApplication but this class now sets all the defaults so it made
+        more sence to move this here also
 
         :param controller_class: type, the controller class that will handle
             the request
@@ -684,9 +691,10 @@ class Controller(object):
     interface :)
 
     to activate a new endpoint, just add a module on your PYTHONPATH
-    controller_prefix that has a class that extends this class, and then defines
-    at least one http method (like GET or POST), so if you wanted to create the
-    endpoint /foo/bar (with controller_prefix che), you would just need to:
+    controller_prefix that has a class that extends this class, and then
+    defines at least one http method (like GET or POST), so if you wanted to
+    create the endpoint /foo/bar (with controller_prefix che), you would just
+    need to:
 
     :Example:
         # che/foo.py
@@ -712,7 +720,7 @@ class Controller(object):
 
         class _BaseController(endpoints.Controller):
             def GET(self, *args, **kwargs):
-                return "every child that extends this will have this GET method"
+                return "Any child that extends this will have this GET method"
     """
     request = None
     """holds a Request() instance"""
@@ -792,8 +800,8 @@ class Controller(object):
             period then it represents the end of the controller prefix path (eg
             .che on a module path of foo.bar.che.boo would strip foo.bar.che
             and return boo as the path)
-        :returns: list[str], a list of path args that are needed to request this
-            controller
+        :returns: list[str], a list of path args that are needed to request
+            this controller
         """
         path_args = []
         path = modpath = cls.__module__
@@ -818,13 +826,13 @@ class Controller(object):
 
     @classmethod
     def get_class_path_args(cls, default_class_name=""):
-        """Similar to .get_module_path_args but returns the class portion of the
-        path
+        """Similar to .get_module_path_args but returns the class portion of
+        the path
 
-        :param default_class_name: str, the name of the default class that would
-            not factor into the path
-        :returns: list[str], the class portion of a full set of requestable path
-            args
+        :param default_class_name: str, the name of the default class that
+            would not factor into the path
+        :returns: list[str], the class portion of a full set of requestable
+            path args
         """
         path_args = []
         class_name = cls.__name__ # TODO: use __qualname__ instead? 
@@ -845,8 +853,8 @@ class Controller(object):
 
         :param method_prefix: str, something like GET, POST, PUT, etc
         :returns: list[str], a set of method names starting with method_prefix,
-            these will be in alphabetical order to make it so they can always be
-            checked in the same order
+            these will be in alphabetical order to make it so they can always
+            be checked in the same order
         """
         method_names = set()
 
@@ -1423,8 +1431,8 @@ class Request(Call):
 
     @cachedproperty(read_only="_ips")
     def ips(self):
-        """return all the possible ips of this request, this will include public
-        and private ips"""
+        """return all the possible ips of this request, this will include
+        public and private ips"""
         r = []
         names = ['X_FORWARDED_FOR', 'CLIENT_IP', 'X_REAL_IP', 'X_FORWARDED', 
             'X_CLUSTER_CLIENT_IP', 'FORWARDED_FOR', 'FORWARDED', 'VIA',
@@ -1538,7 +1546,8 @@ class Request(Call):
 
     @cachedproperty(cached="_query")
     def query(self):
-        """query_string part of a url (eg, http://host.com/path?query=string)"""
+        """query_string part of a url (eg, http://host.com/path?query=string)
+        """
         self._query = query = ""
 
         query_kwargs = self.query_kwargs
@@ -1761,8 +1770,8 @@ class Response(Call):
     an instance of this class is used to create the text response that will be
     sent back to the client
 
-    Request has a ._body and .body, the ._body property is the raw value that is
-    returned from the Controller method that handled the request, the .body
+    Request has a ._body and .body, the ._body property is the raw value that
+    is returned from the Controller method that handled the request, the .body
     property is a string that is ready to be sent back to the client, so it is
     _body converted to a string. The reason _body isn't name body_kwargs is
     because _body can be almost anything (not just a dict)
@@ -1837,7 +1846,8 @@ class Response(Call):
         #return hasattr(self._body, "read") if self.has_body() else False
 
     def is_success(self):
-        """return True if this response is considered a "successful" response"""
+        """return True if this response is considered a "successful" response
+        """
         code = self.code
         return code < 400
 
