@@ -1,5 +1,6 @@
 # -*- coding: utf-8 -*-
 import logging
+import inspect
 
 from ..compat import *
 from ..exception import CallError, VersionError
@@ -41,13 +42,15 @@ class param(ControllerDecorator):
     def decorate(self, func, *args, **kwargs):
         wrapped = self.get_wrapped_method(func)
 
+        self.param = self.create_param(*args, **kwargs)
+
         # how we figure out what params have been set and when to check during
         # runtime we use the original func as our source of truth, we place a
         # counter and the seen params on the original function and then, during
         # runtime we only go through the params and normalize the values on the
         # first param instance, all the others just return
         params = getattr(wrapped, "params", [])
-        params.append(self.create_param(*args, **kwargs))
+        params.append(self)
         wrapped.params = params
 
         param_count = getattr(wrapped, "param_count", 0)
@@ -63,12 +66,11 @@ class param(ControllerDecorator):
 
         return super().decorate(func, *args, **kwargs)
 
-    async def handle_param(self, controller, param, *args, **kwargs):
+    async def handle_param(self, controller, *args, **kwargs):
         """This will use param to check and normalize the controllers args
         and kwargs
 
         :param controller: Controller
-        :param param: Param
         :param args: the current state of the controller args that will be
             passed to the controller method that will handle the request
         :param kwargs: the current state of the controller kwargs that will
@@ -76,7 +78,13 @@ class param(ControllerDecorator):
         :returns: tuple(Sequence, Mapping), the return value will be passed
             to the controller method handling the request as *args, **kwargs
         """
-        return param.handle(args, kwargs)
+        param = self.param
+
+        if inspect.iscoroutinefunction(param.handle):
+            return await param.handle(args, kwargs)
+
+        else:
+            return param.handle(args, kwargs)
 
     async def handle_params(self, controller, *args, **kwargs):
         """Called from .get_controller_params and only called when the params
@@ -96,9 +104,8 @@ class param(ControllerDecorator):
         for param in self.params:
             param.encoding = controller.request.encoding
 
-            args, kwargs = await self.handle_param(
+            args, kwargs = await param.handle_param(
                 controller,
-                param,
                 *args,
                 **kwargs
             )

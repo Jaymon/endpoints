@@ -132,8 +132,10 @@ class auth_client(auth_basic):
                 return "hello world"
     """
     async def handle_kwargs(self, controller, **kwargs):
-        client_id, client_secret = controller.request.client_tokens
-
+        client_id, client_secret = controller.get_client_tokens(
+            *kwargs["controller_args"],
+            **kwargs["controller_kwargs"]
+        )
 
         if not client_id:
             raise ValueError("client_id is required")
@@ -150,8 +152,8 @@ class auth_client(auth_basic):
 
 class auth_token(AuthDecorator):
     """
-    handy token auth decorator that checks for access_token in an authorization
-    Bearer header
+    handy token auth decorator that checks for access_token in an
+    authorization Bearer header
 
     :example:
 
@@ -170,7 +172,10 @@ class auth_token(AuthDecorator):
     scheme = AccessDenied.SCHEME_BEARER
 
     async def handle_kwargs(self, controller, **kwargs):
-        access_token = controller.request.access_token
+        access_token = controller.get_access_token(
+            *kwargs["controller_args"],
+            **kwargs["controller_kwargs"]
+        )
 
         if not access_token:
             raise ValueError("access_token is required")

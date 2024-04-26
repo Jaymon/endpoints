@@ -47,16 +47,27 @@ from . import (
 
 
 class TestCase(IsolatedAsyncioTestCase):
-    def create_controller(self):
+    def create_controller(self, *methods):
+        """Create a fake controller to make it easier to test controller
+        decorators
+
+        :param *methods: one or more callables that will be set on the
+            controller
+        """
         class FakeController(Controller):
             async def POST(self): pass
             async def GET(self): pass
+
+        if methods:
+            for method in methods:
+                setattr(FakeController, method.__name__, method)
 
         res = Response()
         req = Request()
         req.method = 'GET'
 
         c = FakeController(req, res)
+
         return c
 
 
@@ -148,6 +159,17 @@ class RateLimitTest(TestCase):
     def set_bearer_auth_header(self, request, access_token):
         request.set_header("authorization", 'Bearer {}'.format(access_token))
 
+    def rollback_now(self, method, ttl):
+        """Rolls back the "date" time on the decorator so expiration can be
+        tested, this is better than call time.sleep
+
+        :param method: callable, the method to rollback the calls on
+        :param ttl: int, the amount to rollback, so if you passed in 1 then
+            it would rollback 1 second
+        """
+        for call in method.__orig_decorator__.backend._calls.values():
+            call["date"] -= ttl
+
     async def test_throttle(self):
         class MockObject(object):
             @ratelimit_ip(limit=3, ttl=1)
@@ -181,12 +203,14 @@ class RateLimitTest(TestCase):
         for x in range(10):
             r = await c.bar()
             self.assertEqual(2, r)
-            time.sleep(0.1)
+            #time.sleep(0.1)
 
         with self.assertRaises(CallError):
             await c.bar()
 
         c.request = r_foo
+
+        self.rollback_now(c.foo, 1)
 
         for x in range(3):
             r = await c.foo()
@@ -222,19 +246,18 @@ class RateLimitTest(TestCase):
         await o.foo()
         o.request = orig_r
 
-        time.sleep(1)
+        self.rollback_now(o.foo, 1)
+        #time.sleep(1)
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
         r = await o.foo()
         self.assertEqual(1, r)
 
     async def test_ratelimit_access_token(self):
-        class MockObject(object):
-            @ratelimit_access_token(limit=2, ttl=1)
-            def foo(self):
-                return 1
+        @ratelimit_access_token(limit=2, ttl=1)
+        def foo(self):
+            return 1
 
-        o = MockObject()
-        o.request = Request()
+        o = self.create_controller(foo)
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.path = "/footoken"
 
@@ -256,7 +279,8 @@ class RateLimitTest(TestCase):
         await o.foo()
         o.request = orig_r
 
-        time.sleep(1)
+        self.rollback_now(o.foo, 1)
+        #time.sleep(1)
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.set_header("X_FORWARDED_FOR", "1.1.1.3")
         r = await o.foo()
@@ -291,7 +315,8 @@ class RateLimitTest(TestCase):
         await o.foo(bar="baz")
         o.request = orig_r
 
-        time.sleep(1)
+        self.rollback_now(o.foo, 1)
+        #time.sleep(1)
         r = await o.foo(bar="che")
         self.assertEqual(1, r)
 
@@ -373,26 +398,28 @@ class RateLimitTest(TestCase):
                 await o.rl_access_token()
 
     async def test_async(self):
-        class MockObject(object):
-            request = Request()
+        @ratelimit_ip()
+        async def rl_ip(self):
+            return 2
 
-            @ratelimit_ip()
-            async def rl_ip(self):
-                return 2
+        @ratelimit_param_ip("bar")
+        async def rl_param_ip(self, **kwargs):
+            return 3
 
-            @ratelimit_param_ip("bar")
-            async def rl_param_ip(self, **kwargs):
-                return 3
+        @ratelimit_param("bar")
+        async def rl_param(self, **kwargs):
+            return 4
 
-            @ratelimit_param("bar")
-            async def rl_param(self, **kwargs):
-                return 4
+        @ratelimit_access_token()
+        async def rl_access_token(self):
+            return 5
 
-            @ratelimit_access_token()
-            async def rl_access_token(self):
-                return 5
-
-        o = MockObject()
+        o = self.create_controller(
+            rl_ip,
+            rl_param_ip,
+            rl_param,
+            rl_access_token
+        )
 
         self.assertEqual(2, await o.rl_ip())
         self.assertEqual(3, await o.rl_param_ip(bar=1))
@@ -443,76 +470,74 @@ class AuthDecoratorTest(TestCase):
             elif access_token == "che":
                 return False
 
-        class MockObject(object):
-            @auth_token(target=target)
-            def foo(self):
-                pass
+        @auth_token(target=target)
+        def foo(self, **kwargs):
+            pass
 
-        r = Request()
+        c = self.create_controller(foo)
 
-        c = MockObject()
-        c.request = r
-
-        r.set_header('authorization', self.get_bearer_auth_header("foo"))
+        c.request.set_header(
+            "authorization",
+            self.get_bearer_auth_header("foo")
+        )
         with self.assertRaises(AccessDenied):
             await c.foo()
 
-        r.set_header('authorization', self.get_bearer_auth_header("bar"))
+        c.request.set_header(
+            "authorization",
+            self.get_bearer_auth_header("bar")
+        )
         await c.foo()
 
-        r = Request()
-        c.request = r
+        c.request = Request()
 
-        r.body_kwargs["access_token"] = "foo"
         with self.assertRaises(AccessDenied):
-            await c.foo()
+            await c.foo(access_token="foo")
 
-        r.body_kwargs["access_token"] = "bar"
-        await c.foo()
+        await c.foo(access_token="bar")
 
-        r = Request()
-        c.request = r
-
-        r.query_kwargs["access_token"] = "foo"
-        with self.assertRaises(AccessDenied):
-            await c.foo()
-
-        r.query_kwargs["access_token"] = "bar"
-        await c.foo()
-
-        r.query_kwargs["access_token"] = "che"
-        with self.assertRaises(AccessDenied):
-            await c.foo()
-
-    async def test_auth_client(self):
+    async def test_auth_client_header(self):
         async def target(controller, client_id, client_secret):
             return client_id == "foo" and client_secret == "bar"
 
-        class MockObject(object):
-            @auth_client(target=target)
-            async def foo(self):
-                pass
+        @auth_client(target=target)
+        async def foo(self):
+            pass
 
-        client_id = "foo"
-        client_secret = "..."
-        r = Request()
+        c = self.create_controller(foo)
 
-        c = MockObject()
-        c.request = r
-
-        r.set_header(
+        c.request.set_header(
             'authorization',
-            self.get_basic_auth_header(client_id, client_secret)
+            self.get_basic_auth_header("foo", "...")
         )
         with self.assertRaises(AccessDenied):
             await c.foo()
 
-        client_secret = "bar"
-        r.set_header(
+        c.request.set_header(
             'authorization',
-            self.get_basic_auth_header(client_id, client_secret)
+            self.get_basic_auth_header("foo", "bar")
         )
         await c.foo()
+
+    async def test_auth_client_kwargs(self):
+        async def target(controller, client_id, client_secret):
+            return client_id == "foo" and client_secret == "bar"
+
+        @auth_client(target=target)
+        async def foo(self, **kwargs):
+            pass
+
+        c = self.create_controller(foo)
+        kwargs = {
+            "client_id": "foo",
+            "client_secret": "..."
+        }
+
+        with self.assertRaises(AccessDenied):
+            await c.foo()
+
+        kwargs["client_secret"] = "bar"
+        await c.foo(**kwargs)
 
     async def test_auth_basic_simple(self):
         async def target(controller, username, password):
@@ -636,28 +661,27 @@ class AuthDecoratorTest(TestCase):
 
     async def test_auth_unrelated_error(self):
         """There was an earlier iteration of AuthDecorator that wrapped every
-        single exceptions, even errors that were raised in like a POST method
+        single exception, even errors that were raised in like a POST method
         body in AccessDenied. This makes sure that is fixed"""
         async def target(controller, **kwargs):
             return True
 
-        class MockObject(object):
-            @auth_basic(target=target)
-            async def foo_basic(self):
-                raise ValueError("foo_basic")
+        @auth_basic(target=target)
+        async def foo_basic(self):
+            raise ValueError("foo_basic")
 
-            @auth_client(target=target)
-            async def foo_client(self):
-                raise ValueError("foo_client")
+        @auth_client(target=target)
+        async def foo_client(self):
+            raise ValueError("foo_client")
 
-            @auth_token(target=target)
-            async def foo_token(self):
-                raise ValueError("foo_token")
+        @auth_token(target=target)
+        async def foo_token(self):
+            raise ValueError("foo_token")
 
-        c = MockObject()
+        c = self.create_controller(foo_basic, foo_client, foo_token)
+
         c.request = self.mock(
             get_auth_basic=("foo", "bar"),
-            client_tokens=("foo", "bar"),
             get_auth_bearer="foobar",
         )
 
@@ -884,7 +908,7 @@ class ParamTest(TestCase):
         r1 = await foo(c, **{})
         self.assertLess(start, r1)
 
-        time.sleep(0.1)
+        #time.sleep(0.1)
         r2 = await foo(c, **{})
         self.assertLess(r1, r2)
 

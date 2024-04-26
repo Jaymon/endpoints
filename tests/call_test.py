@@ -420,12 +420,12 @@ class RouterTest(TestCase):
 
 
 class RequestTest(TestCase):
-    def test_get_auth_scheme(self):
+    def test_get_auth_scheme_is_auth(self):
         r = Request()
+
         r.set_headers({
             "Authorization": "Basic FOOBAR",
         })
-
         self.assertEqual("Basic", r.get_auth_scheme())
         self.assertTrue(r.is_auth("basic"))
         self.assertTrue(r.is_auth("Basic"))
@@ -435,28 +435,23 @@ class RequestTest(TestCase):
         self.assertEqual("", r.get_auth_scheme())
         self.assertFalse(r.is_auth("basic"))
 
-    def test_is_oauth(self):
-        username = "foo"
-        password = "bar"
-        r = Request()
-
-        r.set_headers({"Authorization": _basic_auth_str(username, password)})
-        self.assertTrue(r.is_oauth("basic"))
-        self.assertTrue(r.is_oauth("client"))
-        self.assertFalse(r.is_oauth("token"))
-        self.assertFalse(r.is_oauth("access"))
+        r.set_headers({"Authorization": _basic_auth_str("foo", "bar")})
+        self.assertTrue(r.is_auth("basic"))
+        self.assertTrue(r.is_auth("client"))
+        self.assertFalse(r.is_auth("token"))
+        self.assertFalse(r.is_auth("access"))
 
         r.headers["Authorization"] = "Bearer FOOBAR"
-        self.assertFalse(r.is_oauth("basic"))
-        self.assertFalse(r.is_oauth("client"))
-        self.assertTrue(r.is_oauth("token"))
-        self.assertTrue(r.is_oauth("access"))
+        self.assertFalse(r.is_auth("basic"))
+        self.assertFalse(r.is_auth("client"))
+        self.assertTrue(r.is_auth("token"))
+        self.assertTrue(r.is_auth("access"))
 
         r.headers.pop("Authorization")
-        self.assertFalse(r.is_oauth("basic"))
-        self.assertFalse(r.is_oauth("client"))
-        self.assertFalse(r.is_oauth("token"))
-        self.assertFalse(r.is_oauth("access"))
+        self.assertFalse(r.is_auth("basic"))
+        self.assertFalse(r.is_auth("client"))
+        self.assertFalse(r.is_auth("token"))
+        self.assertFalse(r.is_auth("access"))
 
     def test_copy(self):
         r = Request()

@@ -26,13 +26,13 @@ class RateLimitBackend(object):
         )
 
         class MyBackend(RateLimitBackend):
-            def handle(self, request, key, limit, ttl):
+            def handle(self, controller, key, limit, ttl):
                 # access database or something here, return boolean
 
         RateLimitDecorator.backend_class = MyBackend
         # now all rate limiting will use MyBackend
     """
-    async def handle(self, request, key, limit, ttl):
+    async def handle(self, controller, key, limit, ttl):
         raise NotImplementedError()
 
 
@@ -45,7 +45,7 @@ class Backend(RateLimitBackend):
     _calls = Pool(5000)
     """class dictionary that will hold all limiting keys"""
 
-    async def handle(self, request, key, limit, ttl):
+    async def handle(self, controller, key, limit, ttl):
         now = Datetime()
         count = 1
 
@@ -97,35 +97,33 @@ class RateLimitDecorator(BackendDecorator):
 
         super().definition(*args, **kwargs)
 
-    async def normalize_key(self, request, **kwargs):
+    async def normalize_key(self, controller, **kwargs):
         """Decide what key this request should have
 
         :example:
             # return ip.path
             return "{}.{}".format(request.ip, request.path)
 
-        :param request: Request, the request instance
+        :param controller: Controller, the controller handling the request
         :returns: int, the desired ttl for the request
         """
         raise NotImplementedError()
 
     async def handle_kwargs(self, controller, **kwargs):
         """These arguments will be passed to the .handle() method"""
-        request = controller.request
-
         key = await self.normalize_key(
-            request,
+            controller,
             **kwargs
         )
 
         return {
-            "request": request,
+            "controller": controller,
             "key": key,
             "limit": self.limit,
             "ttl": self.ttl,
         }
 
-    async def handle(self, request, key, limit, ttl):
+    async def handle(self, controller, key, limit, ttl):
         """this will only run the request if the key has a value, if you want
         to fail if the key doesn't have a value, then normalize_key() should
         raise an exception
@@ -140,11 +138,13 @@ class RateLimitDecorator(BackendDecorator):
         """
         ret = True
         if key:
-            ret = await super().handle(request, key, limit, ttl)
+            ret = await super().handle(controller, key, limit, ttl)
 
         else:
             logger.warning(
-                "No ratelimit key found for {}".format(request.path)
+                "No ratelimit key found for {}".format(
+                    controller.request.path
+                )
             )
 
         return ret
@@ -160,7 +160,8 @@ class RateLimitDecorator(BackendDecorator):
 
 class ratelimit_ip(RateLimitDecorator):
     """Rate limit by the client's ip address"""
-    async def normalize_key(self, request, **kwargs):
+    async def normalize_key(self, controller, **kwargs):
+        request = controller.request
         if self.path_in_key:
             ret = "{}{}".format(request.ip, request.path)
         else:
@@ -172,12 +173,17 @@ class ratelimit_access_token(RateLimitDecorator):
     """Limit by the requested client's access token, because certain endpoints
     can only be requested a certain amount of times for the given access token
     """
-    async def normalize_key(self, request, **kwargs):
+    async def normalize_key(self, controller, **kwargs):
+        access_token = controller.get_access_token(
+            *kwargs["controller_args"],
+            **kwargs["controller_kwargs"]
+        )
+
         if self.path_in_key:
-            ret = "{}{}".format(request.access_token, request.path)
+            ret = "{}{}".format(access_token, controller.request.path)
 
         else:
-            ret = request.access_token
+            ret = access_token
 
         return ret
 
@@ -187,16 +193,16 @@ class ratelimit_param(RateLimitDecorator):
     limit login attempts for an email address you would pass in "email" to this
     decorator
     """
-    async def normalize_key(self, request, controller_args, controller_kwargs):
+    async def normalize_key(self, controller, **kwargs):
         try:
             if self.path_in_key:
                 ret = "{}{}".format(
-                    controller_kwargs[self.param_name],
-                    request.path
+                    kwargs["controller_kwargs"][self.param_name],
+                    controller.request.path
                 )
 
             else:
-                ret = String(controller_kwargs[self.param_name])
+                ret = String(kwargs["controller_kwargs"][self.param_name])
 
         except KeyError:
             ret = ""
@@ -212,18 +218,19 @@ class ratelimit_param_ip(ratelimit_param):
     """this is a combination of the limit_param and limit_ip decorators, it
     will allow the param N times on the given unique ip
     """
-    async def normalize_key(self, request, controller_args, controller_kwargs):
+    async def normalize_key(self, controller, **kwargs):
+        request = controller.request
         try:
             if self.path_in_key:
                 ret = "{}.{}{}".format(
-                    controller_kwargs[self.param_name],
+                    kwargs["controller_kwargs"][self.param_name],
                     request.ip,
                     request.path
                 )
 
             else:
                 ret = "{}.{}".format(
-                    controller_kwargs[self.param_name],
+                    kwargs["controller_kwargs"][self.param_name],
                     request.ip
                 )
 

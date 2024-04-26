@@ -965,6 +965,57 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
+    def get_access_token(self, *args, **kwargs):
+        """return an Oauth 2.0 Bearer access token if it can be found
+
+        This was moved here from Request.access_token on 2024-04-24 because
+        the controller can mess with the controller params and so it didn't
+        make sense to have the controller decorators try to pull the
+        access token from the request when the controller could've
+        customized it in some way
+
+        :param *args: the controller args that will be passed to the
+            controller's handler method
+        :param **kwargs: the controller kwargs that will be passed to the
+            controller's handler method
+        :returns: str, the access token
+        """
+        access_token = self.request.get_auth_bearer()
+
+        if not access_token:
+            access_token = kwargs.get("access_token", "")
+
+        return access_token
+
+    def get_client_tokens(self, *args, **kwargs):
+        """try and get Oauth 2.0 client id and secret first from basic auth
+        header, then from GET or POST parameters
+
+        see .get_access_token for why this method is here instead of on
+        the Request instance
+
+        :param *args: the controller args that will be passed to the
+            controller's handler method
+        :param **kwargs: the controller kwargs that will be passed to the
+            controller's handler method
+        :returns: tuple[str, str], client_id, client_secret
+        """
+        client_id, client_secret = self.request.get_auth_basic()
+
+        if not client_id:
+            client_id = kwargs.get(
+                "client_id",
+                ""
+            )
+
+        if not client_secret:
+            client_secret = kwargs.get(
+                "client_secret",
+                ""
+            )
+
+        return client_id, client_secret
+
     async def get_controller_params(self, *controller_args, **controller_kwargs):
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
@@ -1403,31 +1454,31 @@ class Request(Call):
 
         return encoding
 
-    @property
-    def access_token(self):
-        """return an Oauth 2.0 Bearer access token if it can be found"""
-        access_token = self.get_auth_bearer()
-        if not access_token:
-            access_token = self.get("access_token", "")
-
-        return access_token
-
-    @property
-    def client_tokens(self):
-        """try and get Oauth 2.0 client id and secret first from basic auth
-        header, then from GET or POST parameters
-
-        return -- tuple -- client_id, client_secret
-        """
-        client_id, client_secret = self.get_auth_basic()
-
-        if not client_id:
-            client_id = self.get("client_id", "")
-
-        if not client_secret:
-            client_secret = self.get("client_secret", "")
-
-        return client_id, client_secret
+#     @property
+#     def access_token(self):
+#         """return an Oauth 2.0 Bearer access token if it can be found"""
+#         access_token = self.get_auth_bearer()
+#         if not access_token:
+#             access_token = self.get("access_token", "")
+# 
+#         return access_token
+# 
+#     @property
+#     def client_tokens(self):
+#         """try and get Oauth 2.0 client id and secret first from basic auth
+#         header, then from GET or POST parameters
+# 
+#         return -- tuple -- client_id, client_secret
+#         """
+#         client_id, client_secret = self.get_auth_basic()
+# 
+#         if not client_id:
+#             client_id = self.get("client_id", "")
+# 
+#         if not client_secret:
+#             client_secret = self.get("client_secret", "")
+# 
+#         return client_id, client_secret
 
     @cachedproperty(read_only="_ips")
     def ips(self):
@@ -1741,26 +1792,43 @@ class Request(Call):
             request.is_auth("basic") # True
             request.is_auth("bearer") # False
         """
-        return scheme.lower() == self.get_auth_scheme().lower()
-
-    def is_oauth(self, scheme):
-        """Similar to .is_auth() but checks for a wider range of names and also
-        will check for values like "client_id" and "client_secret" being passed
-        up in the body because javascript doesn't want to set headers in
-        websocket connections
-
-        :param scheme: string, the scheme you want to check, usually "basic" or
-            "bearer"
-        :return: boolean
-        """
+        ret = False
         scheme = scheme.lower()
-        if scheme in set(["bearer", "token", "access"]):
-            access_token = self.access_token
-            return True if access_token else False
+        auth_scheme = self.get_auth_scheme().lower()
 
-        elif scheme in set(["basic", "client"]):
-            client_id, client_secret = self.client_tokens
-            return True if (client_id and client_secret) else False
+        if scheme == auth_scheme:
+            ret = True
+
+        else:
+            token_schemes = set(["bearer", "token", "access"])
+            client_schemes = set(["basic", "client"])
+            if auth_scheme in token_schemes:
+                ret = scheme in token_schemes
+
+            elif auth_scheme in client_schemes:
+                ret = scheme in client_schemes
+
+        return ret
+        #return scheme.lower() == self.get_auth_scheme().lower()
+
+#     def is_oauth(self, scheme):
+#         """Similar to .is_auth() but checks for a wider range of names and also
+#         will check for values like "client_id" and "client_secret" being passed
+#         up in the body because javascript doesn't want to set headers in
+#         websocket connections
+# 
+#         :param scheme: string, the scheme you want to check, usually "basic" or
+#             "bearer"
+#         :return: boolean
+#         """
+#         scheme = scheme.lower()
+#         if scheme in set(["bearer", "token", "access"]):
+#             access_token = self.access_token
+#             return True if access_token else False
+# 
+#         elif scheme in set(["basic", "client"]):
+#             client_id, client_secret = self.client_tokens
+#             return True if (client_id and client_secret) else False
 
 
 class Response(Call):
