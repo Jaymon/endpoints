@@ -781,11 +781,3 @@ class ParamTest(TestCase):
         r = p.handle([], {'foo': '1'})
         self.assertEqual(1, r[1]["foo"])
 
-#     def test_arg_kwarg(self):
-#         """
-#         https://github.com/Jaymon/endpoints/issues/99
-#         """
-#         #p = Param(0, 'foo', dest="foobar")
-#         p = Param(0, 'foo')
-#         pout.v(p)
-

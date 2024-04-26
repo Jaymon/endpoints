@@ -91,8 +91,8 @@ class ControllerDecorator(FuncDecorator):
         return decorated
 
     def definition(self, *args, **kwargs):
-        """whatever is passed into the decorator creation will be passed to this
-        method, so you can set instance variables and stuff
+        """whatever is passed into the decorator creation will be passed to
+        this method, so you can set instance variables and stuff
 
         This can be overridden by child classes but this cannot be made async
         and it should avoid doing any IO because of that
@@ -117,8 +117,8 @@ class ControllerDecorator(FuncDecorator):
         self.definition_kwargs = kwargs
 
     async def handle_handle(self, controller, controller_args, controller_kwargs):
-        """Internal method for this class, this handles calling .handle_kwargs()
-        and .handle() for this decorator
+        """Internal method for this class, this handles calling
+        .handle_kwargs() and .handle() for this decorator
 
         handles normalizing the passed in values from the decorator using
         .handle_kwargs() and then passes them to .handle()
@@ -160,14 +160,15 @@ class ControllerDecorator(FuncDecorator):
         }
 
     async def handle(self, *args, **kwargs):
-        """The meat of the decorator, this is where all the functionality should
-        go in the child class, this is meant to be extended in decorators that
-        want to check something and interrupt the request if some condition
-        fails
+        """The meat of the decorator, this is where all the functionality
+        should go in the child class, this is meant to be extended in
+        decorators that want to check something and interrupt the request if
+        some condition fails
 
         if this raises an error it will be passed to .handle_error()
 
-        :param **kwargs: dict, whatever returned from .normalize_handle_kwargs()
+        :param **kwargs: dict, whatever returned from
+            .normalize_handle_kwargs()
         :returns: bool, if this method returns False then it will cause a
             ValueError to be raised signalling the input failed this decorator,
             if this returns None then it's return value is ignored
@@ -244,8 +245,8 @@ class ControllerDecorator(FuncDecorator):
 
     async def get_response_body(self, controller, body):
         """This is called right after the controller method is called, this is
-        for decorators that want to normalize the controller method return value
-        in some way
+        for decorators that want to normalize the controller method return
+        value in some way
 
         if this raises an error it will be passed to .handle_controller_error()
 
@@ -264,14 +265,14 @@ class ControllerDecorator(FuncDecorator):
         return await self.handle_error(controller, e)
 
     async def handle_error(self, controller, e):
-        """Any error the class isn't sure how to categorize will go through this
-        method
+        """Any error the class isn't sure how to categorize will go through
+        this method
 
-        overriding this method allows child classes to customize responses based
-        on certain encountered errors
+        overriding this method allows child classes to customize responses
+        based on certain encountered errors
 
-        :param controller: the controller instance that contains the method that
-            raised e
+        :param controller: the controller instance that contains the method
+        that raised e
         :param e: the raised error
         """
         if not isinstance(e, CallError):
@@ -285,8 +286,8 @@ class BackendDecorator(ControllerDecorator):
 
     You can set the .backend_class class variable on a child decorator or you
     could also pass `backend_class` to the decorator to be able to use your
-    backend, .create_backend is where the backend_class is found and an instance
-    is created
+    backend, .create_backend is where the backend_class is found and an
+    instance is created
     """
     backend_class = None
 

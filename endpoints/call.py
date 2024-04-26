@@ -1454,32 +1454,6 @@ class Request(Call):
 
         return encoding
 
-#     @property
-#     def access_token(self):
-#         """return an Oauth 2.0 Bearer access token if it can be found"""
-#         access_token = self.get_auth_bearer()
-#         if not access_token:
-#             access_token = self.get("access_token", "")
-# 
-#         return access_token
-# 
-#     @property
-#     def client_tokens(self):
-#         """try and get Oauth 2.0 client id and secret first from basic auth
-#         header, then from GET or POST parameters
-# 
-#         return -- tuple -- client_id, client_secret
-#         """
-#         client_id, client_secret = self.get_auth_basic()
-# 
-#         if not client_id:
-#             client_id = self.get("client_id", "")
-# 
-#         if not client_secret:
-#             client_secret = self.get("client_secret", "")
-# 
-#         return client_id, client_secret
-
     @cachedproperty(read_only="_ips")
     def ips(self):
         """return all the possible ips of this request, this will include
@@ -1809,26 +1783,6 @@ class Request(Call):
                 ret = scheme in client_schemes
 
         return ret
-        #return scheme.lower() == self.get_auth_scheme().lower()
-
-#     def is_oauth(self, scheme):
-#         """Similar to .is_auth() but checks for a wider range of names and also
-#         will check for values like "client_id" and "client_secret" being passed
-#         up in the body because javascript doesn't want to set headers in
-#         websocket connections
-# 
-#         :param scheme: string, the scheme you want to check, usually "basic" or
-#             "bearer"
-#         :return: boolean
-#         """
-#         scheme = scheme.lower()
-#         if scheme in set(["bearer", "token", "access"]):
-#             access_token = self.access_token
-#             return True if access_token else False
-# 
-#         elif scheme in set(["basic", "client"]):
-#             client_id, client_secret = self.client_tokens
-#             return True if (client_id and client_secret) else False
 
 
 class Response(Call):

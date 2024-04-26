@@ -161,7 +161,7 @@ class RateLimitTest(TestCase):
 
     def rollback_now(self, method, ttl):
         """Rolls back the "date" time on the decorator so expiration can be
-        tested, this is better than call time.sleep
+        tested, this is better than calling time.sleep
 
         :param method: callable, the method to rollback the calls on
         :param ttl: int, the amount to rollback, so if you passed in 1 then
@@ -203,7 +203,6 @@ class RateLimitTest(TestCase):
         for x in range(10):
             r = await c.bar()
             self.assertEqual(2, r)
-            #time.sleep(0.1)
 
         with self.assertRaises(CallError):
             await c.bar()
@@ -247,7 +246,6 @@ class RateLimitTest(TestCase):
         o.request = orig_r
 
         self.rollback_now(o.foo, 1)
-        #time.sleep(1)
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
         r = await o.foo()
         self.assertEqual(1, r)
@@ -280,7 +278,6 @@ class RateLimitTest(TestCase):
         o.request = orig_r
 
         self.rollback_now(o.foo, 1)
-        #time.sleep(1)
         self.set_bearer_auth_header(o.request, "footoken")
         o.request.set_header("X_FORWARDED_FOR", "1.1.1.3")
         r = await o.foo()
@@ -316,7 +313,6 @@ class RateLimitTest(TestCase):
         o.request = orig_r
 
         self.rollback_now(o.foo, 1)
-        #time.sleep(1)
         r = await o.foo(bar="che")
         self.assertEqual(1, r)
 
@@ -908,7 +904,6 @@ class ParamTest(TestCase):
         r1 = await foo(c, **{})
         self.assertLess(start, r1)
 
-        #time.sleep(0.1)
         r2 = await foo(c, **{})
         self.assertLess(r1, r2)
 
