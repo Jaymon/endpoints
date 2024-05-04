@@ -9,7 +9,6 @@ import re
 import io
 import sys
 from collections import defaultdict
-from configparser import RawConfigParser
 
 from .compat import *
 from .utils import AcceptHeader
@@ -27,6 +26,7 @@ from datatypes import (
     ReflectPath,
     DictTree,
     Profiler,
+    Boolean,
 )
 
 from .compat import *
@@ -328,12 +328,7 @@ class Param(object):
             else:
                 if isinstance(ptype, type):
                     if issubclass(ptype, bool):
-                        key = val.lower()
-                        if key in RawConfigParser.BOOLEAN_STATES:
-                            val = RawConfigParser.BOOLEAN_STATES[key]
-
-                        else:
-                            val = ptype(val)
+                        val = Boolean(val)
 
                     elif issubclass(ptype, (bytes, bytearray)):
                         charset = flags.get("encoding", self.encoding)
