@@ -445,7 +445,7 @@ class Router(object):
             logger.debug(f"Registering controller module: {m.__name__}")
             self._controller_modules[m.__name__] = m
 
-        self._controller_pathfinder = self.get_pathfinder()
+        self._controller_pathfinder = self.create_pathfinder()
         self._controller_method_names = {}
 
     def __iter__(self):
@@ -508,7 +508,7 @@ class Router(object):
             for m in rp.find_modules("controllers"):
                 yield m
 
-    def get_pathfinder(self):
+    def create_pathfinder(self):
         """Internal method. Create the tree that will be used to resolve a
         requested path to a found controller
 
@@ -557,7 +557,7 @@ class Router(object):
                 "Registering path: /{} to controller: {}:{}".format(
                     "/".join(filter(None, path_args)),
                     controller_class.__module__,
-                    controller_class.__name__
+                    controller_class.__qualname__
                 )
             )
 
@@ -734,6 +734,16 @@ class Controller(object):
     classpath is the key and the class object is the value, see
     __init_subclass__"""
 
+    ext = ""
+    """The extendsion to use for routing. Used in .get_class_path_args
+
+    :Example:
+        class Robots(Controller):
+            ext = "txt"
+
+        print(Robots.get_class_path_args()) # ["robots.txt"]
+    """
+
     @cachedproperty(cached="_encoding")
     def encoding(self):
         """the response charset of this controller"""
@@ -830,10 +840,24 @@ class Controller(object):
             path args
         """
         path_args = []
-        class_name = cls.__name__ # TODO: use __qualname__ instead? 
+
+        parts = cls.__qualname__.split(".")
+        class_name = parts.pop(-1)
+
+        for part in parts:
+            if part.startswith("<"):
+                raise ValueError(
+                    f"Controller {cls.__qualname__} is inaccessible"
+                )
+
+            path_args.append(part.lower())
 
         if class_name != default_class_name:
-            path_args.append(class_name.lower())
+            basename = class_name.lower()
+            if cls.ext:
+                basename += "." + cls.ext.lower()
+
+            path_args.append(basename)
 
         return path_args
 

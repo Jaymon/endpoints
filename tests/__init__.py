@@ -71,19 +71,19 @@ class Server(object):
 
         return response
 
-    def post(self, path, body_kwargs, **kwargs):
+    def post(self, path, body_kwargs=None, **kwargs):
         return self.handle(
             path,
             method="POST",
-            body_kwargs=body_kwargs,
+            body_kwargs=body_kwargs or {},
             **kwargs
         )
 
-    def get(self, path, query_kwargs, **kwargs):
+    def get(self, path, query_kwargs=None, **kwargs):
         return self.handle(
             path,
             method="GET",
-            query_kwargs=query_kwargs,
+            query_kwargs=query_kwargs or {},
             **kwargs
         )
 

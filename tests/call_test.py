@@ -166,16 +166,14 @@ class ControllerTest(TestCase):
 
         self.assertEqual([], foo_class.get_module_path_args([modpath]))
 
-    def test_get_class_path_args(self):
-        foo_class = self.create_module_class(
-            [
-                "from endpoints import Controller",
-                "",
-                "class Foo(Controller):",
-                "    def GET(self):",
-                "        pass",
-            ]
-        )
+    def test_get_class_path_args_1(self):
+        foo_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class Foo(Controller):",
+            "    def GET(self):",
+            "        pass",
+        ])
 
         path_args = foo_class.get_class_path_args()
         self.assertEqual(["foo"], path_args)
@@ -183,26 +181,46 @@ class ControllerTest(TestCase):
         path_args = foo_class.get_class_path_args("Foo")
         self.assertEqual([], path_args)
 
+    def test_get_class_path_args_classes(self):
+        c = self.create_server([
+            "class Foo(object):",
+            "    class Bar(Controller):",
+            "        def ANY(self):",
+            "            pass",
+        ])
+        res = c.get('/foo/bar')
+        self.assertEqual(204, res.code)
+
+    def test_get_class_path_args_method(self):
+        with self.assertRaises(ValueError):
+            self.create_server([
+                "class Foo(object):",
+                "    @classmethod",
+                "    def load_class(cls):",
+                "        class Bar(Controller):",
+                "            def ANY(self):",
+                "                pass",
+                "Foo.load_class()",
+            ])
+
     def test_get_method_names(self):
-        controller_class = self.create_module_class(
-            [
-                "from endpoints import Controller",
-                "",
-                "class _ParentController(Controller):",
-                "    def GET(self):",
-                "        pass",
-                "",
-                "class Foo(_ParentController):",
-                "    def GET_one(self):",
-                "        pass",
-                "    def GET_two(self):",
-                "        pass",
-                "    def POST_one(self):",
-                "        pass",
-                "    def ANY(self):",
-                "        pass",
-            ]
-        )
+        controller_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class _ParentController(Controller):",
+            "    def GET(self):",
+            "        pass",
+            "",
+            "class Foo(_ParentController):",
+            "    def GET_one(self):",
+            "        pass",
+            "    def GET_two(self):",
+            "        pass",
+            "    def POST_one(self):",
+            "        pass",
+            "    def ANY(self):",
+            "        pass",
+        ])
 
         for c in [controller_class, controller_class(None, None)]:
             method_names = c.get_method_names("GET")
@@ -213,6 +231,19 @@ class ControllerTest(TestCase):
 
             method_names = c.get_method_names("ANY")
             self.assertEqual(["ANY"], method_names)
+
+    def test_ext(self):
+        controller_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class Foo(Controller):",
+            "    ext = \"txt\"",
+            "    def ANY(self):",
+            "        pass",
+        ])
+
+        self.assertEqual("txt", controller_class.ext)
+        self.assertEqual("foo.txt", controller_class.get_class_path_args()[0])
 
 
 class RouterTest(TestCase):
