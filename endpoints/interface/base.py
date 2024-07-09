@@ -127,6 +127,9 @@ class BaseApplication(ApplicationABC):
 
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
+            if isinstance(controller_prefixes, str):
+                controller_prefixes = environ.split_value(controller_prefixes)
+
             self.controller_prefixes = controller_prefixes
 
         else:
