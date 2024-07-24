@@ -24,21 +24,23 @@ Create a controller file with the following command:
 
     $ touch controllers.py
 
-Add the following code to your new Controller file. These classes are examples of possible *endpoints*.
+Add the following code to your new Controller file (These controller classes are just to help you get started and understand how endpoints works).
 
 ```python
 from endpoints import Controller
 
 class Default(Controller):
+  """The special class `Default` handles / requests"""
   async def GET(self):
-    return "boom"
+    return "Default handler"
 
   async def POST(self, **kwargs):
     return 'hello {}'.format(kwargs['name'])
 
 class Foo(Controller):
+  """This class handles `/foo` requests"""
   async def GET(self):
-    return "bang"
+    return "Foo handler"
 ```
 
 
@@ -64,9 +66,9 @@ And start it:
 Using curl:
 
     $ curl http://localhost:8000
-    "boom"
+    "Default handler"
     $ curl http://localhost:8000/foo
-    "bang"
+    "Foo handler"
     $ curl http://localhost:8000/ -d "name=Awesome you"
     "hello Awesome you"
 
@@ -74,11 +76,11 @@ That's it. Easy peasy!
 
 Can you figure out what path endpoints was following in each request?
 
-We see in the ***first request*** that the Controller module was accessed, then the Default class, and then the GET method.
+We see in the ***first request*** (`/`) that the `controllers` module was accessed, then the `Default` class, and then the `GET` method.
 
-In the ***second request***, the Controller module was accessed, then the Foo class as specified, and then the GET method.
+In the ***second request*** (`/foo`), the `controllers` module was accessed, then the `Foo` class as specified, and then the `GET` method.
 
-Finally, in the ***last request***, the Controller module was accessed, then the Default class, and finally the POST method with the passed in argument as JSON.
+Finally, in the ***last request***, the `controllers` module was accessed, then the `Default` class, and finally the `POST` method with the passed in argument as JSON.
 
 
 ## How does it work?
@@ -89,12 +91,12 @@ It uses the following convention.
 
     METHOD /module/class/args?kwargs
 
-_Endpoints_ will use the base module you set as a reference point to find the correct submodule using the path specified by the request.
+_Endpoints_ will use the prefix module you set as a reference point to find the correct submodule using the path specified by the request.
 
 Requests are translated from the left bit to the right bit of the path.
-So for the path `/foo/bar/che/baz`, endpoints would check for the `foo` module, then the `foo.bar` module, then the `foo.bar.che` module, etc. until it fails to find a valid module.
+So for the path `/foo/bar/che/baz`, endpoints would first check for the `foo` module, then the `foo.bar` module, then the `foo.bar.che` module, etc. until it fails to find a valid module.
 
-Once the module is found, endpoints will then attempt to find the class with the remaining path bits. If no class is found the class named `Default` will be used.
+Once the module is found, endpoints will then attempt to find the class with the remaining path bits. If no matching class is found then a class named `Default` will be used if it exists.
 
 This makes it easy to bundle your controllers into something like a "Controllers" module.
 
@@ -141,10 +143,8 @@ then your call requests would be translated like this:
 |GET /          | controllers.Default.GET() |
 |GET /foo       | controllers.Foo.GET()     |
 
-If you have gotten to this point, congratulations. You understand the basics of endpoints. If you don't understand endpoints then please go back and read from the top again before reading any further.
-
 
 ## Learn more about Endpoints
 
-Now you should dive into some of the other features discussed in the [docs folder](https://github.com/jaymon/endpoints/tree/master/docs).
+Now you should dive into some of the other features discussed in the [docs](https://github.com/jaymon/endpoints/tree/master/docs).
 
