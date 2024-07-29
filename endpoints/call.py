@@ -910,14 +910,13 @@ class Controller(object):
         controller's actual http handle method"""
         res = self.response
 
-        encoding = self.encoding
-        content_type = self.content_type
+        res.encoding = self.encoding
 
-        res.encoding = encoding
-        res.set_header('Content-Type', "{};charset={}".format(
-            content_type,
-            encoding
-        ))
+        if content_type := self.content_type:
+            res.set_header("Content-Type", "{};charset={}".format(
+                content_type,
+                res.encoding
+            ))
 
     def handle_origin(self, origin):
         """Check the origin and decide if it is valid
