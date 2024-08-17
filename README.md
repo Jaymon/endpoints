@@ -18,13 +18,13 @@ If you want the latest and greatest you can also install from source:
     $ pip install -U "git+https://github.com/jaymon/endpoints#egg=endpoints"
 
 
-### Set Up Your Controller File
+### Create a Controller Module
 
 Create a controller file with the following command:
 
     $ touch controllers.py
 
-Add the following code to your new Controller file (These controller classes are just to help you get started and understand how endpoints works).
+Add the following code to the `controllers.py` file (These controller classes are just to help you get started and understand how endpoints works).
 
 ```python
 from endpoints import Controller
@@ -74,11 +74,9 @@ Using curl:
 
 That's it. Easy peasy!
 
-Can you figure out what path endpoints was following in each request?
+In the ***first request*** (`/`), the `controllers` module was accessed, then the `Default` class, and then the `GET` method.
 
-We see in the ***first request*** (`/`) that the `controllers` module was accessed, then the `Default` class, and then the `GET` method.
-
-In the ***second request*** (`/foo`), the `controllers` module was accessed, then the `Foo` class as specified, and then the `GET` method.
+In the ***second request*** (`/foo`), the `controllers` module was accessed, then the `Foo` class as specified in the path of the url, and then the `GET` method.
 
 Finally, in the ***last request***, the `controllers` module was accessed, then the `Default` class, and finally the `POST` method with the passed in argument as JSON.
 
@@ -98,7 +96,7 @@ So for the path `/foo/bar/che/baz`, endpoints would first check for the `foo` mo
 
 Once the module is found, endpoints will then attempt to find the class with the remaining path bits. If no matching class is found then a class named `Default` will be used if it exists.
 
-This makes it easy to bundle your controllers into something like a "Controllers" module.
+This makes it easy to bundle your controllers into a `controllers` package/module.
 
 Below are some examples of HTTP requests and how they would be interpreted using endpoints.
 
@@ -112,8 +110,6 @@ Below are some examples of HTTP requests and how they would be interpreted using
 |GET /foo/bar/che                       | prefix.foo.Bar.GET(che)           |
 |GET /foo/bar/che?baz=foo               | prefix.foo.Bar.GET(che, baz=foo)  |
 |POST /foo/bar/che with body: baz=foo   | prefix.foo.Bar.POST(che, baz=foo) |
-
-As shown above, we see that **endpoints essentially travels the path from the base module down to the appropriate submodule according to the request given.**
 
 
 ### One more example
@@ -146,5 +142,5 @@ then your call requests would be translated like this:
 
 ## Learn more about Endpoints
 
-Now you should dive into some of the other features discussed in the [docs](https://github.com/jaymon/endpoints/tree/master/docs).
+The [docs](https://github.com/jaymon/endpoints/tree/master/docs) contain more information about how _Endpoints_ works and what can be done with it.
 
