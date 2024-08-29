@@ -1,11 +1,11 @@
 # -*- coding: utf-8 -*-
 
 from datatypes.config import (
-    Environ as BaseEnviron,
+    Environ,
 )
 
 
-class Environ(BaseEnviron):
+class Environ(Environ):
     def __init__(self, *args, **kwargs):
         super().__init__(namespace="ENDPOINTS_", **kwargs)
 
@@ -19,6 +19,9 @@ class Environ(BaseEnviron):
         # the server classes and also the tests
         self.setdefault("HOST", "")
 
+        # the name of the autodiscover module name
+        self.setdefault("AUTODISCOVER_NAME", "controllers")
+
     def set_host(self, host):
         self.set("HOST", host)
 
@@ -26,7 +29,8 @@ class Environ(BaseEnviron):
         """set the controller_prefixes found in env_name to prefixes, this will
         remove any existing found controller prefixes 
 
-        :param prefixes: list, the new prefixes that will replace any old prefixes
+        :param prefixes: list, the new prefixes that will replace any old
+            prefixes
         :param env_name: string, the name of the environment variables
         """
         self.nset(env_name, prefixes)
@@ -42,12 +46,14 @@ class Environ(BaseEnviron):
 
     def get_controller_prefixes(self, env_name='ENDPOINTS_PREFIX'):
         """this will look for ENDPOINTS_PREFIX, and ENDPOINTS_PREFIX_N (where
-        N is 1 to infinity) in the environment, if it finds them, it will assume they
-        are python module paths where endpoints can find Controller subclasses
+        N is 1 to infinity) in the environment, if it finds them, it will
+        assume they are python module paths where endpoints can find Controller
+        subclasses
 
-        The num checks (eg ENDPOINTS_PREFIX_1, ENDPOINTS_PREFIX_2) go in order, so you
-        can't do ENDPOINTS_PREFIX_1, ENDPOINTS_PREFIX_3, because it will fail on _2
-        and move on, so make sure your num dsns are in order (eg, 1, 2, 3, ...)
+        The num checks (eg ENDPOINTS_PREFIX_1, ENDPOINTS_PREFIX_2) go in order,
+        so you can't do ENDPOINTS_PREFIX_1, ENDPOINTS_PREFIX_3, because it will
+        fail on _2 and move on, so make sure your num dsns are in order (eg, 1,
+        2, 3, ...)
 
         :Example:
             export ENDPOINTS_PREFIX_1=foo.controllers

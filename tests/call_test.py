@@ -247,7 +247,6 @@ class ControllerTest(TestCase):
 
 
 class RouterTest(TestCase):
-
     def test_paths_depth_1(self):
         for cb in [self.create_module, self.create_package]:
             modpath = cb(
@@ -256,12 +255,16 @@ class RouterTest(TestCase):
                     "",
                     "class Foo(Controller): pass"
                 ],
-                modpath=self.get_module_name(count=2, name="controllers")
+                count=2,
+                name="controllers",
             )
 
             cs = Router(paths=[modpath.basedir])
             self.assertTrue(
-                issubclass(cs._controller_pathfinder["foo"], Controller)
+                issubclass(
+                    cs.pathfinder["foo"]["class"],
+                    Controller
+                )
             )
 
     def test_paths_depth_n(self):
@@ -274,14 +277,15 @@ class RouterTest(TestCase):
                     "class Bar(Controller): pass",
                     "class Default(Controller): pass",
                 ],
-                modpath=self.get_module_name(count=2, name="controllers")
+                count=2,
+                name="controllers"
             )
 
             cs = Router(paths=[modpath.basedir])
 
-            for k in ["foo", "bar", ""]:
+            for k in ["foo", "bar", []]:
                 self.assertTrue(
-                    issubclass(cs._controller_pathfinder[k], Controller)
+                    issubclass(cs.pathfinder[k]["class"], Controller)
                 )
 
     def test_pathfinder_1(self):
@@ -307,18 +311,17 @@ class RouterTest(TestCase):
             controller_prefixes=[modpath],
         )
 
-        self.assertEqual(1, len(cs._controller_modules))
-        self.assertTrue(modpath in cs._controller_modules)
-        for k in ["one", "two", ""]:
+        self.assertEqual(1, len(cs.controller_modules))
+        self.assertTrue(modpath in cs.controller_modules)
+        for k in ["one", "two", []]:
             self.assertTrue(
-                issubclass(cs._controller_pathfinder[k], Controller)
+                issubclass(cs.pathfinder[k]["class"], Controller)
             )
 
     def test_pathfinder_2(self):
         """test a multiple submodule controller"""
-        modpath = self.get_module_name(count=2, name="controllers")
-        basedir = self.create_modules({
-            modpath: {
+        modpath = self.create_module(
+            {
                 "bar": [
                     "from endpoints import Controller",
                     "",
@@ -334,22 +337,24 @@ class RouterTest(TestCase):
                     ],
                 },
             },
-        })
+            count=2,
+            name="controllers"
+        )
 
         cs = Router(
-            paths=[basedir],
+            controller_prefixes=[modpath]
         )
 
         controller_path_args = [
             ["che", "boo", "two"],
-            ["che", "boo", ""],
+            ["che", "boo"],
             ["bar", "one"],
-            ["bar", ""],
+            ["bar"],
         ]
 
         for path_args in controller_path_args:
             self.assertTrue(issubclass(
-                cs._controller_pathfinder[path_args],
+                cs.pathfinder[path_args]["class"],
                 Controller
             ))
 
@@ -388,14 +393,14 @@ class RouterTest(TestCase):
 
         controller_path_args = [
             ["che", "boo", "two"],
-            ["che", "boo", ""],
+            ["che", "boo"],
             ["bar", "one"],
-            ["bar", ""],
+            ["bar"],
         ]
 
         for path_args in controller_path_args:
             self.assertTrue(issubclass(
-                cs._controller_pathfinder[path_args],
+                cs.pathfinder[path_args]["class"],
                 Controller
             ))
 

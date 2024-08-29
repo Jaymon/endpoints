@@ -573,6 +573,18 @@ class BaseApplication(ApplicationABC):
 
         res.set_body(e)
 
+        def log_error_warning(e):
+            if logger.isEnabledFor(logging.DEBUG):
+                logger.warning(e, exc_info=True)
+
+            else:
+                logger.warning(e)
+                #e_msg = String(e)
+                #ce = e
+                #while ce := getattr(ce, "__cause__", None):
+                #    e_msg += " caused by " + String(ce)
+                #logger.warning(e_msg)
+
         if isinstance(e, CallStop):
             logger.debug(String(e))
             res.code = e.code
@@ -586,19 +598,22 @@ class BaseApplication(ApplicationABC):
             res.set_body(None)
 
         elif isinstance(e, (AccessDenied, CallError)):
-            if logger.isEnabledFor(logging.WARNING):
-                e_msg = String(e)
-                ce = e
-                while ce := getattr(ce, "__cause__", None):
-                    e_msg += " caused by " + String(ce)
+            log_error_warning(e)
 
-                logger.warning(e_msg)
+#             if logger.isEnabledFor(logging.WARNING):
+#                 e_msg = String(e)
+#                 ce = e
+#                 while ce := getattr(ce, "__cause__", None):
+#                     e_msg += " caused by " + String(ce)
+# 
+#                 logger.warning(e_msg)
 
             res.code = e.code
             res.add_headers(e.headers)
 
         elif isinstance(e, NotImplementedError):
-            logger.warning(String(e))
+            log_error_warning(e)
+            #logger.warning(String(e))
             res.code = 501
 
         elif isinstance(e, TypeError):
@@ -672,7 +687,14 @@ class BaseApplication(ApplicationABC):
                                 *controller_info["method_args"]
                             )
                             res.code = 409
-                            logger.warning(e)
+
+                            log_error_warning(e)
+#                             if logger.isEnabledFor(logging.DEBUG):
+#                                 logger.warning(e, exc_info=True)
+# 
+#                             else:
+#                                 logger.warning(e_msg)
+#                             logger.warning(e)
 
                         except TypeError:
                             res.code = 404
@@ -687,7 +709,12 @@ class BaseApplication(ApplicationABC):
 
             else:
                 res.code = 404
-                logger.warning(e)
+                log_error_warning(e)
+#                 if logger.isEnabledFor(logging.DEBUG):
+#                     logger.warning(e, exc_info=True)
+# 
+#                 else:
+#                     logger.warning(e)
 
         else:
             res.code = 500

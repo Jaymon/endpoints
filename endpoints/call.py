@@ -401,6 +401,31 @@ class Param(object):
         return val
 
 
+
+from datatypes import ClasspathFinder
+
+
+class Pathfinder(ClasspathFinder):
+
+#     def __init__(self, prefixes, **kwargs):
+#         super().__init__(
+#             prefixes=prefixes,
+#             default_class_name=kwargs.get("default_class_name", "Default")
+#         )
+
+    def set(self, keys, value):
+        if "class" in value:
+            logger.debug(
+                "Registering path: /{} to controller: {}:{}".format(
+                    "/".join(keys),
+                    value["class"].__module__,
+                    value["class"].__qualname__
+                )
+            )
+
+        return super().set(keys, value)
+
+
 class Router(object):
     """Handle Controller caching and routing
 
@@ -428,87 +453,97 @@ class Router(object):
             - controller_class: Controller, the child class to use to find
                 controller classes
         """
-        self._controller_prefixes = controller_prefixes or []
-        self._paths = paths or []
-        self._controller_class = kwargs.get(
+        self.controller_class = kwargs.get(
             "controller_class",
             Controller
         )
 
-        self._controller_modules = {}
+        self.pathfinder_class = kwargs.get(
+            "pathfinder_class",
+            Pathfinder,
+        )
 
-        for m in self.get_modules_from_prefixes(self._controller_prefixes):
-            logger.debug(f"Registering controller module: {m.__name__}")
-            self._controller_modules[m.__name__] = m
+        self.controller_modules = self.get_modules(
+            prefixes=controller_prefixes,
+            paths=paths,
+            **kwargs
+        )
 
-        for m in self.get_modules_from_paths(self._paths):
-            logger.debug(f"Registering controller module: {m.__name__}")
-            self._controller_modules[m.__name__] = m
 
-        self._controller_pathfinder = self.create_pathfinder()
+#         for m in self.get_modules_from_prefixes(self._controller_prefixes):
+#             logger.debug(f"Registering controller module: {m.__name__}")
+#             self._controller_modules[m.__name__] = m
+# 
+#         for m in self.get_modules_from_paths(self._paths):
+#             logger.debug(f"Registering controller module: {m.__name__}")
+#             self._controller_modules[m.__name__] = m
+
+        #self._controller_modules = {}
         self._controller_method_names = {}
 
-    def __iter__(self):
-        """Iterate through all the cached Controller classes
+        self.pathfinder = self.create_pathfinder(**kwargs)
 
-        :returns: generator[Controller]
+    def get_modules(self, **kwargs):
+        modules = {}
+
+        prefixes = kwargs.get("prefixes", []) or []
+        paths = kwargs.get("paths", []) or []
+
+        if prefixes:
+            modules = self.pathfinder_class.get_prefix_modules(prefixes)
+
+        else:
+            if not paths:
+                if not self.controller_class.controller_classes:
+                    paths = [Dirpath.cwd()]
+
+            if paths:
+                modules = self.pathfinder_class.get_path_modules(
+                    paths,
+                    environ.AUTODISCOVER_NAME
+                )
+
+        return modules
+
+#         self.controller_modules = {}
+#         seen = set()
+# 
+#         if self.controller_prefixes:
+#             for controller_prefix in self.controller_prefixes:
+#                 rm = ReflectModule(controller_prefix)
+#                 for m in rm.get_modules():
+#                     if m.__name__ not in seen:
+#                         self.controller_modules[m.__name__] = m
+#                         seen.add(m.__name__)
+# 
+#         else:
+#             if not self.paths:
+#                 if not self.controller_class.controller_classes:
+#                     self.paths = [Dirpath.cwd()]
+# 
+#             for path in self.paths:
+#                 rp = ReflectPath(path)
+#                 for m in rp.find_modules(environ.AUTODISCOVER_NAME):
+#                     if m.__name__ not in seen:
+#                         rn = ReflectName(m.__name__)
+#                         controller_prefix = rn.absolute_module_name(
+#                             environ.AUTODISCOVER_NAME
+#                         )
+# 
+#                         if controller_prefix not in seen:
+#                             self.controller_prefixes.append(controller_prefix)
+#                             seen.add(controller_prefix)
+# 
+#                         self.controller_modules[m.__name__] = m
+#                         seen.add(m.__name__)
+
+    def create_pathfinder(self, **kwargs):
+        """The pathfinder is a DictTree that will always have a "" key to
+        represent the command class for that particular tree
+
+        This is used to figure out how routing should happen when you are
+        loading a whole bunch of commands modules
         """
-        controller_classes = self._controller_class.controller_classes
-        for classpath, controller_class in controller_classes.items():
-            yield controller_class
-
-    def get_modules_from_prefix(self, controller_prefix):
-        """Internal method. Given a module prefix yield all the modules it
-        represents
-
-        :param controller_prefix: str, a module path like `foo.bar.che`
-        :returns: generator[ModuleType]
-        """
-        logger.debug(f"Checking controller prefix: {controller_prefix}")
-        rm = ReflectModule(controller_prefix)
-        for m in rm.get_modules():
-            yield m
-
-    def get_modules_from_prefixes(self, controller_prefixes):
-        """Internal method. Load all the submodules of all the controller
-        prefixes. This should cause all the controllers to load into memory and
-        be available in self.controller_class.controller_classes
-
-        :param controller_prefixes: list[str], a list of module paths like
-            `foo.bar.che`
-        :returns: generator[ModuleType]
-        """
-        for controller_prefix in controller_prefixes:
-            for m in self.get_modules_from_prefix(controller_prefix):
-                yield m
-
-    def get_modules_from_paths(self, paths):
-        """Internal method. Load any `controllers` modules found in the
-        various paths
-
-        This method incorporates this functionality:
-
-        * https://github.com/Jaymon/endpoints/issues/87
-        * https://github.com/Jaymon/endpoints/issues/123
-
-        :param paths: list[str], the paths to check, if empty and there aren't
-            any controller_prefixes either then the current working directory
-            will be checked. This is done here so it can be easily overridden
-            by a child class in order to customize path auto-discovery
-        :returns: generator[ModuleType]
-        """
-        if not self._controller_prefixes and not paths:
-            # if we don't have any controller prefixes and we don't have any
-            # paths then let's use the current working directory and try and
-            # autodiscover some controllers
-            paths = [Dirpath.cwd()]
-
-        for path in paths:
-            rp = ReflectPath(path)
-            for m in rp.find_modules("controllers"):
-                yield m
-
-    def create_pathfinder(self):
         """Internal method. Create the tree that will be used to resolve a
         requested path to a found controller
 
@@ -520,50 +555,192 @@ class Router(object):
             class, an empty string represents a Default controller for that
             module
         """
-        pathfinder = DictTree()
+        pathfinder = self.pathfinder_class(
+            list(self.controller_modules.keys()),
+            ignore_class_keys=["Default"]
+        )
 
-        # used to find module path args
-        controller_prefixes = list(self._controller_prefixes)
-        controller_prefixes.append(".controllers")
-
-        for controller_class in self:
-            path_args = []
-
-            modpath = controller_class.__module__
-
-            # we only check path and strip the prefixes if it has a valid
-            # controller prefix, if it doesn't have a valid controller
-            # prefix then the class name is the only part of the path we
-            # care about 
-            has_module_path = (
-                modpath in self._controller_modules
-                or re.search(rf"(?:^|\.)controllers(?:\.|$)", modpath)
-            )
-
-            if has_module_path:
-                path_args = controller_class.get_module_path_args(
-                    controller_prefixes
-                )
-
-            class_path_args = controller_class.get_class_path_args(
-                "Default"
-            )
-            if not class_path_args:
-                class_path_args = [""]
-
-            path_args.extend(class_path_args)
-
-            logger.debug(
-                "Registering path: /{} to controller: {}:{}".format(
-                    "/".join(filter(None, path_args)),
-                    controller_class.__module__,
-                    controller_class.__qualname__
-                )
-            )
-
-            pathfinder.set(path_args, controller_class)
+        controller_classes = self.controller_class.controller_classes
+        for controller_class in controller_classes.values():
+            pathfinder.add_class(controller_class)
 
         return pathfinder
+
+
+
+#     def __iter__(self):
+#         """Iterate through all the cached Controller classes
+# 
+#         :returns: generator[Controller]
+#         """
+#         controller_classes = self._controller_class.controller_classes
+#         for classpath, controller_class in controller_classes.items():
+#             yield controller_class
+
+#     def get_modules_from_prefix(self, controller_prefix):
+#         """Internal method. Given a module prefix yield all the modules it
+#         represents
+# 
+#         :param controller_prefix: str, a module path like `foo.bar.che`
+#         :returns: generator[ModuleType]
+#         """
+#         logger.debug(f"Checking controller prefix: {controller_prefix}")
+#         rm = ReflectModule(controller_prefix)
+#         for m in rm.get_modules():
+#             yield m
+# 
+#     def get_modules_from_prefixes(self, controller_prefixes):
+#         """Internal method. Load all the submodules of all the controller
+#         prefixes. This should cause all the controllers to load into memory and
+#         be available in self.controller_class.controller_classes
+# 
+#         :param controller_prefixes: list[str], a list of module paths like
+#             `foo.bar.che`
+#         :returns: generator[ModuleType]
+#         """
+#         for controller_prefix in controller_prefixes:
+#             for m in self.get_modules_from_prefix(controller_prefix):
+#                 yield m
+# 
+#     def get_modules_from_paths(self, paths):
+#         """Internal method. Load any `controllers` modules found in the
+#         various paths
+# 
+#         This method incorporates this functionality:
+# 
+#         * https://github.com/Jaymon/endpoints/issues/87
+#         * https://github.com/Jaymon/endpoints/issues/123
+# 
+#         :param paths: list[str], the paths to check, if empty and there aren't
+#             any controller_prefixes either then the current working directory
+#             will be checked. This is done here so it can be easily overridden
+#             by a child class in order to customize path auto-discovery
+#         :returns: generator[ModuleType]
+#         """
+#         if not self._controller_prefixes and not paths:
+#             # if we don't have any controller prefixes and we don't have any
+#             # paths then let's use the current working directory and try and
+#             # autodiscover some controllers
+#             paths = [Dirpath.cwd()]
+# 
+#         for path in paths:
+#             rp = ReflectPath(path)
+#             for m in rp.find_modules("controllers"):
+#                 yield m
+
+#     def xcreate_pathfinder(self):
+#         """Internal method. Create the tree that will be used to resolve a
+#         requested path to a found controller
+# 
+#         The class fallback is the name of the default controller class, it
+#         defaults to `Default` and should probably never be changed
+# 
+#         :returns: DictTree, basically a dictionary of dictionaries where each
+#             key represents a part of a path, the final key is the name of the
+#             class, an empty string represents a Default controller for that
+#             module
+#         """
+#         pathfinder = DictTree()
+# 
+#         # used to find module path args
+#         controller_prefixes = list(self._controller_prefixes)
+#         controller_prefixes.append(".controllers")
+# 
+#         for controller_class in self:
+#             path_args = []
+# 
+#             modpath = controller_class.__module__
+# 
+#             # we only check path and strip the prefixes if it has a valid
+#             # controller prefix, if it doesn't have a valid controller
+#             # prefix then the class name is the only part of the path we
+#             # care about 
+#             has_module_path = (
+#                 modpath in self._controller_modules
+#                 or re.search(rf"(?:^|\.)controllers(?:\.|$)", modpath)
+#             )
+# 
+#             if has_module_path:
+#                 path_args = controller_class.get_module_path_args(
+#                     controller_prefixes
+#                 )
+# 
+#             class_path_args = controller_class.get_class_path_args(
+#                 "Default"
+#             )
+#             if not class_path_args:
+#                 class_path_args = [""]
+# 
+#             path_args.extend(class_path_args)
+# 
+#             logger.debug(
+#                 "Registering path: /{} to controller: {}:{}".format(
+#                     "/".join(filter(None, path_args)),
+#                     controller_class.__module__,
+#                     controller_class.__qualname__
+#                 )
+#             )
+# 
+#             pathfinder.set(path_args, controller_class)
+# 
+#         return pathfinder
+
+#     def xfind_controller(self, path_args):
+#         """Where all the magic happens, this takes a requested path_args and
+#         checks the internal tree to find the right path or raises a TypeError
+#         if the path can't be resolved
+# 
+#         :param path_args: list[str], so path `/foo/bar/che` would be passed to
+#             this method as `["foo", "bar", "che"]`
+#         :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
+#             controller_class, controller_args, and controller_info
+#         """
+#         controller_args = list(path_args)
+#         controller_class = None
+# 
+#         info = {
+#             "controller_path_args": [],
+#             "module_path_args": [],
+#         }
+# 
+#         offset = 0
+#         pathfinder = self.pathfinder
+#         while offset < len(controller_args):
+#             if controller_args[offset] in pathfinder:
+#                 pathfinder = pathfinder[controller_args[offset]] 
+#                 if isinstance(pathfinder, Mapping):
+#                     info["module_path_args"].append(controller_args[offset])
+#                     info["controller_path_args"].append(
+#                         controller_args[offset]
+#                     )
+# 
+#                     offset += 1
+# 
+#                 else:
+#                     info["controller_path_args"].append(
+#                         controller_args[offset]
+#                     )
+# 
+#                     controller_class = pathfinder
+#                     controller_args = controller_args[offset + 1:]
+#                     break
+# 
+#             else:
+#                 break
+# 
+#         if not controller_class:
+#             if "" in pathfinder:
+#                 controller_class = pathfinder[""]
+#                 controller_args = controller_args[offset:]
+# 
+#         if not controller_class:
+#             raise TypeError(
+#                 "Could not find a valid controller from path /{}".format(
+#                     "/".join(path_args),
+#                 )
+#             )
+# 
+#         return controller_class, controller_args, info
 
     def find_controller(self, path_args):
         """Where all the magic happens, this takes a requested path_args and
@@ -575,50 +752,31 @@ class Router(object):
         :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
             controller_class, controller_args, and controller_info
         """
-        controller_args = list(path_args)
+        keys = list(path_args)
+        controller_args = []
         controller_class = None
+        info = {}
+        pathfinder = self.pathfinder
 
-        info = {
-            "controller_path_args": [],
-            "module_path_args": [],
-        }
-
-        offset = 0
-        pathfinder = self._controller_pathfinder
-        while offset < len(controller_args):
-            if controller_args[offset] in pathfinder:
-                pathfinder = pathfinder[controller_args[offset]] 
-                if isinstance(pathfinder, Mapping):
-                    info["module_path_args"].append(controller_args[offset])
-                    info["controller_path_args"].append(
-                        controller_args[offset]
-                    )
-
-                    offset += 1
-
-                else:
-                    info["controller_path_args"].append(
-                        controller_args[offset]
-                    )
-
-                    controller_class = pathfinder
-                    controller_args = controller_args[offset + 1:]
-                    break
+        while not controller_class:
+            value = pathfinder.get(keys, {})
+            if "class" in value:
+                controller_class = value["class"]
+                info = {
+                    "controller_path_args": value["class_keys"],
+                    "module_path_args": value["module_keys"],
+                }
 
             else:
-                break
+                if keys:
+                    controller_args.insert(0, keys.pop(-1))
 
-        if not controller_class:
-            if "" in pathfinder:
-                controller_class = pathfinder[""]
-                controller_args = controller_args[offset:]
-
-        if not controller_class:
-            raise TypeError(
-                "Could not find a valid controller from path /{}".format(
-                    "/".join(path_args),
-                )
-            )
+                else:
+                    raise TypeError(
+                        "Unknown controller with path /{}".format(
+                            "/".join(path_args),
+                        )
+                    )
 
         return controller_class, controller_args, info
 
