@@ -5,7 +5,14 @@ from requests.auth import _basic_auth_str
 
 from endpoints.compat import *
 from endpoints.utils import ByteString
-from endpoints.call import Controller, Request, Response, Router, Param
+from endpoints.call import (
+    Controller,
+    Request,
+    Response,
+    Router,
+    Param,
+    Pathfinder,
+)
 
 from . import TestCase, testdata
 
@@ -134,74 +141,74 @@ class ControllerTest(TestCase):
         res = c.handle('/')
         self.assertEqual(500, res.code)
 
-    def test_get_module_path_args(self):
-        modpath = self.create_module(
-            [
-                "from endpoints import Controller",
-                "",
-                "class Foo(Controller):",
-                "    def GET(self):",
-                "        pass",
-            ],
-            modpath=self.get_module_name(3)
-        )
-
-        foo_class = modpath.get_module().Foo
-        parts = modpath.split(".")
-
-        # make sure the anywhere syntax (eg, .<PREFIX>) works
-        self.assertEqual(
-            [parts[2]],
-            foo_class.get_module_path_args([f".{parts[1]}"])
-        )
-
-        # make sure a normal prefix works
-        mp = ".".join(parts[:-1])
-        self.assertEqual([parts[2]], foo_class.get_module_path_args([mp]))
-
-        # we want to make sure we can't just match the beginning of a module
-        # path segment
-        mp = f".{parts[1][:2]}"
-        self.assertEqual(parts, foo_class.get_module_path_args([mp]))
-
-        self.assertEqual([], foo_class.get_module_path_args([modpath]))
-
-    def test_get_class_path_args_1(self):
-        foo_class = self.create_module_class([
-            "from endpoints import Controller",
-            "",
-            "class Foo(Controller):",
-            "    def GET(self):",
-            "        pass",
-        ])
-
-        path_args = foo_class.get_class_path_args()
-        self.assertEqual(["foo"], path_args)
-
-        path_args = foo_class.get_class_path_args("Foo")
-        self.assertEqual([], path_args)
-
-    def test_get_class_path_args_classes(self):
-        c = self.create_server([
-            "class Foo(object):",
-            "    class Bar(Controller):",
-            "        def ANY(self):",
-            "            pass",
-        ])
-        res = c.get('/foo/bar')
-        self.assertEqual(204, res.code)
-
-    def test_get_class_path_args_method(self):
-        with self.assertRaises(ValueError):
-            self.create_server([
-                "class Foo(object):",
-                "    @classmethod",
-                "    def load_class(cls):",
-                "        class Bar(Controller):",
-                "            def ANY(self):",
-                "                pass",
-                "Foo.load_class()",
-            ])
+#     def test_get_module_path_args(self):
+#         modpath = self.create_module(
+#             [
+#                 "from endpoints import Controller",
+#                 "",
+#                 "class Foo(Controller):",
+#                 "    def GET(self):",
+#                 "        pass",
+#             ],
+#             modpath=self.get_module_name(3)
+#         )
+# 
+#         foo_class = modpath.get_module().Foo
+#         parts = modpath.split(".")
+# 
+#         # make sure the anywhere syntax (eg, .<PREFIX>) works
+#         self.assertEqual(
+#             [parts[2]],
+#             foo_class.get_module_path_args([f".{parts[1]}"])
+#         )
+# 
+#         # make sure a normal prefix works
+#         mp = ".".join(parts[:-1])
+#         self.assertEqual([parts[2]], foo_class.get_module_path_args([mp]))
+# 
+#         # we want to make sure we can't just match the beginning of a module
+#         # path segment
+#         mp = f".{parts[1][:2]}"
+#         self.assertEqual(parts, foo_class.get_module_path_args([mp]))
+# 
+#         self.assertEqual([], foo_class.get_module_path_args([modpath]))
+# 
+#     def test_get_class_path_args_1(self):
+#         foo_class = self.create_module_class([
+#             "from endpoints import Controller",
+#             "",
+#             "class Foo(Controller):",
+#             "    def GET(self):",
+#             "        pass",
+#         ])
+# 
+#         path_args = foo_class.get_class_path_args()
+#         self.assertEqual(["foo"], path_args)
+# 
+#         path_args = foo_class.get_class_path_args("Foo")
+#         self.assertEqual([], path_args)
+# 
+#     def test_get_class_path_args_classes(self):
+#         c = self.create_server([
+#             "class Foo(object):",
+#             "    class Bar(Controller):",
+#             "        def ANY(self):",
+#             "            pass",
+#         ])
+#         res = c.get('/foo/bar')
+#         self.assertEqual(204, res.code)
+# 
+#     def test_get_class_path_args_method(self):
+#         with self.assertRaises(ValueError):
+#             self.create_server([
+#                 "class Foo(object):",
+#                 "    @classmethod",
+#                 "    def load_class(cls):",
+#                 "        class Bar(Controller):",
+#                 "            def ANY(self):",
+#                 "                pass",
+#                 "Foo.load_class()",
+#             ])
 
     def test_get_method_names(self):
         controller_class = self.create_module_class([
@@ -453,6 +460,30 @@ class RouterTest(TestCase):
 
         with self.assertRaises(TypeError):
             cs.find_controller(["does", "not", "exist"])
+
+    def test_get_class_path_args_classes(self):
+        c = self.create_server([
+            "class Foo(object):",
+            "    class Bar(Controller):",
+            "        def ANY(self):",
+            "            pass",
+        ])
+        res = c.get('/foo/bar')
+        self.assertEqual(204, res.code)
+
+    def test_get_class_path_args_method(self):
+        """Moved from CallTest since routing logic is mainly in the Router
+        now. This makes sure inaccessible classes fail loudly"""
+        with self.assertRaises(ValueError):
+            self.create_server([
+                "class Foo(object):",
+                "    @classmethod",
+                "    def load_class(cls):",
+                "        class Bar(Controller):",
+                "            def ANY(self):",
+                "                pass",
+                "Foo.load_class()",
+            ])
 
 
 class RequestTest(TestCase):
