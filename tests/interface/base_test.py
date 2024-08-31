@@ -515,6 +515,14 @@ class BaseApplicationTest(TestCase):
 
         ts = [
             {
+                'in': dict(method="GET", path="/foo/baz"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo.baz",
+                    'class_name': 'Default',
+                    'method_args': [],
+                }
+            },
+            {
                 'in': dict(method="GET", path="/foo/bar/happy/sad"),
                 'out': {
                     'module_name': f"{c.controller_prefix}.foo",
@@ -536,14 +544,6 @@ class BaseApplicationTest(TestCase):
                     'module_name': f"{c.controller_prefix}",
                     'class_name': 'Default',
                     'method_args': ["happy"],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/baz"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo.baz",
-                    'class_name': 'Default',
-                    'method_args': [],
                 }
             },
             {
@@ -573,8 +573,9 @@ class BaseApplicationTest(TestCase):
         ]
 
         for t in ts:
-            request = c.create_request(**t['in'])
+            request = c.create_request(**t["in"])
             d = c.find(request=request)
-            for key, val in t['out'].items():
-                self.assertEqual(val, d[key])
+
+            for key, val in t["out"].items():
+                self.assertEqual(val, d[key], t["in"]["path"])
 
