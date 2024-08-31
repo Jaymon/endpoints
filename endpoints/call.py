@@ -27,6 +27,8 @@ from datatypes import (
     DictTree,
     Profiler,
     Boolean,
+    ClasspathFinder,
+    NamingConvention,
 )
 
 from .compat import *
@@ -402,9 +404,6 @@ class Param(object):
 
 
 
-from datatypes import ClasspathFinder
-
-
 class Pathfinder(ClasspathFinder):
     """Internal class used by Router. This holds the tree of all the
     controllers so Router can resolve the path"""
@@ -416,6 +415,10 @@ class Pathfinder(ClasspathFinder):
 # 
 #         return super()._get_classpath(klass)
 
+    def _get_node_module_info(self, key, **kwargs):
+        key = NamingConvention(key).kebabcase()
+        return super()._get_node_module_info(key, **kwargs)
+
     def _get_node_class_info(self, key, **kwargs):
         if "class" in kwargs:
             if key in self.kwargs["ignore_class_keys"]:
@@ -423,6 +426,7 @@ class Pathfinder(ClasspathFinder):
                 keys = kwargs["keys"]
 
             else:
+                key = kwargs["class"].get_name()
                 keys = kwargs["keys"] + [key]
 
             logger.debug(
@@ -432,6 +436,9 @@ class Pathfinder(ClasspathFinder):
                     kwargs["class"].__qualname__
                 )
             )
+
+        else:
+            key = NamingConvention(key).kebabcase()
 
         return super()._get_node_class_info(key, **kwargs)
 
@@ -503,28 +510,6 @@ class Router(object):
             paths,
             kwargs.get("autodiscover_name", environ.AUTODISCOVER_NAME)
         )
-
-#     def xget_modules(self, **kwargs):
-#         modules = {}
-# 
-#         prefixes = kwargs.get("prefixes", []) or []
-#         paths = kwargs.get("paths", []) or []
-# 
-#         if prefixes:
-#             modules = self.pathfinder_class.get_prefix_modules(prefixes)
-# 
-#         else:
-#             if not paths:
-#                 if not self.controller_class.controller_classes:
-#                     paths = [Dirpath.cwd()]
-# 
-#             if paths:
-#                 modules = self.pathfinder_class.get_path_modules(
-#                     paths,
-#                     environ.AUTODISCOVER_NAME
-#                 )
-# 
-#         return modules
 
     def create_pathfinder(self, **kwargs):
         """Internal method. Create the tree that will be used to resolve a
@@ -673,14 +658,34 @@ class Controller(object):
 
     If you would like to create a base controller that other controllers will
     extend and don't want that controller to be picked up by reflection, just
-    start the classname with an underscore:
+    start the classname with an underscore (eg _Foo) or end it with a
+    "Controller" suffix (eg, FooController):
 
     :Example:
-        import endpoints
-
-        class _BaseController(endpoints.Controller):
+        class _Base(Controller):
             def GET(self, *args, **kwargs):
                 return "Any child that extends this will have this GET method"
+
+        class BaseController(Controller):
+            def GET(self, *args, **kwargs):
+                return "Any child that extends this will have this GET method"
+
+    The default routing converts underscores and camelcase names to be
+    separated by dashes.
+
+    :Example:
+        # foo_bar module
+        class CheBaz(Controller): pass
+
+        # CheBaz controller would answer /foo-bar/che-baz requests
+
+    If you would like your request to have an extension, you can do that
+    by using an underscore:
+
+    :Example:
+        class FooBar_txt(Controller):
+            # This controller will satisfy foo-bar.txt requests
+            pass
     """
     request = None
     """holds a Request() instance"""
@@ -699,7 +704,7 @@ class Controller(object):
     classpath is the key and the class object is the value, see
     __init_subclass__"""
 
-    ext = ""
+#     ext = ""
     """The extendsion to use for routing. Used in .get_class_path_args
 
     :Example:
@@ -759,72 +764,95 @@ class Controller(object):
             or cls.__name__.endswith("Controller")
         )
 
+#     @classmethod
+#     def get_module_path_args(cls, controller_prefixes=None):
+#         """Get the path args that represent the module portion of a requested
+#         path
+# 
+#         :param controller_prefixes: list[str], a list of the controller
+#             prefixes, these are used to decide which part of a module path is
+#             actually a path that can be requestable. if a prefix begins with a
+#             period then it represents the end of the controller prefix path (eg
+#             .che on a module path of foo.bar.che.boo would strip foo.bar.che
+#             and return boo as the path)
+#         :returns: list[str], a list of path args that are needed to request
+#             this controller
+#         """
+#         path_args = []
+#         path = modpath = cls.__module__
+#         controller_prefixes = controller_prefixes or []
+# 
+#         for controller_prefix in controller_prefixes:
+#             if controller_prefix.startswith("."):
+#                 rcpr = re.escape(controller_prefix[1:])
+#                 if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
+#                     path = modpath[m.end(0):]
+#                     break
+# 
+#             else:
+#                 rcpr = re.escape(controller_prefix)
+#                 if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
+#                     path = modpath[m.end(0):]
+# 
+#         if path:
+#             path_args = path.lower().split(".")
+# 
+#         return path_args
+# 
+#     @classmethod
+#     def get_class_path_args(cls, default_class_name=""):
+#         """Similar to .get_module_path_args but returns the class portion of
+#         the path
+# 
+#         :param default_class_name: str, the name of the default class that
+#             would not factor into the path
+#         :returns: list[str], the class portion of a full set of requestable
+#             path args
+#         """
+#         path_args = []
+# 
+#         parts = cls.__qualname__.split(".")
+#         class_name = parts.pop(-1)
+# 
+#         for part in parts:
+#             if part.startswith("<"):
+#                 raise ValueError(
+#                     f"Controller {cls.__qualname__} is inaccessible"
+#                 )
+# 
+#             path_args.append(part.lower())
+# 
+#         if class_name != default_class_name:
+#             basename = class_name.lower()
+#             if cls.ext:
+#                 basename += "." + cls.ext.lower()
+# 
+#             path_args.append(basename)
+# 
+#         return path_args
+
     @classmethod
-    def get_module_path_args(cls, controller_prefixes=None):
-        """Get the path args that represent the module portion of a requested
-        path
+    def get_name(cls):
+        name = cls.__name__
 
-        :param controller_prefixes: list[str], a list of the controller
-            prefixes, these are used to decide which part of a module path is
-            actually a path that can be requestable. if a prefix begins with a
-            period then it represents the end of the controller prefix path (eg
-            .che on a module path of foo.bar.che.boo would strip foo.bar.che
-            and return boo as the path)
-        :returns: list[str], a list of path args that are needed to request
-            this controller
-        """
-        path_args = []
-        path = modpath = cls.__module__
-        controller_prefixes = controller_prefixes or []
+        if not name.startswith("_"):
+            parts = cls.__name__.split("_", 1)
 
-        for controller_prefix in controller_prefixes:
-            if controller_prefix.startswith("."):
-                rcpr = re.escape(controller_prefix[1:])
-                if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
-                    path = modpath[m.end(0):]
-                    break
+            if len(parts) == 1:
+                name = NamingConvention(parts[0]).kebabcase()
+
+            elif len(parts) == 2:
+                name = NamingConvention(parts[0]).kebabcase()
+                if parts[1]:
+                    name = f"{name}.{parts[1].lower()}"
 
             else:
-                rcpr = re.escape(controller_prefix)
-                if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
-                    path = modpath[m.end(0):]
-
-        if path:
-            path_args = path.lower().split(".")
-
-        return path_args
-
-    @classmethod
-    def get_class_path_args(cls, default_class_name=""):
-        """Similar to .get_module_path_args but returns the class portion of
-        the path
-
-        :param default_class_name: str, the name of the default class that
-            would not factor into the path
-        :returns: list[str], the class portion of a full set of requestable
-            path args
-        """
-        path_args = []
-
-        parts = cls.__qualname__.split(".")
-        class_name = parts.pop(-1)
-
-        for part in parts:
-            if part.startswith("<"):
                 raise ValueError(
-                    f"Controller {cls.__qualname__} is inaccessible"
+                    "Controller class names can only have one underscore,"
+                    f" {name} has {len(parts)} underscores"
                 )
 
-            path_args.append(part.lower())
-
-        if class_name != default_class_name:
-            basename = class_name.lower()
-            if cls.ext:
-                basename += "." + cls.ext.lower()
-
-            path_args.append(basename)
-
-        return path_args
+        return name
 
     @classmethod
     def get_method_names(cls, method_prefix):

@@ -240,17 +240,34 @@ class ControllerTest(TestCase):
             self.assertEqual(["ANY"], method_names)
 
     def test_ext(self):
-        controller_class = self.create_module_class([
-            "from endpoints import Controller",
-            "",
-            "class Foo(Controller):",
-            "    ext = \"txt\"",
-            "    def ANY(self):",
-            "        pass",
-        ])
+        class _FooBar(Controller): pass
+        self.assertEqual("_FooBar", _FooBar.get_name())
 
-        self.assertEqual("txt", controller_class.ext)
-        self.assertEqual("foo.txt", controller_class.get_class_path_args()[0])
+        class FooBar(Controller): pass
+        self.assertEqual("foo-bar", FooBar.get_name())
+
+        class FooBar_txt(Controller): pass
+        self.assertEqual("foo-bar.txt", FooBar_txt.get_name())
+
+        class FooBar_(Controller): pass
+        self.assertEqual("foo-bar", FooBar_.get_name())
+
+        class Foobar(Controller): pass
+        self.assertEqual("foobar", Foobar.get_name())
+
+
+#     def test_ext(self):
+#         controller_class = self.create_module_class([
+#             "from endpoints import Controller",
+#             "",
+#             "class Foo(Controller):",
+#             "    ext = \"txt\"",
+#             "    def ANY(self):",
+#             "        pass",
+#         ])
+# 
+#         self.assertEqual("txt", controller_class.ext)
+#         self.assertEqual("foo.txt", controller_class.get_class_path_args()[0])
 
 
 class RouterTest(TestCase):
@@ -484,6 +501,17 @@ class RouterTest(TestCase):
                 "                pass",
                 "Foo.load_class()",
             ])
+
+    def test_ext(self):
+        controller_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class Foo_txt(Controller):",
+            "    def ANY(self): pass",
+        ])
+        cs = Router()
+        r = cs.find_controller(["foo.txt"])
+        self.assertEqual("Foo_txt", r[0].__name__)
 
 
 class RequestTest(TestCase):
