@@ -686,6 +686,10 @@ class Controller(object):
         class FooBar_txt(Controller):
             # This controller will satisfy foo-bar.txt requests
             pass
+
+        class Robots_txt(Controller): pass
+        print(Robots.get_name()) # "robots.txt"
+
     """
     request = None
     """holds a Request() instance"""
