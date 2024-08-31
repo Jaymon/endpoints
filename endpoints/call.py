@@ -403,23 +403,19 @@ class Param(object):
         return val
 
 
-
 class Pathfinder(ClasspathFinder):
     """Internal class used by Router. This holds the tree of all the
     controllers so Router can resolve the path"""
-#     def _get_classpath(self, klass):
-#         if "<" in klass.__qualname__:
-#             raise ValueError(
-#                 f"Controller {klass.__qualname__} is inaccessible"
-#             )
-# 
-#         return super()._get_classpath(klass)
-
     def _get_node_module_info(self, key, **kwargs):
+        """Handle normalizing each module key to kebabcase"""
         key = NamingConvention(key).kebabcase()
         return super()._get_node_module_info(key, **kwargs)
 
     def _get_node_class_info(self, key, **kwargs):
+        """Handle normalizing each class key. If it's the destination key
+        then it will use the controller class's .get_name method for the
+        key. If it's a waypoint key then it will normalize to kebab case
+        """
         if "class" in kwargs:
             if key in self.kwargs["ignore_class_keys"]:
                 key = None
@@ -441,18 +437,6 @@ class Pathfinder(ClasspathFinder):
             key = NamingConvention(key).kebabcase()
 
         return super()._get_node_class_info(key, **kwargs)
-
-#     def set(self, keys, value):
-#         if "class" in value:
-#             logger.debug(
-#                 "Registering path: /{} to controller: {}:{}".format(
-#                     "/".join(keys),
-#                     value["class"].__module__,
-#                     value["class"].__qualname__
-#                 )
-#             )
-# 
-#         return super().set(keys, value)
 
 
 class Router(object):
@@ -534,6 +518,24 @@ class Router(object):
 
         return pathfinder
 
+    def create_controller(self, request, response, **kwargs):
+        """Create a controller to handle the request
+
+        :param request: Request
+        :param response: Response
+        :returns: Controller
+        """
+        request.controller_info = self.find_controller_info(
+            request,
+            **kwargs
+        )
+
+        return request.controller_info['class'](
+            request,
+            response,
+            **kwargs
+        )
+
     def find_controller(self, path_args):
         """Where all the magic happens, this takes a requested path_args and
         checks the internal tree to find the right path or raises a TypeError
@@ -571,6 +573,82 @@ class Router(object):
                     )
 
         return controller_class, controller_args, info
+
+    def find_controller_info(self, request, **kwargs):
+        """returns all the information needed to create a controller and handle
+        the request
+
+        This is where all the routing magic happens, this takes the
+        request.path and gathers the information needed to turn that path into
+        a Controller
+
+        we always translate an HTTP request using this pattern:
+
+            METHOD /module/class/args?kwargs
+
+        GET /foo -> controller_prefix.foo.Default.GET
+        POST /foo/bar -> controller_prefix.foo.Bar.POST
+        GET /foo/bar/che -> controller_prefix.foo.Bar.GET(che)
+        POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.POST(che, baz=foo)
+
+        :param request: Request
+        :param **kwargs:
+        :returns: dict
+        """
+        logger.debug("Compiling Controller info using path: {}".format(
+            request.path
+        ))
+
+        controller_class, controller_args, ret = self.find_controller(
+            request.path_args
+        )
+
+        ret["module_name"] = controller_class.__module__
+        ret["class"] = controller_class
+
+        ret["method_args"] = controller_args
+
+        # we merge the leftover path args with the body kwargs
+        ret['method_args'].extend(request.body_args)
+
+        ret['method_kwargs'] = request.kwargs
+
+        ret["method_prefix"] = request.method.upper()
+
+        ret['method_name'] = "handle"
+        ret['method_names'] = self.find_controller_method_names(
+            controller_class,
+            ret["method_prefix"]
+        )
+
+        if len(ret["method_names"]) == 0:
+            if len(ret["method_args"]) > 0:
+                # if we have method args and we don't have a method to even
+                # answer the request it should be a 404 since the path is
+                # invalid
+                raise TypeError(
+                    "Could not find a {} method for path {}".format(
+                        request.method,
+                        request.path,
+                    )
+                )
+
+            else:
+                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+                # and 501 (Not Implemented) if the method is unrecognized or
+                # not implemented by the origin server
+                raise NotImplementedError(
+                    "{} {} not implemented".format(
+                        request.method,
+                        request.path
+                    )
+                )
+
+        ret['class_name'] = ret["class"].__name__
+        ret['module_path'] = "/".join(ret["module_path_args"])
+        ret['class_path'] = "/".join(ret["controller_path_args"])
+
+        return ret
 
     def find_controller_method_names(self, controller_class, method_prefix):
         """Find the method names that could satisfy this request according to
@@ -612,20 +690,6 @@ class Router(object):
             )
 
         return method_names
-
-    def find_controller_method_name(self, controller_class):
-        """Find the wrapper method that will be used to attempt all the found
-        method names.
-
-        This is just here for completeness since it used to be set in
-        BaseApplication but this class now sets all the defaults so it made
-        more sence to move this here also
-
-        :param controller_class: type, the controller class that will handle
-            the request
-        :returns: str, the wrapper method name
-        """
-        return "handle"
 
 
 class Controller(object):
@@ -708,16 +772,6 @@ class Controller(object):
     classpath is the key and the class object is the value, see
     __init_subclass__"""
 
-#     ext = ""
-    """The extendsion to use for routing. Used in .get_class_path_args
-
-    :Example:
-        class Robots(Controller):
-            ext = "txt"
-
-        print(Robots.get_class_path_args()) # ["robots.txt"]
-    """
-
     @cachedproperty(cached="_encoding")
     def encoding(self):
         """the response charset of this controller"""
@@ -767,73 +821,6 @@ class Controller(object):
             or cls.__name__.startswith("_")
             or cls.__name__.endswith("Controller")
         )
-
-#     @classmethod
-#     def get_module_path_args(cls, controller_prefixes=None):
-#         """Get the path args that represent the module portion of a requested
-#         path
-# 
-#         :param controller_prefixes: list[str], a list of the controller
-#             prefixes, these are used to decide which part of a module path is
-#             actually a path that can be requestable. if a prefix begins with a
-#             period then it represents the end of the controller prefix path (eg
-#             .che on a module path of foo.bar.che.boo would strip foo.bar.che
-#             and return boo as the path)
-#         :returns: list[str], a list of path args that are needed to request
-#             this controller
-#         """
-#         path_args = []
-#         path = modpath = cls.__module__
-#         controller_prefixes = controller_prefixes or []
-# 
-#         for controller_prefix in controller_prefixes:
-#             if controller_prefix.startswith("."):
-#                 rcpr = re.escape(controller_prefix[1:])
-#                 if m := re.search(rf"\.?{rcpr}(?:\.|$)", modpath): 
-#                     path = modpath[m.end(0):]
-#                     break
-# 
-#             else:
-#                 rcpr = re.escape(controller_prefix)
-#                 if m := re.match(rf"^{rcpr}(?:\.|$)", modpath):
-#                     path = modpath[m.end(0):]
-# 
-#         if path:
-#             path_args = path.lower().split(".")
-# 
-#         return path_args
-# 
-#     @classmethod
-#     def get_class_path_args(cls, default_class_name=""):
-#         """Similar to .get_module_path_args but returns the class portion of
-#         the path
-# 
-#         :param default_class_name: str, the name of the default class that
-#             would not factor into the path
-#         :returns: list[str], the class portion of a full set of requestable
-#             path args
-#         """
-#         path_args = []
-# 
-#         parts = cls.__qualname__.split(".")
-#         class_name = parts.pop(-1)
-# 
-#         for part in parts:
-#             if part.startswith("<"):
-#                 raise ValueError(
-#                     f"Controller {cls.__qualname__} is inaccessible"
-#                 )
-# 
-#             path_args.append(part.lower())
-# 
-#         if class_name != default_class_name:
-#             basename = class_name.lower()
-#             if cls.ext:
-#                 basename += "." + cls.ext.lower()
-# 
-#             path_args.append(basename)
-# 
-#         return path_args
 
     @classmethod
     def get_name(cls):

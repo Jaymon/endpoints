@@ -413,103 +413,17 @@ class BaseApplication(ApplicationABC):
             controller_class=self.controller_class,
         )
 
-    def find_controller_info(self, request, **kwargs):
-        """returns all the information needed to create a controller and handle
-        the request
-
-        This is where all the routing magic happens, this takes the
-        request.path and gathers the information needed to turn that path into
-        a Controller
-
-        we always translate an HTTP request using this pattern:
-
-            METHOD /module/class/args?kwargs
-
-        GET /foo -> controller_prefix.foo.Default.GET
-        POST /foo/bar -> controller_prefix.foo.Bar.POST
-        GET /foo/bar/che -> controller_prefix.foo.Bar.GET(che)
-        POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.POST(che, baz=foo)
-
-        :param request: Request
-        :param **kwargs:
-        :returns: dict
-        """
-        logger.debug("Compiling Controller info using path: {}".format(
-            request.path
-        ))
-
-        controller_class, controller_args, ret = self.router.find_controller(
-            request.path_args
-        )
-
-        ret["module_name"] = controller_class.__module__
-        ret["class"] = controller_class
-
-        ret["method_args"] = controller_args
-
-        # we merge the leftover path args with the body kwargs
-        ret['method_args'].extend(request.body_args)
-
-        ret['method_kwargs'] = request.kwargs
-
-        ret["method_prefix"] = request.method.upper()
-
-        ret['method_names'] = self.router.find_controller_method_names(
-            controller_class,
-            ret["method_prefix"]
-        )
-
-        if len(ret["method_names"]) == 0:
-            if len(ret["method_args"]) > 0:
-                # if we have method args and we don't have a method to even
-                # answer the request it should be a 404 since the path is
-                # invalid
-                raise TypeError(
-                    "Could not find a {} method for path {}".format(
-                        request.method,
-                        request.path,
-                    )
-                )
-
-            else:
-                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                # and 501 (Not Implemented) if the method is unrecognized or
-                # not implemented by the origin server
-                raise NotImplementedError(
-                    "{} {} not implemented".format(
-                        request.method,
-                        request.path
-                    )
-                )
-
-        ret['method_name'] = self.router.find_controller_method_name(
-            controller_class
-        )
-
-        ret['class_name'] = ret["class"].__name__
-        ret['module_path'] = "/".join(ret["module_path_args"])
-        ret['class_path'] = "/".join(ret["controller_path_args"])
-
-        return ret
-
     def create_controller(self, request, response, **kwargs):
         """Create a controller to handle the request
 
         :returns: Controller, this Controller instance should be able to handle
             the request
         """
-        request.controller_info = self.find_controller_info(
-            request,
-            **kwargs
-        )
-
-        controller = request.controller_info['class'](
+        return self.router.create_controller(
             request,
             response,
             **kwargs
         )
-
-        return controller
 
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
@@ -577,13 +491,15 @@ class BaseApplication(ApplicationABC):
             if logger.isEnabledFor(logging.DEBUG):
                 logger.warning(e, exc_info=True)
 
+            elif logger.isEnabledFor(logging.INFO):
+                e_msg = String(e)
+                ce = e
+                while ce := getattr(ce, "__cause__", None):
+                    e_msg += " caused by " + String(ce)
+                logger.warning(e_msg)
+
             else:
                 logger.warning(e)
-                #e_msg = String(e)
-                #ce = e
-                #while ce := getattr(ce, "__cause__", None):
-                #    e_msg += " caused by " + String(ce)
-                #logger.warning(e_msg)
 
         if isinstance(e, CallStop):
             logger.debug(String(e))
@@ -600,20 +516,11 @@ class BaseApplication(ApplicationABC):
         elif isinstance(e, (AccessDenied, CallError)):
             log_error_warning(e)
 
-#             if logger.isEnabledFor(logging.WARNING):
-#                 e_msg = String(e)
-#                 ce = e
-#                 while ce := getattr(ce, "__cause__", None):
-#                     e_msg += " caused by " + String(ce)
-# 
-#                 logger.warning(e_msg)
-
             res.code = e.code
             res.add_headers(e.headers)
 
         elif isinstance(e, NotImplementedError):
             log_error_warning(e)
-            #logger.warning(String(e))
             res.code = 501
 
         elif isinstance(e, TypeError):
@@ -689,12 +596,6 @@ class BaseApplication(ApplicationABC):
                             res.code = 409
 
                             log_error_warning(e)
-#                             if logger.isEnabledFor(logging.DEBUG):
-#                                 logger.warning(e, exc_info=True)
-# 
-#                             else:
-#                                 logger.warning(e_msg)
-#                             logger.warning(e)
 
                         except TypeError:
                             res.code = 404
@@ -710,11 +611,6 @@ class BaseApplication(ApplicationABC):
             else:
                 res.code = 404
                 log_error_warning(e)
-#                 if logger.isEnabledFor(logging.DEBUG):
-#                     logger.warning(e, exc_info=True)
-# 
-#                 else:
-#                     logger.warning(e)
 
         else:
             res.code = 500

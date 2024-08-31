@@ -89,7 +89,7 @@ class Server(object):
 
     def find(self, path="", method="GET", **kwargs):
         kwargs["request"] = self.create_request(path, method, **kwargs)
-        return self.application.find_controller_info(**kwargs)
+        return self.application.router.find_controller_info(**kwargs)
 
 
 class TestCase(BaseAsyncTestCase):
