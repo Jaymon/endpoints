@@ -14,5 +14,5 @@ from . import decorators
 from .decorators import param, version # this is for fluidity/convenience
 
 
-__version__ = '6.2.0'
+__version__ = '6.3.0'
 

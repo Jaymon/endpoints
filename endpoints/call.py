@@ -182,7 +182,7 @@ class Param(object):
             ))
 
         if 'dest' in flags:
-            logger.warn("dest is ignored in positional param")
+            logger.warning("dest is ignored in positional param")
 
         try:
             val = args.pop(index)
@@ -824,6 +824,13 @@ class Controller(object):
 
     @classmethod
     def get_name(cls):
+        """Get the controller name.
+
+        This is used in Router to decide the path part for this controller
+
+        :returns: str, the basename in kebab case, with a ".ext" if
+            applicable
+        """
         name = cls.__name__
 
         if not name.startswith("_"):
