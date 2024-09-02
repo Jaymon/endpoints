@@ -890,8 +890,8 @@ class ParamTest(TestCase):
 
     def test_param_query(self):
         """This was moved from decorators_test.ParamTest when a param_query
-        decorator existed, that's why it has the strange name"""
-
+        decorator existed, that's why it has the strange name
+        """
         p = Param('foo', type=int, choices=set([1, 2, 3]))
         with self.assertRaises(ValueError):
             r = p.handle([], {'foo': '8'})

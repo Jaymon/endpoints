@@ -650,70 +650,20 @@ class Router(object):
             value["class_keys"]
         ))
 
-#                 info = {
-#                     "controller_path_args": value["class_keys"],
-#                     "module_path_args": value["module_keys"],
-#                 }
-
-#         ret['module_path'] = "/".join(ret["module_path_args"])
-#         ret['class_path'] = "/".join(ret["controller_path_args"])
-
         return ret
-
-#     def find_controller_method_names(self, controller_class, method_prefix):
-#         """Find the method names that could satisfy this request according to
-#         the HTTP method prefix
-# 
-#         This will go through and find any methods that start with
-#         method_prefix, so if the request was GET /foo then this would find any
-#         methods that start with GET
-# 
-#         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
-# 
-#         The method_fallback is the name of the fallback controller method, it
-#         defaults to ANY and should probably never be changed
-# 
-#         :param controller_class: type, the controller class that will be
-#             checked for method_prefix
-#         :param method_prefix: str, the http method of the request (eg GET)
-#         :returns: set, a list of string names
-#         """
-#         fallback_method_prefix = "ANY"
-# 
-#         key = "{}:{}.{}".format(
-#             controller_class.__module__,
-#             controller_class.__qualname__,
-#             method_prefix
-#         )
-# 
-#         if key in self.controller_method_names:
-#             method_names = self.controller_method_names[key]
-# 
-#         else:
-#             method_names = controller_class.get_method_names(method_prefix)
-#             self.controller_method_names[key] = method_names
-# 
-#         if not method_names and method_prefix != fallback_method_prefix:
-#             method_names = self.find_controller_method_names(
-#                 controller_class,
-#                 fallback_method_prefix
-#             )
-# 
-#         return method_names
 
 
 class Controller(object):
-    """
-    this is the interface for a Controller sub class
+    """This is the interface for a Controller sub class
 
     All your controllers MUST extend this base class, since it ensures a proper
     interface :)
 
-    to activate a new endpoint, just add a module on your PYTHONPATH
+    To activate a new endpoint, just add a module on your PYTHONPATH
     controller_prefix that has a class that extends this class, and then
     defines at least one http method (like GET or POST), so if you wanted to
-    create the endpoint /foo/bar (with controller_prefix che), you would just
-    need to:
+    create the endpoint `/foo/bar` (with controller_prefix `che`), you would
+    just need to:
 
     :Example:
         # che/foo.py
@@ -723,47 +673,18 @@ class Controller(object):
             def GET(self, *args, **kwargs):
                 return "you just made a GET request to /foo/bar"
 
-    as you support more methods, like POST and PUT, you can just add POST() and
-    PUT() methods to your Bar class and Bar will support those http methods.
-    Although you can request any method (a method is valid if it is all
-    uppercase), here is a list of rfc approved http request methods:
-
-        http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+    As you support more methods, like POST and PUT, you can just add POST() and
+    PUT() methods to your `Bar` class and `Bar` will support those http
+    methods.
 
     If you would like to create a base controller that other controllers will
     extend and don't want that controller to be picked up by reflection, just
-    start the classname with an underscore (eg _Foo) or end it with a
-    "Controller" suffix (eg, FooController):
-
-    :Example:
-        class _Base(Controller):
-            def GET(self, *args, **kwargs):
-                return "Any child that extends this will have this GET method"
-
-        class BaseController(Controller):
-            def GET(self, *args, **kwargs):
-                return "Any child that extends this will have this GET method"
+    start the classname with an underscore (eg `_Foo`) or end it with a
+    "Controller" suffix (eg, `FooController`). See .is_private docblock for
+    examples.
 
     The default routing converts underscores and camelcase names to be
-    separated by dashes.
-
-    :Example:
-        # foo_bar module
-        class CheBaz(Controller): pass
-
-        # CheBaz controller would answer /foo-bar/che-baz requests
-
-    If you would like your request to have an extension, you can do that
-    by using an underscore:
-
-    :Example:
-        class FooBar_txt(Controller):
-            # This controller will satisfy foo-bar.txt requests
-            pass
-
-        class Robots_txt(Controller): pass
-        print(Robots.get_name()) # "robots.txt"
-
+    separated by dashes. See .get_name docblock for examples.
     """
     request = None
     """holds a Request() instance"""
@@ -836,7 +757,24 @@ class Controller(object):
     def get_name(cls):
         """Get the controller name.
 
-        This is used in Router to decide the path part for this controller
+        This is used in Pathfinder to decide the path part for this controller
+
+        :Example:
+            # foo_bar module
+            class CheBaz(Controller):
+                # This controller would answer /foo-bar/che-baz requests
+                pass
+
+        If you would like your request to have an extension, you can do that
+        by using an underscore:
+
+        :Example:
+            class FooBar_txt(Controller):
+                # This controller will satisfy foo-bar.txt requests
+                pass
+
+            class Robots_txt(Controller): pass
+            print(Robots.get_name()) # "robots.txt"
 
         :returns: str, the basename in kebab case, with a ".ext" if
             applicable
@@ -870,6 +808,11 @@ class Controller(object):
         there can actually be multiple methods defined that all start with
         <HTTP-METHOD> (eg, GET_1, GET_2, etc)
 
+        Although you can define any http methods (a method is valid if it is
+        all uppercase), here is a list of rfc approved http request methods:
+
+            http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+
         :returns: dict[str, list[str]], the keys are the HTTP method and the
             values are all the method names that satisfy that HTTP method.
             these method names will be in alphabetical order to make it so they
@@ -889,33 +832,6 @@ class Controller(object):
             method_names[prefix].sort()
 
         return method_names
-
-#     @classmethod
-#     def get_method_names(cls, method_prefix):
-#         """An HTTP method (eg GET or POST) needs to be handled by a controller
-#         class. So a controller can have a method named GET and that will be
-#         called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
-#         there can actually be multiple methods defined that all start with
-#         <HTTP-METHOD> (eg, GET_1, GET_2, etc), this method returns all the
-#         methods that begin with the method_prefix
-# 
-#         :param method_prefix: str, something like GET, POST, PUT, etc
-#         :returns: list[str], a set of method names starting with method_prefix,
-#             these will be in alphabetical order to make it so they can always
-#             be checked in the same order
-#         """
-#         method_names = set()
-# 
-#         members = inspect.getmembers(cls)
-#         for member_name, member in members:
-#             if member_name.startswith(method_prefix):
-#                 if callable(member):
-#                     method_names.add(member_name)
-# 
-#         method_names = list(method_names)
-#         method_names.sort()
-# 
-#         return method_names
 
     def __init__(self, request, response, **kwargs):
         self.request = request
