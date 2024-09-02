@@ -125,28 +125,45 @@ class JSONEncoderTest(TestCase):
 
 
 class UrlTest(TestCase):
-    def test_module(self):
+    def test_module_and_controller(self):
         c = self.create_server({
-            "foo": [
-                "from endpoints import Controller",
+            "foomod": [
                 "class Bar(Controller):",
-                "    def GET(self):",
+                "    def GET(self, *args):",
                 "        u = self.request.url",
                 "        return u.module()",
                 "",
                 "class Default(Controller):",
-                "    def GET(self):",
+                "    def GET(self, *args):",
                 "        u = self.request.url",
                 "        return u.module()",
                 "",
             ],
+            "fooclass": [
+                "class Bar(Controller):",
+                "    def GET(self, *args):",
+                "        u = self.request.url",
+                "        return u.controller()",
+                "",
+                "class Default(Controller):",
+                "    def GET(self, *args):",
+                "        u = self.request.url",
+                "        return u.controller()",
+                "",
+            ],
         })
 
-        res = c.handle("/foo/bar")
-        self.assertEqual("http://endpoints.fake/foo", res._body)
+        res = c.handle("/foomod/bar")
+        self.assertEqual("http://endpoints.fake/foomod", res._body)
 
-        res = c.handle("/foo")
-        self.assertEqual("http://endpoints.fake/foo", res._body)
+        res = c.handle("/foomod")
+        self.assertEqual("http://endpoints.fake/foomod", res._body)
+
+        res = c.handle("/fooclass/bar")
+        self.assertEqual("http://endpoints.fake/fooclass/bar", res._body)
+
+        res = c.handle("/fooclass")
+        self.assertEqual("http://endpoints.fake/fooclass", res._body)
 
     def test_controller(self):
         u = Url("http://example.com/foo/bar/che", controller_class_path="foo")

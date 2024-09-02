@@ -160,14 +160,17 @@ class ControllerTest(TestCase):
             "        pass",
         ])
 
+
         for c in [controller_class, controller_class(None, None)]:
-            method_names = c.get_method_names("GET")
+            controller_method_names = c.get_method_names()
+
+            method_names = controller_method_names["GET"]
             self.assertEqual(["GET", "GET_one", "GET_two"], method_names)
 
-            method_names = c.get_method_names("POST")
+            method_names = controller_method_names["POST"]
             self.assertEqual(["POST_one"], method_names)
 
-            method_names = c.get_method_names("ANY")
+            method_names = controller_method_names["ANY"]
             self.assertEqual(["ANY"], method_names)
 
     def test_ext(self):
@@ -469,7 +472,8 @@ class RouterTest(TestCase):
             "default": [
                 "from endpoints import Controller",
                 "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
+                "    def ANY_1(*args, **kwargs): pass",
+                "    def ANY_2(*args, **kwargs): pass",
                 ""
             ],
             "foo": [
@@ -501,6 +505,15 @@ class RouterTest(TestCase):
         })
 
         ts = [
+            {
+                'in': dict(method="GET", path="/default"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.default",
+                    'class_name': 'Default',
+                    'method_args': [],
+                    "method_names": ["ANY_1", "ANY_2"],
+                }
+            },
             {
                 'in': dict(method="GET", path="/foo/baz"),
                 'out': {

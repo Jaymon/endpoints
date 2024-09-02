@@ -129,9 +129,9 @@ class TestCase(BaseAsyncTestCase):
         return server
 
     def create_controller_module(self, contents, **kwargs):
-        # we reset all the controller classes because if we are requesting a new
-        # a new controller module then we probably want a fresh new start with
-        # the loaded controllers
+        # we reset all the controller classes because if we are requesting a
+        # new controller module then we probably want a fresh new start
+        # with the loaded controllers
         if not contents:
             contents = [""]
 
@@ -146,22 +146,11 @@ class TestCase(BaseAsyncTestCase):
                 "from endpoints import *",
             ]
 
-        if isinstance(contents, dict):
-            if not controller_prefix:
-                controller_prefix = testdata.get_module_name()
-
-            basedir = testdata.create_modules(
-                {controller_prefix: contents},
-                header=header
-            )
-            controller_prefix = basedir.modpath(controller_prefix)
-
-        else:
-            controller_prefix = testdata.create_module(
-                data=contents,
-                modpath=controller_prefix,
-                header=header
-            )
+        controller_prefix = testdata.create_module(
+            data=contents,
+            modpath=controller_prefix,
+            header=header
+        )
 
         return controller_prefix
 

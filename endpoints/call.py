@@ -9,6 +9,7 @@ import re
 import io
 import sys
 from collections import defaultdict
+import itertools
 
 from .compat import *
 from .utils import AcceptHeader
@@ -436,7 +437,12 @@ class Pathfinder(ClasspathFinder):
         else:
             key = NamingConvention(key).kebabcase()
 
-        return super()._get_node_class_info(key, **kwargs)
+        key, value = super()._get_node_class_info(key, **kwargs)
+
+        if "class" in value:
+            value["method_names"] = value["class"].get_method_names()
+
+        return key, value
 
 
 class Router(object):
@@ -544,22 +550,18 @@ class Router(object):
         :param path_args: list[str], so path `/foo/bar/che` would be passed to
             this method as `["foo", "bar", "che"]`
         :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
-            controller_class, controller_args, and controller_info
+            controller_class, controller_args, and node value
         """
         keys = list(path_args)
         controller_args = []
         controller_class = None
-        info = {}
+        value = {}
         pathfinder = self.pathfinder
 
         while not controller_class:
             value = pathfinder.get(keys, {})
             if "class" in value:
                 controller_class = value["class"]
-                info = {
-                    "controller_path_args": value["class_keys"],
-                    "module_path_args": value["module_keys"],
-                }
 
             else:
                 if keys:
@@ -572,7 +574,7 @@ class Router(object):
                         )
                     )
 
-        return controller_class, controller_args, info
+        return controller_class, controller_args, value
 
     def find_controller_info(self, request, **kwargs):
         """returns all the information needed to create a controller and handle
@@ -586,25 +588,19 @@ class Router(object):
 
             METHOD /module/class/args?kwargs
 
-        GET /foo -> controller_prefix.foo.Default.GET
-        POST /foo/bar -> controller_prefix.foo.Bar.POST
-        GET /foo/bar/che -> controller_prefix.foo.Bar.GET(che)
-        POST /foo/bar/che?baz=foo -> controller_prefix.foo.Bar.POST(che, baz=foo)
-
         :param request: Request
         :param **kwargs:
         :returns: dict
         """
+        ret = {}
+
         logger.debug("Compiling Controller info using path: {}".format(
             request.path
         ))
 
-        controller_class, controller_args, ret = self.find_controller(
+        controller_class, controller_args, value = self.find_controller(
             request.path_args
         )
-
-        ret["module_name"] = controller_class.__module__
-        ret["class"] = controller_class
 
         ret["method_args"] = controller_args
 
@@ -613,15 +609,13 @@ class Router(object):
 
         ret['method_kwargs'] = request.kwargs
 
-        ret["method_prefix"] = request.method.upper()
+        if method_names := value["method_names"].get(request.method.upper()):
+            ret['method_names'] = method_names
 
-        ret['method_name'] = "handle"
-        ret['method_names'] = self.find_controller_method_names(
-            controller_class,
-            ret["method_prefix"]
-        )
+        elif method_names := value["method_names"].get("ANY"):
+            ret['method_names'] = method_names
 
-        if len(ret["method_names"]) == 0:
+        else:
             if len(ret["method_args"]) > 0:
                 # if we have method args and we don't have a method to even
                 # answer the request it should be a 404 since the path is
@@ -644,52 +638,68 @@ class Router(object):
                     )
                 )
 
+        ret['method_name'] = "handle"
+
+        ret["module_name"] = controller_class.__module__
+        ret['module_path'] = "/".join(value["module_keys"])
+
+        ret["class"] = controller_class
         ret['class_name'] = ret["class"].__name__
-        ret['module_path'] = "/".join(ret["module_path_args"])
-        ret['class_path'] = "/".join(ret["controller_path_args"])
+        ret['class_path'] = "/".join(itertools.chain(
+            value["module_keys"],
+            value["class_keys"]
+        ))
+
+#                 info = {
+#                     "controller_path_args": value["class_keys"],
+#                     "module_path_args": value["module_keys"],
+#                 }
+
+#         ret['module_path'] = "/".join(ret["module_path_args"])
+#         ret['class_path'] = "/".join(ret["controller_path_args"])
 
         return ret
 
-    def find_controller_method_names(self, controller_class, method_prefix):
-        """Find the method names that could satisfy this request according to
-        the HTTP method prefix
-
-        This will go through and find any methods that start with
-        method_prefix, so if the request was GET /foo then this would find any
-        methods that start with GET
-
-        https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
-
-        The method_fallback is the name of the fallback controller method, it
-        defaults to ANY and should probably never be changed
-
-        :param controller_class: type, the controller class that will be
-            checked for method_prefix
-        :param method_prefix: str, the http method of the request (eg GET)
-        :returns: set, a list of string names
-        """
-        fallback_method_prefix = "ANY"
-
-        key = "{}:{}.{}".format(
-            controller_class.__module__,
-            controller_class.__qualname__,
-            method_prefix
-        )
-
-        if key in self.controller_method_names:
-            method_names = self.controller_method_names[key]
-
-        else:
-            method_names = controller_class.get_method_names(method_prefix)
-            self.controller_method_names[key] = method_names
-
-        if not method_names and method_prefix != fallback_method_prefix:
-            method_names = self.find_controller_method_names(
-                controller_class,
-                fallback_method_prefix
-            )
-
-        return method_names
+#     def find_controller_method_names(self, controller_class, method_prefix):
+#         """Find the method names that could satisfy this request according to
+#         the HTTP method prefix
+# 
+#         This will go through and find any methods that start with
+#         method_prefix, so if the request was GET /foo then this would find any
+#         methods that start with GET
+# 
+#         https://www.w3.org/Protocols/rfc2616/rfc2616-sec9.html
+# 
+#         The method_fallback is the name of the fallback controller method, it
+#         defaults to ANY and should probably never be changed
+# 
+#         :param controller_class: type, the controller class that will be
+#             checked for method_prefix
+#         :param method_prefix: str, the http method of the request (eg GET)
+#         :returns: set, a list of string names
+#         """
+#         fallback_method_prefix = "ANY"
+# 
+#         key = "{}:{}.{}".format(
+#             controller_class.__module__,
+#             controller_class.__qualname__,
+#             method_prefix
+#         )
+# 
+#         if key in self.controller_method_names:
+#             method_names = self.controller_method_names[key]
+# 
+#         else:
+#             method_names = controller_class.get_method_names(method_prefix)
+#             self.controller_method_names[key] = method_names
+# 
+#         if not method_names and method_prefix != fallback_method_prefix:
+#             method_names = self.find_controller_method_names(
+#                 controller_class,
+#                 fallback_method_prefix
+#             )
+# 
+#         return method_names
 
 
 class Controller(object):
@@ -853,31 +863,59 @@ class Controller(object):
         return name
 
     @classmethod
-    def get_method_names(cls, method_prefix):
+    def get_method_names(cls):
         """An HTTP method (eg GET or POST) needs to be handled by a controller
         class. So a controller can have a method named GET and that will be
         called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
         there can actually be multiple methods defined that all start with
-        <HTTP-METHOD> (eg, GET_1, GET_2, etc), this method returns all the
-        methods that begin with the method_prefix
+        <HTTP-METHOD> (eg, GET_1, GET_2, etc)
 
-        :param method_prefix: str, something like GET, POST, PUT, etc
-        :returns: list[str], a set of method names starting with method_prefix,
-            these will be in alphabetical order to make it so they can always
-            be checked in the same order
+        :returns: dict[str, list[str]], the keys are the HTTP method and the
+            values are all the method names that satisfy that HTTP method.
+            these method names will be in alphabetical order to make it so they
+            can always be checked in the same order
         """
-        method_names = set()
+        method_names = defaultdict(set)
 
         members = inspect.getmembers(cls)
         for member_name, member in members:
-            if member_name.startswith(method_prefix):
-                if callable(member):
-                    method_names.add(member_name)
+            prefix, sep, postfix = member_name.partition("_")
+            if prefix.isupper() and callable(member):
+                method_names[prefix].add(member_name)
 
-        method_names = list(method_names)
-        method_names.sort()
+        # after compiling them put them in alphabetical order
+        for prefix in method_names.keys():
+            method_names[prefix] = list(method_names[prefix])
+            method_names[prefix].sort()
 
         return method_names
+
+#     @classmethod
+#     def get_method_names(cls, method_prefix):
+#         """An HTTP method (eg GET or POST) needs to be handled by a controller
+#         class. So a controller can have a method named GET and that will be
+#         called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
+#         there can actually be multiple methods defined that all start with
+#         <HTTP-METHOD> (eg, GET_1, GET_2, etc), this method returns all the
+#         methods that begin with the method_prefix
+# 
+#         :param method_prefix: str, something like GET, POST, PUT, etc
+#         :returns: list[str], a set of method names starting with method_prefix,
+#             these will be in alphabetical order to make it so they can always
+#             be checked in the same order
+#         """
+#         method_names = set()
+# 
+#         members = inspect.getmembers(cls)
+#         for member_name, member in members:
+#             if member_name.startswith(method_prefix):
+#                 if callable(member):
+#                     method_names.add(member_name)
+# 
+#         method_names = list(method_names)
+#         method_names.sort()
+# 
+#         return method_names
 
     def __init__(self, request, response, **kwargs):
         self.request = request
