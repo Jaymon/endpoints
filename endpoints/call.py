@@ -824,7 +824,8 @@ class Controller(object):
         for member_name, member in members:
             prefix, sep, postfix = member_name.partition("_")
             if prefix.isupper() and callable(member):
-                method_names[prefix].add(member_name)
+                if prefix != "OPTIONS" or cls.cors:
+                    method_names[prefix].add(member_name)
 
         # after compiling them put them in alphabetical order
         for prefix in method_names.keys():

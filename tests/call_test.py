@@ -160,7 +160,6 @@ class ControllerTest(TestCase):
             "        pass",
         ])
 
-
         for c in [controller_class, controller_class(None, None)]:
             controller_method_names = c.get_method_names()
 
@@ -172,6 +171,18 @@ class ControllerTest(TestCase):
 
             method_names = controller_method_names["ANY"]
             self.assertEqual(["ANY"], method_names)
+
+        controller_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class Foo(Controller):",
+            "    cors = False",
+            "    def GET(self):",
+            "        pass",
+        ])
+
+        controller_method_names = controller_class.get_method_names()
+        self.assertFalse("OPTIONS" in controller_method_names)
 
     def test_ext(self):
         class _FooBar(Controller): pass

@@ -170,6 +170,16 @@ class UrlTest(TestCase):
         u2 = u.controller(che=4)
         self.assertEqual("http://example.com/foo?che=4", u2)
 
+    def test_default_scheme_host(self):
+        kwargs = dict(
+            ENDPOINTS_HOST="localhost:12345",
+            ENDPOINTS_SCHEME="http",
+        )
+
+        with self.environ(**kwargs):
+            url = Url("/foo/bar")
+            self.assertEqual("http://localhost:12345/foo/bar", url)
+
 
 class StatusTest(TestCase):
     def test_codes(self):

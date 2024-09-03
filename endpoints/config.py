@@ -19,6 +19,9 @@ class Environ(Environ):
         # the server classes and also the tests
         self.setdefault("HOST", "")
 
+        # this scheme will be used if scheme can't be inferred
+        self.setdefault("SCHEME", "http")
+
         # the name of the autodiscover module name
         self.setdefault("AUTODISCOVER_NAME", "controllers")
 

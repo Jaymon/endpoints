@@ -15,12 +15,13 @@ from datatypes import (
 )
 
 from .compat import *
+from .config import environ
 
 
 class Url(BaseUrl):
-    """a url object on steroids, this is here to make it easy to manipulate urls
-    we try to map the supported fields to their urlparse equivalents, with some
-    additions
+    """a url object on steroids, this is here to make it easy to manipulate
+    urls we try to map the supported fields to their urlparse equivalents,
+    with some additions
 
     https://tools.ietf.org/html/rfc3986.html
 
@@ -55,6 +56,18 @@ class Url(BaseUrl):
 
     see Request.url
     """
+
+    @classmethod
+    def default_values(cls):
+        values = super().default_values()
+
+        # we set these here instead of as class variables because we could
+        # update environ at some point after this class has been loaded into
+        # memory
+        values["scheme"] = environ.SCHEME
+        values["hostname"] = environ.HOST
+
+        return values
 
     def module(self, *paths, **query_kwargs):
         """create a new Url instance using the module path as a base
