@@ -7,6 +7,7 @@ from datatypes import (
     ReflectCallable,
 )
 
+from .compat import *
 from .utils import Url
 
 
@@ -18,17 +19,12 @@ class AttributeDict(dict):
         except KeyError as e:
             raise AttributeError(key) from e
 
-#     def __setattr__(self, key, value):
-#         return self.__setitem__(key, value)
-
     def __delattr__(self, key):
         try:
             return self.__delitem__(key)
 
         except KeyError as e:
             raise AttributeError(key) from e
-
-
 
 
 class OpenAPI(AttributeDict):
@@ -54,7 +50,6 @@ class OpenAPI(AttributeDict):
         self["info"] = self.create_info(**kwargs)
         self["server"] = self.create_server(**kwargs)
         self["paths"] = self.create_paths(**kwargs)
-#         self.path_item_class = kwargs.get("path_item_class", PathItem)
 
     def write_yaml(self, directory):
         """Writes openapi.yaml file to directory
@@ -68,39 +63,11 @@ class OpenAPI(AttributeDict):
         """
         pass
 
-#     def set_paths(self, **kwargs):
-#         paths = {}
-#         path_item_class = kwargs.get("path_item_class", PathItem)
-# 
-#         pathfinder = self.application.router.pathfinder
-#         for keys, value in pathfinder.get_class_items():
-#             pi = path_item_class(self, keys, value)
-#             yield pi.get_path(), pi
-
     def create_info(self, **kwargs):
         return kwargs.get("info_class", Info)(self, **kwargs)
 
     def create_server(self, **kwargs):
         return kwargs.get("server_class", Server)(self, **kwargs)
-
-#     def create_path_item(self, keys, values, **kwargs):
-#         operation_class = kwargs.get("operation_class", Operation)
-# 
-#         for http_op, method_names in value["method_names"].items():
-#             for method_name in method_names:
-#                 method = getattr(value["class"], method_name)
-#                 op = operation_class(
-#                     self,
-#                     keys,
-#                     value,
-#                     method,
-#                     **kwargs
-#                 )
-# 
-#     def create_operation(self, keys, values, method, **kwargs):
-
-
-
 
     def create_paths(self, **kwargs):
         """Represents a Pseudo OpenApi paths object
@@ -119,14 +86,7 @@ class OpenAPI(AttributeDict):
         pathfinder = self.application.router.pathfinder
         for keys, value in pathfinder.get_class_items():
             for op_name, method_names in value["method_names"].items():
-
-#                 ops = defaultdict(list)
-
                 for method_name in method_names:
-                    #controller = value["class"](None, None)
-                    #method = getattr(controller, method_name)
-                    #pout.v(method.__wrapped__.get_wrapped_method(method))
-
                     op = operation_class(
                         self,
                         op_name,
@@ -137,12 +97,7 @@ class OpenAPI(AttributeDict):
 
                     path = op.get_path()
                     if path in paths:
-                        self.update_path_item(
-                            path,
-                            paths[path],
-                            op,
-                            **kwargs
-                        )
+                        paths[path].add_operation(op, **kwargs)
 
                     else:
                         paths[path] = self.create_path_item(
@@ -152,32 +107,19 @@ class OpenAPI(AttributeDict):
                             **kwargs
                         )
 
-#                     ops[op["in"]].append(op)
-
-
-
-#             pi = path_item_class(self, keys, value)
-# 
-# 
-#             yield pi.get_path(), pi
         return paths
 
     def create_path_item(self, path, value, operation, **kwargs):
         path_item_class = kwargs.get("path_item_class", PathItem)
         pi = path_item_class(
             self,
+            path,
             value,
             **kwargs
         )
 
         pi[operation.name] = operation
         return pi
-
-    def update_path_item(self, path, path_item, operation, **kwargs):
-        if operation.name in path_item:
-            raise ValueError(
-                f"Path {path} has multiple {operation.name} keys"
-            )
 
 
 class Info(AttributeDict):
@@ -213,57 +155,29 @@ class Server(AttributeDict):
 
         self["url"] = Url(path="/")
 
-#         if url := Url():
-#             self.url = url
-# 
-#         else:
-#             # from the docs:
-#             # the default value would be a Server Object with a url value of /
-#             self.url = "/"
-
-
-# class Paths(dict):
-#     """Represents an OpenApi paths object
-# 
-#     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
-# 
-#     The keys are the path (starting with /) and the value are a Path Item
-#     object
-#     """
-#     def __init__(self, openapi, **kwargs):
-#         self.openapi = openapi
-
 
 class PathItem(AttributeDict):
     """Represents an OpenAPI path item object
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#path-item-object
     """
-    def __init__(self, parent, value, **kwargs):
+    def __init__(self, path, parent, value, **kwargs):
+        self.path = path
         self.parent = parent
         self.value = value
-
-#         self.operation_class = kwargs.get("operation_class", Operation)
+        self.reflect_class = ReflectClass(value["class"])
 
         super().__init__()
 
-        r = ReflectClass(value["class"])
-        self["description"] = r.get_docblock()
-        if self.description:
-            self["summary"] = self.description.partition("\n")[0]
+        self["description"] = self.reflect_class.get_docblock()
+        if self["description"]:
+            self["summary"] = self["description"].partition("\n")[0]
 
-#     def get_operations(self):
-#         for http_method, method_names in self.value["method_names"].items():
-#             if len(method_names) > 1:
-#                 raise ValueError(
-#                     "OpenAPI currently doesn't support multiple"
-#                     f" {http_method} methods"
-#                 )
-# 
-#             yield http_method.lower(), self.operation_class(
-#                 self,
-#                 getattr(value["class"], method_names[0]),
-#             )
+    def add_operation(self, operation, **kwargs):
+        if operation.name in self:
+            raise ValueError(
+                f"Path {self.path} has multiple {operation.name} keys"
+            )
 
 
 class Operation(AttributeDict):
@@ -273,8 +187,6 @@ class Operation(AttributeDict):
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#operation-object
     """
-
-
     def __init__(self, parent, name, value, method, **kwargs):
         self.parent = parent
         self.name = name.lower()
@@ -284,23 +196,19 @@ class Operation(AttributeDict):
 
         super().__init__()
 
-
-#         pout.v(r.get_unwrapped().params)
-#         pout.v(method)
-
-
-#         descriptor = r.get_descriptor()
-#         pout.i(descriptor)
-#         pout.v(descriptor.__wrapped__.params)
-
         self["description"] = self.reflect_method.get_docblock()
-        if self.description:
-            self["summary"] = self.description.partition("\n")[0]
+        if self["description"]:
+            self["summary"] = self["description"].partition("\n")[0]
 
-#         pout.v(method.params)
+        self.add_params(**kwargs)
 
-        #params = defaultdict(list)
+        # TODO -- add responses
+
+    def add_params(self, **kwargs):
         self["parameters"] = []
+
+        if has_body := self.has_body():
+            self["requestBody"] = self.create_request_body(**kwargs)
 
         has_body = self.has_body()
         unwrapped = self.reflect_method.get_unwrapped()
@@ -308,9 +216,8 @@ class Operation(AttributeDict):
             for param in (p.param for p in params):
                 if param.is_kwarg:
                     if has_body:
-                        # TODO this is a body parameter
-                        s = self.create_schema(param, **kwargs)
-                        pass
+                        prop = self.create_property(param, **kwargs)
+                        self["requestBody"].add_property(prop, **kwargs)
 
                     else:
                         # this is a query param
@@ -326,10 +233,6 @@ class Operation(AttributeDict):
                         **kwargs
                     ))
 
-                    #params[p["in"]].append(p)
-
-        # TODO -- add responses
-
     def create_parameter(self, param, **kwargs):
         return kwargs.get("parameter_class", ParamParameter)(
             self,
@@ -337,8 +240,21 @@ class Operation(AttributeDict):
             **kwargs
         )
 
-    def create_schema(self, param, **kwargs):
-        return kwargs.get("schema_class", Schema)(
+#     def create_schema(self, param, **kwargs):
+#         return kwargs.get("schema_class", Schema)(
+#             self,
+#             param,
+#             **kwargs
+#         )
+
+    def create_request_body(self, **kwargs):
+        return kwargs.get("request_body_class", RequestBody)(
+            self,
+            **kwargs
+        )
+
+    def create_property(self, param, **kwargs):
+        return kwargs.get("property_class", Property)(
             self,
             param,
             **kwargs
@@ -396,9 +312,9 @@ class ParamParameter(AttributeDict):
                 self["name"] = param.index
 
         self["description"] = param.flags.get("help", "")
-        self["schema"] = self.create_schema(**kwargs)
+        self["schema"] = self.create_property(**kwargs)
 
-    def create_schema(self, **kwargs):
+    def create_property(self, **kwargs):
         schema = kwargs.get("property_class", Property)(
             self,
             self.param,
@@ -410,10 +326,90 @@ class ParamParameter(AttributeDict):
         return schema
 
 
+class RequestBody(AttributeDict):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#request-body-object
+
+    Required:
+        * content: dict[string, MediaType]
+    """
+    def __init__(self, parent, **kwargs):
+        self.parent = parent
+
+        super().__init__()
+
+    def add_property(self, prop, **kwargs):
+        if "content" not in self:
+            self["content"] = self.create_content(**kwargs)
+
+        for content_type, media_type in self["content"].items():
+            media_type.add_property(prop, **kwargs)
+
+    def create_content(self, **kwargs):
+        return {
+            "*/*": self.create_media_type(**kwargs)
+        }
+
+    def create_media_type(self, **kwargs):
+        return kwargs.get("media_type_class", MediaType)(
+            self,
+            **kwargs
+        )
+
+
+class MediaType(AttributeDict):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#media-type-object
+
+    TODO -- file uploads:
+        https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#considerations-for-file-uploads
+    """
+    def __init__(self, parent, **kwargs):
+        self.parent = parent
+
+        super().__init__()
+
+        self["schema"] = self.create_schema(**kwargs)
+
+    def add_property(self, prop, **kwargs):
+        self["schema"].add_property(prop, **kwargs)
+
+    def create_schema(self, **kwargs):
+        return kwargs.get("schema_class", Schema)(
+            self,
+            **kwargs
+        )
+
+
+class Schema(AttributeDict):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
+    """
+    def __init__(self, parent, **kwargs):
+        self.parent = parent
+
+        super().__init__()
+
+        self["type"] = "object"
+        self["required"] = []
+        self["properties"] = {}
+
+    def add_property(self, prop, **kwargs):
+        prop.parent = self
+        self["properties"][prop.name] = prop
+
+        if prop.is_required():
+            self["required"].append(prop.name)
+
+
 class Property(AttributeDict):
     """
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
+
+    looks like section 10.2 of the json schema spec has the keywords
+    https://json-schema.org/draft/2020-12/json-schema-core#name-keywords-for-applying-subsc
+
     """
     def __init__(self, parent, param, **kwargs):
         self.parent = parent
@@ -434,22 +430,25 @@ class Property(AttributeDict):
 
     def get_type(self):
         t = self.param.flags["type"]
-        if isinstance(t, str):
+        if not t:
             ret = "string"
 
-        elif isinstance(t, bool):
+        elif issubclass(t, str):
+            ret = "string"
+
+        elif issubclass(t, bool):
             ret = "boolean"
 
-        elif isinstance(t, int):
+        elif issubclass(t, int):
             ret = "integer"
 
-        elif isinstance(t, float):
+        elif issubclass(t, float):
             ret = "number"
 
-        elif isinstance(t, Sequence):
+        elif issubclass(t, Sequence):
             ret = "array"
 
-        elif isinstance(t, Mapping):
+        elif issubclass(t, Mapping):
             ret = "object"
 
         else:
@@ -458,6 +457,9 @@ class Property(AttributeDict):
                 or "append" in self.param.flags["action"]
             ):
                 ret = "array"
+
+            else:
+                raise ValueError(f"Not sure how to handle type {t}")
 
         return ret
 
@@ -474,4 +476,7 @@ class Property(AttributeDict):
             ret["maximum"] = self.param.flags["max_size"]
 
         return ret
+
+    def is_required(self):
+        return self.param.flags.get("required", False)
 
