@@ -53,6 +53,20 @@ class OpenAPITest(TestCase):
         self.assertTrue("bar" in schema["required"])
         self.assertTrue(2, len(schema["properties"]))
 
+    def test_headers(self):
+        c = self.create_server("""
+            class Foo(Controller):
+                cors = False
+
+                @version("v2")
+                def POST(self):
+                    pass
+        """)
+
+        oa = OpenAPI(c.application)
+
+
+
 #     def test_paths(self):
 #         c = self.create_server(
 #             {

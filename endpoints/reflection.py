@@ -12,6 +12,11 @@ from .utils import Url
 
 
 class AttributeDict(dict):
+    def __init__(self, parent, **kwargs):
+        self.parent = parent
+
+        super().__init__()
+
     def __getattr__(self, key):
         try:
             return self.__getitem__(key)
@@ -42,8 +47,9 @@ class OpenAPI(AttributeDict):
         * paths: dict[str, PathItem]
     """
     def __init__(self, application, **kwargs):
-        self.parent = None
         self.application = application
+
+        super().__init__(None)
 
         self["openapi"] = "3.1.0"
 
@@ -132,9 +138,7 @@ class Info(AttributeDict):
         * version: str
     """
     def __init__(self, parent, **kwargs):
-        self.parent = parent
-
-        super().__init__()
+        super().__init__(parent)
 
         self["title"] = kwargs.get("title", "Endpoints API")
         self["version"] = kwargs.get("version", "0.1.0")
@@ -149,9 +153,7 @@ class Server(AttributeDict):
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#server-object
     """
     def __init__(self, parent, **kwargs):
-        self.parent = parent
-
-        super().__init__()
+        super().__init__(parent)
 
         self["url"] = Url(path="/")
 
@@ -163,11 +165,10 @@ class PathItem(AttributeDict):
     """
     def __init__(self, path, parent, value, **kwargs):
         self.path = path
-        self.parent = parent
         self.value = value
         self.reflect_class = ReflectClass(value["class"])
 
-        super().__init__()
+        super().__init__(parent)
 
         self["description"] = self.reflect_class.get_docblock()
         if self["description"]:
@@ -188,19 +189,19 @@ class Operation(AttributeDict):
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#operation-object
     """
     def __init__(self, parent, name, value, method, **kwargs):
-        self.parent = parent
         self.name = name.lower()
         self.value = value
         self.method = method
         self.reflect_method = ReflectCallable(method, value["class"])
 
-        super().__init__()
+        super().__init__(parent)
 
         self["description"] = self.reflect_method.get_docblock()
         if self["description"]:
             self["summary"] = self["description"].partition("\n")[0]
 
         self.add_params(**kwargs)
+        self.add_headers(**kwargs)
 
         # TODO -- add responses
 
@@ -214,27 +215,45 @@ class Operation(AttributeDict):
         unwrapped = self.reflect_method.get_unwrapped()
         if params := getattr(unwrapped, "params", []):
             for param in (p.param for p in params):
-                if param.is_kwarg:
-                    if has_body:
-                        prop = self.create_property(param, **kwargs)
-                        self["requestBody"].add_property(prop, **kwargs)
+                self.add_param(param, **kwargs)
 
-                    else:
-                        # this is a query param
-                        self["parameters"].append(self.create_parameter(
-                            param,
-                            **kwargs
-                        ))
+    def add_param(self, param, **kwargs):
+        if param.is_kwarg:
+            if has_body:
+                prop = self.create_property(param, **kwargs)
+                self["requestBody"].add_property(prop, **kwargs)
 
-                else:
-                    # this is a positional argument
-                    self["parameters"].append(self.create_parameter(
-                        param,
-                        **kwargs
-                    ))
+            else:
+                # this is a query param
+                self["parameters"].append(self.create_param_parameter(
+                    param,
+                    **kwargs
+                ))
 
-    def create_parameter(self, param, **kwargs):
-        return kwargs.get("parameter_class", ParamParameter)(
+        else:
+            # this is a positional argument
+            self["parameters"].append(self.create_param_parameter(
+                param,
+                **kwargs
+            ))
+
+    def add_headers(self, **kwargs):
+        for rd in self.reflect_method.reflect_decorators():
+            if rd.name == "version":
+                self["parameters"].append(self.create_header_parameter(
+                    rd,
+                    **kwargs
+                )
+
+    def create_header_parameter(self, reflect_decorator, **kwargs):
+        return kwargs.get("header_parameter_class", HeaderParameter)(
+            self,
+            reflect_decorator,
+            **kwargs
+        )
+
+    def create_param_parameter(self, param, **kwargs):
+        return kwargs.get("param_parameter_class", ParamParameter)(
             self,
             param,
             **kwargs
@@ -275,7 +294,18 @@ class Operation(AttributeDict):
 
 #    This is for: path, query, header, and cookie params, not body params
 
-class ParamParameter(AttributeDict):
+
+class Parameter(AttributeDict):
+    pass
+
+
+class HeaderParameter(Parameter):
+    def __init__(self, parent, reflect_decorator, **kwargs):
+
+
+
+
+class ParamParameter(Parameter):
     """Represents an OpenAPI Parameter object from an endpoints param
     decorator
 
@@ -286,10 +316,9 @@ class ParamParameter(AttributeDict):
         * in
     """
     def __init__(self, parent, param, **kwargs):
-        self.parent = parent
         self.param = param
 
-        super().__init__()
+        super().__init__(parent)
 
         if param.is_kwarg:
             self["in"] = "query"
@@ -333,11 +362,6 @@ class RequestBody(AttributeDict):
     Required:
         * content: dict[string, MediaType]
     """
-    def __init__(self, parent, **kwargs):
-        self.parent = parent
-
-        super().__init__()
-
     def add_property(self, prop, **kwargs):
         if "content" not in self:
             self["content"] = self.create_content(**kwargs)
@@ -365,9 +389,7 @@ class MediaType(AttributeDict):
         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#considerations-for-file-uploads
     """
     def __init__(self, parent, **kwargs):
-        self.parent = parent
-
-        super().__init__()
+        super().__init__(parent)
 
         self["schema"] = self.create_schema(**kwargs)
 
@@ -386,9 +408,7 @@ class Schema(AttributeDict):
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
     """
     def __init__(self, parent, **kwargs):
-        self.parent = parent
-
-        super().__init__()
+        super().__init__(parent)
 
         self["type"] = "object"
         self["required"] = []
@@ -412,10 +432,9 @@ class Property(AttributeDict):
 
     """
     def __init__(self, parent, param, **kwargs):
-        self.parent = parent
         self.param = param
 
-        super().__init__()
+        super().__init__(parent)
 
         self.name = param.name
         self["type"] = self.get_type()
