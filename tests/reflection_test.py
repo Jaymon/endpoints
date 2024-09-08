@@ -2,13 +2,58 @@
 
 from endpoints.compat import *
 from endpoints.reflection import (
-    OpenAPI
+    OpenAPI,
+    Field,
+    Operation,
+    ReflectMethod,
 )
 
 from . import TestCase
 
 
+class TestCase(TestCase):
+#     def create_controller_module(self, contents, **kwargs):
+#         kwargs.setdefault("cors", False)
+#         return super().create_controller_module(contents, **kwargs)
+
+    def create_openapi(self, contents, **kwargs):
+        kwargs.setdefault("cors", False)
+        server = self.create_server(contents, **kwargs)
+        return OpenAPI(server.application)
+
+
+class OpenABCTest(TestCase):
+    def test_fields(self):
+        fields = OpenAPI.fields
+        self.assertLess(0, len(fields))
+
+        for k, v in fields.items():
+            self.assertTrue(isinstance(v, Field))
+
+    def test_factory_methods(self):
+        c = self.create_server("")
+        oa = OpenAPI(c.application)
+        self.assertEqual(2, len(oa))
+
+    def test_stdtypes_init(self):
+        """Make sure OpenABC correctly handles standard types like list and
+        dict and also handles UnionType"""
+        rm = ReflectMethod("GET", lambda: None, None)
+        op = Operation(None, reflect_method=rm)
+        # if no errors were raised then it passed
+
+
 class OpenAPITest(TestCase):
+    def test_minimum(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def GET(self):
+                    pass
+        """)
+
+        pout.v(oa)
+
+
     def test_params_positional_named(self):
         c = self.create_server("""
             class Foo(Controller):
