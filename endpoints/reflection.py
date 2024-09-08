@@ -5,14 +5,20 @@ import inspect
 from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
     get_args, # https://stackoverflow.com/a/64643971
+    get_origin,
 )
-from types import UnionType
+from types import (
+    UnionType,
+    GenericAlias,
+)
+import json
 
 from datatypes import (
     ReflectClass,
     ReflectCallable,
     classproperty,
     cachedproperty,
+    Dirpath,
 )
 
 from .compat import *
@@ -24,20 +30,6 @@ class ReflectController(ReflectClass):
         super().__init__(value["class"])
         self.keys = keys
         self.value = value
-
-#     def get_http_methods(self):
-#         """Get the controller http methods
-# 
-#         :returns generator[str, callable], where the key is the http method
-#             type (eg "GET", "POST") and the method is the controller method.
-#             There can be multiple of each http method name, so this can
-#             yield N GET methods, etc.
-#         """
-#         method_names = self.value["method_names"]
-# 
-#         for http_method_name, method_names in method_names.items():
-#             for method_name in method_names:
-#                 yield http_method_name, getattr(self.target, method_name)
 
     def reflect_http_methods(self):
         """Reflect the controller http methods
@@ -71,29 +63,12 @@ class ReflectMethod(ReflectCallable):
         self.http_method_name = http_method_name
         self._reflect_controller = reflect_controller
 
-#     def get_http_method_name(self):
-#         return self._http_method_name
-
     def reflect_controller(self):
         return self._reflect_controller
 
 
 class OpenABC(dict):
     """The base type for all the OpenAPI objects"""
-
-#     @classproperty
-#     def fields(cls):
-#         fields = {}
-#         for k in dir(cls):
-#             v = inspect.getattr_static(cls, k)
-#             if isinstance(v, Field):
-#                 fields[k] = v
-# 
-#         return fields
-#         return dict(inspect.getmembers_static(
-#             cls,
-#             lambda v: isinstance(v, Field)
-#         ))
 
     fields = None
 
@@ -153,17 +128,20 @@ class OpenABC(dict):
 
                     else:
                         field_type = field["type"]
-                        if not isinstance(field_type, type):
-                            if isinstance(field_type, UnionType):
-                                field_type = get_args(field_type)[0]
+                        #if not isinstance(field_type, type):
+                        if isinstance(field_type, UnionType):
+                            field_type = get_args(field_type)[0]
 
-                        if (
-                            issubclass(field_type, OpenABC)
-                            and field_type is not OpenABC
-                        ):
-                            self[k] = field_type(self)
+                        elif isinstance(field_type, GenericAlias):
+                            field_type = get_origin(field_type)
 
-                        elif issubclass(field_type, list):
+#                         if (
+#                             issubclass(field_type, OpenABC)
+#                             and field_type is not OpenABC
+#                         ):
+#                             self[k] = field_type(self)
+
+                        if issubclass(field_type, list):
                             self[k] = []
 
                         elif issubclass(field_type, dict):
@@ -194,8 +172,6 @@ class Field(dict):
     def __set_name__(self, owner, name):
         if not owner.fields:
             owner.fields = {}
-#         if not hasattr(owner, "fields"):
-#             setattr(owner, "fields", {})
 
         if not self.name:
             # we add underscores to get around python method and keyword
@@ -236,18 +212,6 @@ class Info(OpenABC):
         rc = ReflectClass(self.root.application)
         return rc.get_docblock()
 
-#     def __init__(self, parent, **kwargs):
-#         super().__init__(parent, **kwargs)
-# 
-#         self["title"] = kwargs.get("title", "Endpoints API")
-#         self["version"] = kwargs.get("version", "0.1.0")
-
-#         if v := self.create_contact():
-#             self["contact"] = v
-# 
-#         if v := self.create_license():
-#             self["license"] = v
-
 
 class Server(OpenABC):
     """Represents an OpenAPI server object
@@ -262,11 +226,6 @@ class Server(OpenABC):
     _description = Field(str)
 
     _variables = Field(dict[str, OpenABC])
-
-#     def __init__(self, parent, **kwargs):
-#         super().__init__(parent)
-# 
-#         self["url"] = Url(path="/")
 
 
 class Reference(OpenABC):
@@ -680,20 +639,6 @@ class PathItem(OpenABC):
 
     _parameters = Field(list[Parameter|Reference])
 
-#     def __init__(self, path, parent, value, **kwargs):
-#         self.path = path
-#         self.value = value
-#         self.reflect_class = ReflectClass(value["class"])
-# 
-#         super().__init__(parent)
-# 
-#         self["description"] = self.reflect_class.get_docblock()
-#         if self["description"]:
-#             self["summary"] = self["description"].partition("\n")[0]
-# 
-#         for op in kwargs.get("operations", []):
-#             self.add_operation(op)
-
     def add_operation(self, operation, **kwargs):
         if operation.name in self:
             raise ValueError(
@@ -721,22 +666,15 @@ class Paths(OpenABC):
 
             self[path].add_operation(op)
 
-#     def get_method_info(self, http_method_name, method, **kwargs):
-#         return {
-#             "http_method_name": http_method_name,
-#             "controller_info": self.controller_info,
-#             "method": method,
-#         }
-
     def create_operation(self, reflect_method, **kwargs):
         return kwargs.get("operation_class", Operation)(
             self,
             reflect_method=reflect_method,
+            **kwargs
         )
 
-    def create_path_item(self):
-        return kwargs.get("path_item_class", PathItem)(self)
-
+    def create_path_item(self, **kwargs):
+        return kwargs.get("path_item_class", PathItem)(self, **kwargs)
 
 
 class OpenAPI(OpenABC):
@@ -763,105 +701,48 @@ class OpenAPI(OpenABC):
     paths = Field(dict[str, PathItem])
 
     components = Field(OpenABC)
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
+    """
 
     security = Field(OpenABC)
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
+    """
 
     tags = Field(OpenABC)
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
+    """
 
     externalDocs = Field(OpenABC)
-
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
+    """
 
     def __init__(self, application, **kwargs):
         self.application = application
 
         super().__init__(None, **kwargs)
 
-#         self["openapi"] = "3.1.0"
-#         self["info"] = self.create_info(**kwargs)
-#         self["server"] = self.create_server(**kwargs)
-#         self["paths"] = self.create_paths(**kwargs)
-# 
-#         if v := self.create_components():
-#             self["components"] = v
-# 
-#         if v := self.create_security():
-#             self["security"] = v
-# 
-#         if v := self.create_tags():
-#             self["tags"] = v
-# 
-#         if v := self.create_external_docs():
-#             self["externalDocs"] = v
 
-#     def get_schema(self):
-#         return {
-#             "openapi": {
-#                 "type": str,
-#                 "default": "3.1.0"
-#             },
-#             "info": {
-#                 "type": Info
-#             },
-#             "server": {
-#                 "type": Server
-#             },
-#             "paths": {
-#                 "type": dict
-#             },
-#             "components": {
-#                 "type": OpenABC
-#             },
-#         }
-
-#     def create_components(self):
-#         """
-#         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
-#         """
-#         pass
-# 
-#     def create_security(self):
-#         """
-#         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
-#         """
-#         pass
-# 
-#     def create_tags(self):
-#         """
-#         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
-#         """
-#         pass
-# 
-#     def create_external_docs(self):
-#         """
-#         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
-#         """
-#         pass
-# 
 #     def write_yaml(self, directory):
 #         """Writes openapi.yaml file to directory
 # 
 #         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#document-structure
-#         """
-#         pass
-# 
-#     def write_json(self, directory):
-#         """Writes openapi.json file to directory
+#         https://github.com/yaml/pyyaml
 #         """
 #         pass
 
-#     def create_info(self):
-#         return Info(self)
-# 
-#     def create_server(self):
-#         return Server(self)
+    def write_json(self, directory):
+        """Writes openapi.json file to directory
+        """
+        dp = Dirpath(directory)
+        fp = dp.get_file("openapi.json")
+        data = json.dumps(self)
+        pout.v(data)
 
-
-#     def get_controller_info(self, keys, value, **kwargs):
-#         return {
-#             "keys": keys,
-#             "value": value,
-#             "class": value["class"],
-#         }
+        pass
 
     def create_paths(self, **kwargs):
         """Represents a Pseudo OpenApi paths object
@@ -885,27 +766,6 @@ class OpenAPI(OpenABC):
                 )
             )
 
-#         pathfinder = self.application.router.pathfinder
-#         for keys, value in pathfinder.get_class_items():
-#             for op_name, method_names in value["method_names"].items():
-#                 for method_name in method_names:
-#                     op = self.create_operation(
-#                         op_name,
-#                         value,
-#                         getattr(value["class"], method_name),
-#                     )
-# 
-#                     path = op.get_path()
-#                     if path in paths:
-#                         paths[path].add_operation(op)
-# 
-#                     else:
-#                         paths[path] = self.create_path_item(
-#                             path,
-#                             value,
-#                             operations=[op],
-#                         )
-
         return paths
 
     def create_controller_paths(self, keys, value, **kwargs):
@@ -917,8 +777,4 @@ class OpenAPI(OpenABC):
             self,
             reflect_controller=rc
         )
-
-#     def create_path_item(self, *args, **kwargs):
-#         return PathItem(self, *args, **kwargs)
-
 

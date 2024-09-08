@@ -12,10 +12,6 @@ from . import TestCase
 
 
 class TestCase(TestCase):
-#     def create_controller_module(self, contents, **kwargs):
-#         kwargs.setdefault("cors", False)
-#         return super().create_controller_module(contents, **kwargs)
-
     def create_openapi(self, contents, **kwargs):
         kwargs.setdefault("cors", False)
         server = self.create_server(contents, **kwargs)
