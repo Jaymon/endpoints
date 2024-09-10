@@ -4,18 +4,87 @@ from endpoints.compat import *
 from endpoints.reflection import (
     OpenAPI,
     Field,
+    Parameter,
     Operation,
+    ReflectController,
     ReflectMethod,
+    OpenABC,
 )
 
 from . import TestCase
 
 
 class TestCase(TestCase):
-    def create_openapi(self, contents, **kwargs):
-        kwargs.setdefault("cors", False)
-        server = self.create_server(contents, **kwargs)
+    def create_openapi(self, *args, **kwargs):
+        server = self.create_server(*args, **kwargs)
         return OpenAPI(server.application)
+
+#     def create_server(self, *args, **kwargs):
+#         kwargs.setdefault("cors", False)
+#         return super().create_server(*args, **kwargs)
+
+
+class FieldTest(TestCase):
+    def test_get_factory_classes(self):
+        f = Field(dict)
+        classes = f.get_factory_classes()
+        self.assertEqual(0, len(classes))
+
+        f = Field(OpenABC)
+        classes = f.get_factory_classes()
+        self.assertEqual(0, len(classes))
+
+        f = Field(dict[str, Operation])
+        classes = f.get_factory_classes()
+        self.assertEqual(1, len(classes))
+        self.assertTrue("operation_class" in classes)
+
+        f = Field(dict[str, Parameter|Operation])
+        classes = f.get_factory_classes()
+        self.assertEqual(2, len(classes))
+        for k in ["operation_class", "parameter_class"]:
+            self.assertTrue(k in classes)
+
+        f = Field(list[Operation])
+        classes = f.get_factory_classes()
+        self.assertEqual(1, len(classes))
+        self.assertTrue("operation_class" in classes)
+
+        f = Field(list[Parameter|Operation])
+        classes = f.get_factory_classes()
+        self.assertEqual(2, len(classes))
+        for k in ["operation_class", "parameter_class"]:
+            #for k in ["Operation", "Parameter"]:
+            self.assertTrue(k in classes)
+
+        f = Field(Parameter|Operation|OpenABC)
+        classes = f.get_factory_classes()
+        #classes = {k: c for k, c in f.get_factory_classes()}
+        #classes = {c.__name__: c for c in f.get_factory_classes()}
+        self.assertEqual(2, len(classes))
+        for k in ["operation_class", "parameter_class"]:
+            #for k in ["Operation", "Parameter"]:
+            self.assertTrue(k in classes)
+
+
+class ReflectMethodTest(TestCase):
+    def test_reflect_params(self):
+        server = self.create_server("""
+            class Foo(Controller):
+                @param(0)
+                @param("bar", type=int, help="bar variable")
+                @param("che", type=str, required=False, help="che variable")
+                def POST(self, *args, **kwargs):
+                    pass
+        """)
+
+        pf = server.application.router.pathfinder
+        keys, value = next(pf.get_class_items())
+        rc = ReflectController(keys, value)
+        rm = list(rc.reflect_http_methods("POST"))[0]
+        self.assertEqual(3, len(list(rm.reflect_params())))
+        self.assertEqual(2, len(list(rm.reflect_body_params())))
+        self.assertEqual(1, len(list(rm.reflect_url_params())))
 
 
 class OpenABCTest(TestCase):
@@ -47,8 +116,7 @@ class OpenAPITest(TestCase):
                     pass
         """)
 
-        pout.v(oa)
-
+        self.assertTrue("/foo" in oa.paths)
 
     def test_params_positional_named(self):
         c = self.create_server("""

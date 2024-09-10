@@ -146,7 +146,7 @@ class TestCase(BaseAsyncTestCase):
                 "from endpoints import *",
             ]
 
-        if not kwargs.get("cors", True):
+        if not kwargs.get("cors", False):
             header.extend([
                 "class Controller(Controller):",
                 "    cors = False",

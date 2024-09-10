@@ -19,6 +19,8 @@ from datatypes import (
     classproperty,
     cachedproperty,
     Dirpath,
+    NamingConvention,
+    ClassFinder,
 )
 
 from .compat import *
@@ -31,7 +33,7 @@ class ReflectController(ReflectClass):
         self.keys = keys
         self.value = value
 
-    def reflect_http_methods(self):
+    def reflect_http_methods(self, http_method_name=""):
         """Reflect the controller http methods
 
         :returns generator[ReflectMethod], the controller method.
@@ -40,13 +42,14 @@ class ReflectController(ReflectClass):
         """
         method_names = self.value["method_names"]
 
-        for http_method_name, method_names in method_names.items():
-            for method_name in method_names:
-                yield self.create_reflect_http_method(
-                    http_method_name,
-                    getattr(self.target, method_name),
-                    name=method_name
-                )
+        for method_prefix, method_names in method_names.items():
+            if not http_method_name or method_prefix == http_method_name:
+                for method_name in method_names:
+                    yield self.create_reflect_http_method(
+                        getattr(self.target, method_name),
+                        method_prefix,
+                        name=method_name
+                    )
 
     def create_reflect_http_method(self, *args, **kwargs):
         kwargs.setdefault("target_class", self.target)
@@ -58,13 +61,165 @@ class ReflectController(ReflectClass):
 
 
 class ReflectMethod(ReflectCallable):
-    def __init__(self, http_method_name, target, reflect_controller, **kwargs):
+    def __init__(self, target, http_method_name, reflect_controller, **kwargs):
         super().__init__(target, **kwargs)
         self.http_method_name = http_method_name
         self._reflect_controller = reflect_controller
 
     def reflect_controller(self):
         return self._reflect_controller
+
+    def has_body(self):
+        return self.name in set(["PUT", "POST", "PATCH"])
+
+    def reflect_params(self):
+        unwrapped = self.get_unwrapped()
+        if params := getattr(unwrapped, "params", []):
+            for param in (p.param for p in params):
+                yield self.create_reflect_param(param)
+
+    def reflect_body_params(self):
+        if self.has_body():
+            for rp in self.reflect_params():
+                if rp.target.is_kwarg:
+                    yield rp
+
+    def reflect_url_params(self):
+        for rp in self.reflect_params():
+            if not rp.target.is_kwarg or not self.has_body():
+                yield rp
+
+    def reflect_path_params(self):
+        for rp in self.reflect_params():
+            if not rp.target.is_kwarg:
+                yield rp
+
+    def create_reflect_param(self, *args, **kwargs):
+        kwargs["reflect_method"] = self
+        return kwargs.get("reflect_param_class", ReflectParam)(
+            *args,
+            **kwargs
+        )
+
+    def get_url_path(self):
+        return "/" + "/".join(
+            itertools.chain(
+                self.reflect_controller().keys,
+                (f"{{{p.name}}}" for p in self.reflect_path_params())
+            )
+        )
+
+
+class ReflectParam(object):
+    def __init__(self, target, reflect_method, **kwargs):
+        self.target = target
+        self._reflect_method = reflect_method
+
+        if "name" in kwargs:
+            self.name = kwargs["name"]
+
+        else:
+            if target.is_kwarg:
+                self.name = target.name
+
+            else:
+                si = reflect_method.get_signature_info()
+                if len(si["names"]) > target.index:
+                    self.name = si["names"][target.index]
+
+                else:
+                    self.name = target.index
+
+    def reflect_controller(self):
+        return self.reflect_method().reflect_controller()
+
+    def reflect_method(self):
+        return self._reflect_method
+
+    def get_parameter_kwargs(self):
+        kwargs = {}
+
+        param = self.target
+        if param.is_kwarg:
+            kwargs["in"] = "query"
+            kwargs["name"] = param.name
+            kwargs["required"] = param.flags.get("required", False)
+            kwargs["allowEmptyValue"] = param.flags.get("allow_empty", False)
+
+        else:
+            kwargs["in"] = "path"
+            kwargs["name"] = self.name
+
+            # spec: "If the parameter location is "path", this property is
+            # REQUIRED and its value MUST be true"
+            kwargs["required"] = True
+
+        kwargs["description"] = param.flags.get("help", "")
+
+        return kwargs
+
+
+class Field(dict):
+    def __init__(self, field_type, **kwargs):
+        self.name = kwargs.pop("name", "")
+
+        kwargs.setdefault("required", False)
+        kwargs["type"] = field_type
+        super().__init__(**kwargs)
+
+    def __set_name__(self, owner, name):
+        if not owner.fields:
+            owner.fields = {}
+
+        self.owner_name = name
+
+        if not self.name:
+            # we add underscores to get around python method and keyword
+            # name collisions (eg "in", "get")
+            self.name = name.strip("_")
+
+        owner.fields[self.name] = self
+
+    def get_factory_method(self, owner, name, field):
+        name = NamingConvention(name)
+        method_name = f"create_{name.varname()}"
+        return getattr(owner, method_name, None)
+
+#     def get_factory_class(self):
+#         for t in self.get_factory_classes():
+#             return t
+# 
+#         field_type = self["type"]
+#         raise ValueError(
+#             f"Could not find a factory class from {field_type}"
+#         )
+
+
+    def get_factory_classes(self):
+        # TODO -- return the class from the type that can be used to create
+        # an instance
+        ret = {}
+
+        def get_classes(field_type):
+            if isinstance(field_type, UnionType):
+                for ft in get_args(field_type):
+                    yield from get_classes(ft)
+
+            elif isinstance(field_type, GenericAlias):
+                yield from get_classes(get_origin(field_type))
+                for ft in get_args(field_type):
+                    yield from get_classes(ft)
+
+            elif issubclass(field_type, OpenABC):
+                if field_type is not OpenABC:
+                    name = NamingConvention(field_type.__name__)
+                    yield f"{name.varname()}_class", field_type
+
+        for class_varname, klass in get_classes(self["type"]):
+            ret[class_varname] = klass
+
+        return ret
+        #yield from get_classes(self["type"])
 
 
 class OpenABC(dict):
@@ -75,6 +230,8 @@ class OpenABC(dict):
     parent = None
 
     root = None
+
+    classes = ClassFinder()
 
     def find_reflect_controller(self):
         parent = self
@@ -100,6 +257,16 @@ class OpenABC(dict):
 
         self.insert(**kwargs)
 
+    def __init_subclass__(cls):
+        """When a child class is loaded into memory it will be saved into
+        .orm_classes, this way every orm class knows about all the other orm
+        classes, this is the method that makes that possible magically
+
+        https://peps.python.org/pep-0487/
+        """
+        cls.classes.add_class(cls)
+        super().__init_subclass__()
+
     def __getattr__(self, key):
         try:
             return self.__getitem__(key)
@@ -123,29 +290,8 @@ class OpenABC(dict):
 
                 else:
                     if m := field.get_factory_method(self, k, field):
-                        if v := m(**kwargs):
+                        if v := m(**field.get_factory_classes(), **kwargs):
                             self[k] = v
-
-                    else:
-                        field_type = field["type"]
-                        #if not isinstance(field_type, type):
-                        if isinstance(field_type, UnionType):
-                            field_type = get_args(field_type)[0]
-
-                        elif isinstance(field_type, GenericAlias):
-                            field_type = get_origin(field_type)
-
-#                         if (
-#                             issubclass(field_type, OpenABC)
-#                             and field_type is not OpenABC
-#                         ):
-#                             self[k] = field_type(self)
-
-                        if issubclass(field_type, list):
-                            self[k] = []
-
-                        elif issubclass(field_type, dict):
-                            self[k] = {}
 
                 if k not in self and "default" in field:
                     self[k] = field["default"]
@@ -159,30 +305,6 @@ class OpenABC(dict):
             for k, v in dict(*args, **kwargs).items():
                 if k in self.fields:
                     self[k] = v
-
-
-class Field(dict):
-    def __init__(self, field_type, **kwargs):
-        self.name = kwargs.pop("name", "")
-
-        kwargs.setdefault("required", False)
-        kwargs["type"] = field_type
-        super().__init__(**kwargs)
-
-    def __set_name__(self, owner, name):
-        if not owner.fields:
-            owner.fields = {}
-
-        if not self.name:
-            # we add underscores to get around python method and keyword
-            # name collisions (eg "in", "get")
-            self.name = name.strip("_")
-
-        owner.fields[self.name] = self
-
-    def get_factory_method(self, owner, name, field):
-        method_name = f"create_{name}"
-        return getattr(owner, method_name, None)
 
 
 class Info(OpenABC):
@@ -270,6 +392,9 @@ class RequestBody(OpenABC):
     _content = Field(dict[str, MediaType])
 
     _required = Field(bool)
+
+    def add_param(self, param, **kwargs):
+        pout.v(param)
 
     def add_property(self, prop, **kwargs):
         if "content" not in self:
@@ -446,18 +571,18 @@ class ParamParameter(Parameter):
                 self["name"] = param.index
 
         self["description"] = param.flags.get("help", "")
-        self["schema"] = self.create_property(**kwargs)
-
-    def create_property(self, **kwargs):
-        schema = kwargs.get("property_class", Property)(
-            self,
-            self.param,
-            **kwargs
-        )
-
-        # description is not needed for this schema
-        schema.pop("description", "")
-        return schema
+#         self["schema"] = self.create_property(**kwargs)
+# 
+#     def create_property(self, **kwargs):
+#         schema = kwargs.get("property_class", Property)(
+#             self,
+#             self.param,
+#             **kwargs
+#         )
+# 
+#         # description is not needed for this schema
+#         schema.pop("description", "")
+#         return schema
 
 
 class Operation(OpenABC):
@@ -514,61 +639,63 @@ class Operation(OpenABC):
     def insert(self, reflect_method, **kwargs):
         self.name = reflect_method.http_method_name.lower()
         self.reflect_method = reflect_method
+
         super().insert(**kwargs)
 
-    def add_params(self, **kwargs):
-        self["parameters"] = []
+        #self.add_params(**kwargs)
 
-        if has_body := self.has_body():
-            self["requestBody"] = self.create_request_body(**kwargs)
+        #     def add_params(self, **kwargs):
+# #         self["parameters"] = []
+# # 
+# #         if has_body := self.reflect_method.has_body():
+# #             self["requestBody"] = self.create_request_body(**kwargs)
+# 
+#         unwrapped = self.reflect_method.get_unwrapped()
+#         if params := getattr(unwrapped, "params", []):
+#             for param in (p.param for p in params):
+#                 self.add_param(param, **kwargs)
+# 
+#     def add_param(self, param, **kwargs):
+#         if param.is_kwarg and self.reflect_method.has_body():
+#             if "requestBody" not in self:
+#                 self["requestBody"] = self.create_request_body(**kwargs)
+# 
+#             #prop = self.create_property(param, **kwargs)
+#             #self["requestBody"].add_property(prop, **kwargs)
+#             self["requestBody"].add_param(param, **kwargs)
+# 
+#         else:
+#             if "parameters" not in self:
+#                 self["parameters"] = []
+# 
+#             # this is a positional argument (part of path) or query param
+#             # (after the ? in the url)
+#             self["parameters"].append(self.create_param_parameter(
+#                 param,
+#                 **kwargs
+#             ))
 
-        has_body = self.has_body()
-        unwrapped = self.reflect_method.get_unwrapped()
-        if params := getattr(unwrapped, "params", []):
-            for param in (p.param for p in params):
-                self.add_param(param, **kwargs)
+            #     def add_headers(self, **kwargs):
+#         for rd in self.reflect_method.reflect_decorators():
+#             if rd.name == "version":
+#                 self["parameters"].append(self.create_header_parameter(
+#                     rd,
+#                     **kwargs
+#                 ))
+# 
+#     def create_header_parameter(self, reflect_decorator, **kwargs):
+#         return kwargs.get("header_parameter_class", HeaderParameter)(
+#             self,
+#             reflect_decorator,
+#             **kwargs
+#         )
 
-    def add_param(self, param, **kwargs):
-        if param.is_kwarg:
-            if has_body:
-                prop = self.create_property(param, **kwargs)
-                self["requestBody"].add_property(prop, **kwargs)
-
-            else:
-                # this is a query param
-                self["parameters"].append(self.create_param_parameter(
-                    param,
-                    **kwargs
-                ))
-
-        else:
-            # this is a positional argument
-            self["parameters"].append(self.create_param_parameter(
-                param,
-                **kwargs
-            ))
-
-    def add_headers(self, **kwargs):
-        for rd in self.reflect_method.reflect_decorators():
-            if rd.name == "version":
-                self["parameters"].append(self.create_header_parameter(
-                    rd,
-                    **kwargs
-                ))
-
-    def create_header_parameter(self, reflect_decorator, **kwargs):
-        return kwargs.get("header_parameter_class", HeaderParameter)(
-            self,
-            reflect_decorator,
-            **kwargs
-        )
-
-    def create_param_parameter(self, param, **kwargs):
-        return kwargs.get("param_parameter_class", ParamParameter)(
-            self,
-            param,
-            **kwargs
-        )
+#     def create_param_parameter(self, param, **kwargs):
+#         return kwargs.get("param_parameter_class", ParamParameter)(
+#             self,
+#             param,
+#             **kwargs
+#         )
 
 #     def create_schema(self, param, **kwargs):
 #         return kwargs.get("schema_class", Schema)(
@@ -578,31 +705,56 @@ class Operation(OpenABC):
 #         )
 
     def create_request_body(self, **kwargs):
-        return kwargs.get("request_body_class", RequestBody)(
-            self,
-            **kwargs
-        )
+        if self.reflect_method.has_body():
+            rb = kwargs.get("request_body_class", RequestBody)(
+                self,
+                **kwargs
+            )
 
-    def create_property(self, param, **kwargs):
-        return kwargs.get("property_class", Property)(
-            self,
-            param,
-            **kwargs
-        )
+            for p in self.reflect_method.reflect_body_params():
+                pout.b("body param")
+                pout.v(p)
+
+    def create_parameters(self, **kwargs):
+        parameters = []
+        parameter_class = kwargs["parameter_class"]
+
+        # this is a positional argument (part of path) or query param
+        # (after the ? in the url)
+        for rp in self.reflect_method.reflect_url_params():
+            parameters.append(parameter_class(
+                self,
+                reflect_param=rp,
+                **rp.get_parameter_kwargs()
+            ))
+
+        return parameter
+
+#             pout.b("url param")
+#             pout.v(p.name)
+            #pout.v(p)
+
+#     def create_property(self, param, **kwargs):
+#         return kwargs.get("property_class", Property)(
+#             self,
+#             param,
+#             **kwargs
+#         )
 
     def get_path(self):
         keys = self.reflect_method.reflect_controller().keys
+        parameters = getattr(self, "parameters", [])
         return "/" + "/".join(
             itertools.chain(
                 keys,
 #                 self.value["module_keys"],
 #                 self.value["class_keys"],
-                (f"{{{p.name}}}" for p in self.parameters if p["in"] == "path")
+                (f"{{{p.name}}}" for p in parameters if p["in"] == "path")
             )
         )
 
-    def has_body(self):
-        return self.name in set(["put", "post", "patch"])
+#     def has_body(self):
+#         return self.name in set(["put", "post", "patch"])
 
 
 #    This is for: path, query, header, and cookie params, not body params
@@ -692,30 +844,30 @@ class OpenAPI(OpenABC):
         * paths: dict[str, PathItem]
     """
 
-    openapi = Field(str, default="3.1.0", required=True)
+    _openapi = Field(str, default="3.1.0", required=True)
 
-    info = Field(Info, required=True)
+    _info = Field(Info, required=True)
 
-    servers = Field(list[Server])
+    _servers = Field(list[Server])
 
-    paths = Field(dict[str, PathItem])
+    _paths = Field(dict[str, PathItem])
 
-    components = Field(OpenABC)
+    _components = Field(OpenABC)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
     """
 
-    security = Field(OpenABC)
+    _security = Field(OpenABC)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
     """
 
-    tags = Field(OpenABC)
+    _tags = Field(OpenABC)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
     """
 
-    externalDocs = Field(OpenABC)
+    _externalDocs = Field(OpenABC)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
     """
