@@ -121,8 +121,6 @@ class OpenAPITest(TestCase):
     def test_params_positional_named(self):
         c = self.create_server("""
             class Foo(Controller):
-                cors = False
-
                 @param(0)
                 def GET(self, zero, *args, **kwargs):
                     pass
@@ -134,8 +132,6 @@ class OpenAPITest(TestCase):
     def test_params_query(self):
         c = self.create_server("""
             class Foo(Controller):
-                cors = False
-
                 @param("zero")
                 def GET(self, zero, *args, **kwargs):
                     pass

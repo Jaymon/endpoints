@@ -195,30 +195,36 @@ class Field(dict):
 #         )
 
 
+    def _get_factory_classes(self, klass):
+        if isinstance(klass, UnionType):
+            for ft in get_args(klass):
+                yield from self._get_factory_classes(ft)
+
+        elif isinstance(klass, GenericAlias):
+            yield from self._get_factory_classes(get_origin(klass))
+            for ft in get_args(klass):
+                yield from self._get_factory_classes(ft)
+
+        elif issubclass(klass, OpenABC):
+            if klass is not OpenABC:
+                name = NamingConvention(klass.__name__)
+                yield f"{name.varname()}_class", klass
+
+                for subclass in OpenABC.classes.get_abs_classes(klass):
+                    name = NamingConvention(subclass.__name__)
+                    yield f"{name.varname()}_class", subclass
+
     def get_factory_classes(self):
         # TODO -- return the class from the type that can be used to create
         # an instance
-        ret = {}
+        return {n: c for n, c in self._get_factory_classes(self["type"])} 
 
-        def get_classes(field_type):
-            if isinstance(field_type, UnionType):
-                for ft in get_args(field_type):
-                    yield from get_classes(ft)
-
-            elif isinstance(field_type, GenericAlias):
-                yield from get_classes(get_origin(field_type))
-                for ft in get_args(field_type):
-                    yield from get_classes(ft)
-
-            elif issubclass(field_type, OpenABC):
-                if field_type is not OpenABC:
-                    name = NamingConvention(field_type.__name__)
-                    yield f"{name.varname()}_class", field_type
-
-        for class_varname, klass in get_classes(self["type"]):
-            ret[class_varname] = klass
-
-        return ret
+#         ret = {}
+# 
+#         for class_varname, klass in self._get_factory_classes(self["type"]):
+#             ret[class_varname] = klass
+# 
+#         return ret
         #yield from get_classes(self["type"])
 
 
@@ -545,32 +551,57 @@ class ParamParameter(Parameter):
         * name
         * in
     """
-    def __init__(self, parent, param, **kwargs):
-        self.param = param
+    def insert(self, reflect_param, **kwargs):
+        self.reflect_param = reflect_param
+        super().insert(**kwargs)
 
-        super().__init__(parent)
+    def create_in(self, **kwargs):
+        return "query" if self.reflect_param.target.is_kwarg else "path"
 
-        if param.is_kwarg:
-            self["in"] = "query"
-            self["name"] = param.name
-            self["required"] = param.flags.get("required", False)
-            self["allowEmptyValue"] = param.flags.get("allow_empty", False)
+    def create_name(self, **kwargs):
+        return self.reflect_param.target.name
+
+    def create_required(self, **kwargs):
+        if self.reflect_param.target.is_kwarg:
+            return self.reflect_param.target.flags.get("required", False)
 
         else:
-            self["in"] = "path"
             # spec: "If the parameter location is "path", this property is
             # REQUIRED and its value MUST be true"
             self["required"] = True
-            rm = parent.reflect_method
 
-            si = rm.get_signature_info()
-            if len(si["names"]) >= param.index:
-                self["name"] = si["names"][param.index]
+    def create_allow_empty_value(self, **kwargs):
+        return self.reflect_param.target.flags.get("allow_empty", False)
 
-            else:
-                self["name"] = param.index
+    def create_description(self, **kwargs):
+        return self.reflect_param.target.flags.get("help", "")
 
-        self["description"] = param.flags.get("help", "")
+#     def __init__(self, parent, reflect_param, **kwargs):
+#         self.param = param
+# 
+#         super().__init__(parent)
+# 
+#         if param.is_kwarg:
+#             self["in"] = "query"
+#             self["name"] = param.name
+#             self["required"] = param.flags.get("required", False)
+#             self["allowEmptyValue"] = param.flags.get("allow_empty", False)
+# 
+#         else:
+#             self["in"] = "path"
+#             # spec: "If the parameter location is "path", this property is
+#             # REQUIRED and its value MUST be true"
+#             self["required"] = True
+#             rm = parent.reflect_method
+# 
+#             si = rm.get_signature_info()
+#             if len(si["names"]) >= param.index:
+#                 self["name"] = si["names"][param.index]
+# 
+#             else:
+#                 self["name"] = param.index
+# 
+#         self["description"] = param.flags.get("help", "")
 #         self["schema"] = self.create_property(**kwargs)
 # 
 #     def create_property(self, **kwargs):
@@ -717,18 +748,17 @@ class Operation(OpenABC):
 
     def create_parameters(self, **kwargs):
         parameters = []
-        parameter_class = kwargs["parameter_class"]
+        param_parameter_class = kwargs["param_parameter_class"]
 
         # this is a positional argument (part of path) or query param
         # (after the ? in the url)
         for rp in self.reflect_method.reflect_url_params():
-            parameters.append(parameter_class(
+            parameters.append(param_parameter_class(
                 self,
                 reflect_param=rp,
-                **rp.get_parameter_kwargs()
             ))
 
-        return parameter
+        return parameters
 
 #             pout.b("url param")
 #             pout.v(p.name)
@@ -741,17 +771,21 @@ class Operation(OpenABC):
 #             **kwargs
 #         )
 
-    def get_path(self):
-        keys = self.reflect_method.reflect_controller().keys
-        parameters = getattr(self, "parameters", [])
-        return "/" + "/".join(
-            itertools.chain(
-                keys,
-#                 self.value["module_keys"],
-#                 self.value["class_keys"],
-                (f"{{{p.name}}}" for p in parameters if p["in"] == "path")
-            )
-        )
+# 
+#     def get_path(self):
+#         return self.reflect_method.get_url_path()
+# 
+#     def get_path(self):
+#         keys = self.reflect_method.reflect_controller().keys
+#         parameters = getattr(self, "parameters", [])
+#         return "/" + "/".join(
+#             itertools.chain(
+#                 keys,
+# #                 self.value["module_keys"],
+# #                 self.value["class_keys"],
+#                 (f"{{{p.name}}}" for p in parameters if p["in"] == "path")
+#             )
+#         )
 
 #     def has_body(self):
 #         return self.name in set(["put", "post", "patch"])
@@ -801,7 +835,6 @@ class PathItem(OpenABC):
             self[operation.name] = operation
 
 
-
 class Paths(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
@@ -812,7 +845,7 @@ class Paths(OpenABC):
         for reflect_method in reflect_controller.reflect_http_methods():
             op = self.create_operation(reflect_method, **kwargs)
 
-            path = op.get_path()
+            path = reflect_method.get_url_path()
             if path not in self:
                 self[path] = self.create_path_item(**kwargs)
 
