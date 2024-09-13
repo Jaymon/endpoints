@@ -20,11 +20,6 @@ class TestCase(TestCase):
         server = self.create_server(*args, **kwargs)
         return OpenAPI(server.application)
 
-#     def create_server(self, *args, **kwargs):
-#         kwargs.setdefault("cors", False)
-#         return super().create_server(*args, **kwargs)
-
-
     def create_reflect_controllers(self, *args, **kwargs):
         rcs = []
         server = self.create_server(*args, **kwargs)
@@ -48,53 +43,8 @@ class TestCase(TestCase):
         return rps
 
 
-
-
 class FieldTest(TestCase):
-    def test_get_factory_classes(self):
-        f = Field(Paths[str, Operation])
-        classes = f.get_factory_classes()
-        self.assertEqual(1, len(classes))
-
-        f = Field(dict)
-        classes = f.get_factory_classes()
-        self.assertEqual(0, len(classes))
-
-        f = Field(OpenABC)
-        classes = f.get_factory_classes()
-        self.assertEqual(0, len(classes))
-
-        f = Field(dict[str, Operation])
-        classes = f.get_factory_classes()
-        self.assertEqual(1, len(classes))
-        #         self.assertTrue("operation_class" in classes)
-
-        f = Field(dict[str, Parameter|Operation])
-        classes = f.get_factory_classes()
-        self.assertEqual(2, len(classes))
-        #         for k in ["operation_class", "parameter_class"]:
-#             self.assertTrue(k in classes)
-
-        f = Field(list[Operation])
-        classes = f.get_factory_classes()
-        self.assertEqual(1, len(classes))
-        #         self.assertTrue("operation_class" in classes)
-
-        f = Field(list[Parameter|Operation])
-        classes = f.get_factory_classes()
-        self.assertEqual(2, len(classes))
-        #         for k in ["operation_class", "parameter_class"]:
-#             #for k in ["Operation", "Parameter"]:
-#             self.assertTrue(k in classes)
-
-        f = Field(Parameter|Operation|OpenABC)
-        classes = f.get_factory_classes()
-        #classes = {k: c for k, c in f.get_factory_classes()}
-        #classes = {c.__name__: c for c in f.get_factory_classes()}
-        self.assertEqual(2, len(classes))
-        #         for k in ["operation_class", "parameter_class"]:
-#             #for k in ["Operation", "Parameter"]:
-#             self.assertTrue(k in classes)
+    pass
 
 
 class ReflectMethodTest(TestCase):
@@ -129,13 +79,6 @@ class OpenABCTest(TestCase):
         c = self.create_server("")
         oa = OpenAPI(c.application)
         self.assertEqual(2, len(oa))
-
-#     def test_stdtypes_init(self):
-#         """Make sure OpenABC correctly handles standard types like list and
-#         dict and also handles UnionType"""
-#         rm = ReflectMethod("GET", lambda: None, None)
-#         op = Operation(None, reflect_method=rm)
-#         # if no errors were raised then it passed
 
     def test_classfinder(self):
         oa = self.create_openapi()

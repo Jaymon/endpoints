@@ -139,28 +139,6 @@ class ReflectParam(object):
     def reflect_method(self):
         return self._reflect_method
 
-#     def get_parameter_kwargs(self):
-#         kwargs = {}
-# 
-#         param = self.target
-#         if param.is_kwarg:
-#             kwargs["in"] = "query"
-#             kwargs["name"] = param.name
-#             kwargs["required"] = param.flags.get("required", False)
-#             kwargs["allowEmptyValue"] = param.flags.get("allow_empty", False)
-# 
-#         else:
-#             kwargs["in"] = "path"
-#             kwargs["name"] = self.name
-# 
-#             # spec: "If the parameter location is "path", this property is
-#             # REQUIRED and its value MUST be true"
-#             kwargs["required"] = True
-# 
-#         kwargs["description"] = param.flags.get("help", "")
-# 
-#         return kwargs
-
     def is_required(self):
         return self.target.flags.get("required", False)
 
@@ -193,64 +171,8 @@ class Field(dict):
         method_name = f"get_{name.varname()}_value"
         return getattr(owner, method_name, None)
 
-    def get_factory_classes(self):
-        return list(self._get_factory_classes(self["type"]))
-
-    def _get_factory_classes(self, klass):
-        def is_factory_class(klass):
-            return issubclass(klass, OpenABC) and klass is not OpenABC
-
-        if isinstance(klass, UnionType):
-            for ft in get_args(klass):
-                yield from self._get_factory_classes(ft)
-
-        elif isinstance(klass, GenericAlias):
-            origin_class = get_origin(klass)
-            if is_factory_class(origin_class):
-                yield origin_class
-
-            else:
-                yield from self._get_factory_classes(origin_class)
-                for ft in get_args(klass):
-                    yield from self._get_factory_classes(ft)
-
-        elif is_factory_class(klass):
-            for subclass in self.owner.classes.get_abs_classes(klass):
-                yield subclass
-
-#     def _get_factory_classes(self, klass):
-#         if isinstance(klass, UnionType):
-#             for ft in get_args(klass):
-#                 yield from self._get_factory_classes(ft)
-# 
-#         elif isinstance(klass, GenericAlias):
-#             yield from self._get_factory_classes(get_origin(klass))
-#             for ft in get_args(klass):
-#                 yield from self._get_factory_classes(ft)
-# 
-#         elif issubclass(klass, OpenABC):
-#             if klass is not OpenABC:
-#                 name = NamingConvention(klass.__name__)
-#                 yield f"{name.varname()}_class", klass
-# 
-#                 for subclass in OpenABC.classes.get_abs_classes(klass):
-#                     name = NamingConvention(subclass.__name__)
-#                     yield f"{name.varname()}_class", subclass
-# 
-#     def get_factory_classes(self):
-#         # TODO -- return the class from the type that can be used to create
-#         # an instance
-#         return {n: c for n, c in self._get_factory_classes(self["type"])} 
-
-    def get_factory_class(self):
-        return self.get_factory_classes()[0]
-
 
 class OpenFinder(ClassFinder):
-#     def __init__(self, *args, **kwargs):
-#         self.class_names = {}
-#         super().__init__(*args, **kwargs)
-
     def _is_valid_subclass(self, klass):
         return issubclass(klass, OpenABC) and klass is not OpenABC
 
@@ -336,7 +258,6 @@ class OpenABC(dict):
 
     def set_keys(self, *args, **kwargs):
         if self.fields:
-#             d = dict(*args, **kwargs)
             for k, field in self.fields.items():
                 if k in kwargs:
                     if kwargs[k]:
@@ -351,23 +272,9 @@ class OpenABC(dict):
                     if "default" in field:
                         self[k] = field["default"]
 
-#                 if field["required"] and k not in self:
-#                     raise KeyError(
-#                         f"{self.__class__.__name__}[{k}]"
-#                     )
-
             if "summary" in self.fields and "summary" not in self:
                 if desc := self.get("description", ""):
                     self["summary"] = self["description"].partition("\n")[0]
-
-#     def update(self, *args, **kwargs):
-#         if self.fields:
-#             for k, v in dict(*args, **kwargs).items():
-#                 if k in self.fields:
-#                     self[k] = v
-
-#     def create_field_value(self, field, *args, **kwargs):
-#         pass
 
     def create_instance(self, class_key, *args, **kwargs):
         if class_key in kwargs:
@@ -394,12 +301,10 @@ class Info(OpenABC):
     """Represents an OpenAPI info object
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#info-object
-
-    Required:
-        * title: str
-        * version: str
     """
     _title = Field(str, required=True, default="Endpoints API")
+
+    _version = Field(str, required=True, default="0.1.0")
 
     _description = Field(str)
 
@@ -411,12 +316,6 @@ class Info(OpenABC):
 
     _license = Field(OpenABC)
 
-    _version = Field(str, required=True, default="0.1.0")
-
-#     def get_description_value(self, **kwargs):
-#         rc = ReflectClass(self.root.application)
-#         return rc.get_docblock()
-
 
 class Server(OpenABC):
     """Represents an OpenAPI server object
@@ -426,7 +325,7 @@ class Server(OpenABC):
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#server-object
     """
-    _url = Field(str, default="/")
+    _url = Field(str, default="/", required=True)
 
     _description = Field(str)
 
@@ -548,22 +447,6 @@ class Schema(OpenABC):
         name="$schema",
         default="https://json-schema.org/draft/2020-12/schema"
     )
-
-
-
-    #     def __init__(self, parent, **kwargs):
-#         super().__init__(parent)
-# 
-#         self["type"] = "object"
-#         self["required"] = []
-#         self["properties"] = {}
-
-#     def add_property(self, prop, **kwargs):
-#         prop.parent = self
-#         self["properties"][prop.name] = prop
-# 
-#         if prop.is_required():
-#             self["required"].append(prop.name)
 
     def add_param(self, reflect_param):
         if self["type"] != "object":
@@ -721,87 +604,6 @@ class Schema(OpenABC):
 
         return ret
 
-#         if t is None:
-#             ret = "null"
-# 
-#         elif issubclass(t, str):
-#             ret = "string"
-# 
-#         elif issubclass(t, bool):
-#             ret = "boolean"
-# 
-#         elif issubclass(t, int):
-#             ret = "integer"
-# 
-#         elif issubclass(t, float):
-#             ret = "number"
-# 
-#         elif issubclass(t, datetime.date):
-#             ret = "string"
-# 
-#         elif issubclass(t, Sequence):
-#             ret = "array"
-# 
-#         elif issubclass(t, Mapping):
-#             ret = "object"
-# 
-#         else:
-#             if (
-#                 "list" in self.param.flags["action"]
-#                 or "append" in self.param.flags["action"]
-#             ):
-#                 ret = "array"
-# 
-#             else:
-#                 raise ValueError(f"Not sure how to handle type {t}")
-# 
-#         return ret
-
-
-
-
-# class Property(OpenABC):
-#     """
-# 
-#     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
-# 
-#     looks like section 10.2 of the json schema spec has the keywords
-#     https://json-schema.org/draft/2020-12/json-schema-core#name-keywords-for-applying-subsc
-# 
-#     """
-#     def __init__(self, parent, param, **kwargs):
-#         self.param = param
-# 
-#         super().__init__(parent)
-# 
-#         self.name = param.name
-#         self["type"] = self.get_type()
-#         if size := self.get_size():
-#             self.update(size)
-# 
-#         if desc := param.flags.get("help", ""):
-#             self["description"] = desc
-# 
-#         if "choices" in param.flags:
-#             self["enum"] = list(param.flags["choices"])
-# 
-#     def get_size(self):
-#         """
-#         https://json-schema.org/understanding-json-schema/reference/numeric#range
-#         """
-#         ret = {}
-# 
-#         if "min_size" in self.param.flags:
-#             ret["minimum"] = self.param.flags["min_size"]
-# 
-#         if "max_size" in self.param.flags:
-#             ret["maximum"] = self.param.flags["max_size"]
-# 
-#         return ret
-# 
-#     def is_required(self):
-#         return self.param.flags.get("required", False)
-
 
 class MediaType(OpenABC):
     """
@@ -819,30 +621,16 @@ class MediaType(OpenABC):
     # this one has some strange requirements so I'm ignoring it right now
     #_encoding = Field(dict[str, Encoding])
 
-#     def __init__(self, parent, **kwargs):
-#         super().__init__(parent)
-# 
-#         self["schema"] = self.create_schema(**kwargs)
-
     def add_param(self, reflect_param):
         if "schema" not in self:
             self["schema"] = self.create_schema_instance(type="object")
 
         self["schema"].add_param(reflect_param)
 
-#     def create_schema(self, **kwargs):
-#         return kwargs.get("schema_class", Schema)(
-#             self,
-#             **kwargs
-#         )
-
 
 class RequestBody(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#request-body-object
-
-    Required:
-        * content: dict[string, MediaType]
     """
     _description = Field(str)
 
@@ -854,23 +642,10 @@ class RequestBody(OpenABC):
         for media_type in self["content"].values():
             media_type.add_param(reflect_param)
 
-#     def add_property(self, prop, **kwargs):
-#         if "content" not in self:
-#             self["content"] = self.create_content(**kwargs)
-# 
-#         for content_type, media_type in self["content"].items():
-#             media_type.add_property(prop, **kwargs)
-
     def get_content_value(self, **kwargs):
         return {
             "*/*": self.create_instance("media_type_class", **kwargs)
         }
-
-#     def create_media_type(self, **kwargs):
-#         return kwargs.get("media_type_class", MediaType)(
-#             self,
-#             **kwargs
-#         )
 
 
 class Parameter(OpenABC):
@@ -927,43 +702,6 @@ class Parameter(OpenABC):
         ret["schema"] = schema
 
         return ret
-
-#     def create_param_schema_instance(self, reflect_param):
-#         schema = self.create_schema_instance()
-#         schema.set_param(reflect_param)
-#         return schema
-
-
-# class ParamParameter(Parameter):
-#     """Represents an OpenAPI Parameter object from an endpoints param
-#     decorator
-# 
-#     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#parameter-object
-#     """
-#     def insert(self, reflect_param, **kwargs):
-#         self.reflect_param = reflect_param
-#         super().insert(**kwargs)
-# 
-#     def create_in(self, **kwargs):
-#         return "query" if self.reflect_param.target.is_kwarg else "path"
-# 
-#     def create_name(self, **kwargs):
-#         return self.reflect_param.target.name
-# 
-#     def create_required(self, **kwargs):
-#         if self.reflect_param.target.is_kwarg:
-#             return self.reflect_param.target.flags.get("required", False)
-# 
-#         else:
-#             # spec: "If the parameter location is "path", this property is
-#             # REQUIRED and its value MUST be true"
-#             self["required"] = True
-# 
-#     def create_allow_empty_value(self, **kwargs):
-#         return self.reflect_param.target.flags.get("allow_empty", False)
-# 
-#     def create_description(self, **kwargs):
-#         return self.reflect_param.target.flags.get("help", "")
 
 
 class Operation(OpenABC):
@@ -1026,15 +764,9 @@ class Operation(OpenABC):
         for reflect_param in self.reflect_method.reflect_url_params():
             parameter = self.create_instance("parameter_class")
             parameter.set_param(reflect_param)
-#             parameter = self.create_param_parameter_instance(reflect_param)
             parameters.append(parameter)
 
         return parameters
-
-#     def create_param_parameter_instance(self, reflect_param):
-#         parameter = self.create_instance("parameter_class")
-#         parameter.set_param(reflect_param)
-#         return parameter
 
 
 class PathItem(OpenABC):
@@ -1122,16 +854,7 @@ class OpenAPI(OpenABC):
 
     the document format is defined here:
         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#openapi-object
-
-    Required:
-        * openapi: str
-        * info: Info instance
-
-    Included:
-        * server: Server instance
-        * paths: dict[str, PathItem]
     """
-
     _openapi = Field(str, default="3.1.0", required=True)
 
     _info = Field(Info, required=True)
@@ -1205,32 +928,4 @@ class OpenAPI(OpenABC):
         paths = self.create_instance("paths_class", **kwargs)
         paths.add_pathfinder(self.application.router.pathfinder)
         return paths
-
-
-
-#         return
-# #         paths_class = self._paths.get_factory_class()
-# #         paths = paths_class()
-# 
-#         pathfinder = self.application.router.pathfinder
-#         for keys, value in pathfinder.get_class_items():
-#             paths.update(
-#                 self.create_controller_paths(
-#                     keys,
-#                     value,
-#                     **kwargs
-#                 )
-#             )
-# 
-#         return paths
-# 
-#     def create_controller_paths(self, keys, value, **kwargs):
-#         rc = kwargs.get("reflect_controller_class", ReflectController)(
-#             keys,
-#             value
-#         )
-#         return kwargs.get("paths_class", Paths)(
-#             self,
-#             reflect_controller=rc
-#         )
 
