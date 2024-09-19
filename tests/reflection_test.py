@@ -137,64 +137,82 @@ class OpenAPITest(TestCase):
         self.assertTrue("bar" in schema["required"])
         self.assertTrue(2, len(schema["properties"]))
 
-#     def test_headers(self):
-#         c = self.create_server("""
-#             class Foo(Controller):
-#                 cors = False
-# 
-#                 @version("v2")
-#                 def POST(self):
-#                     pass
-#         """)
-# 
-#         oa = OpenAPI(c.application)
-
-
-
-#     def test_paths(self):
-#         c = self.create_server(
-#             {
-#                 "": [
-#                     "class Default(Controller):",
-#                     "    def GET(*args, **kwargs): pass",
-#                     ""
-#                 ],
-#                 "boo": [
-#                     "class Default(Controller):",
-#                     "    def GET(*args, **kwargs): pass",
-#                     ""
-#                 ],
-#                 "foo": [
-#                     "class Default(Controller):",
-#                     "    def GET(*args, **kwargs): pass",
-#                     "",
-#                     "class Bar(Controller):",
-#                     "    def GET(*args, **kwargs): pass",
-#                     "    def POST(*args, **kwargs): pass",
-#                     ""
-#                 ],
-#                 "foo.baz": [
-#                     "class Default(Controller):",
-#                     "    def GET(*args, **kwargs): pass",
-#                     "",
-#                     "class Che(Controller):",
-#                     "    def ANY(*args, **kwargs): pass",
-#                     ""
-#                 ],
-#             },
-#         )
-# 
-#         oa = OpenAPI(c.application)
-
-
-class ParameterTest(TestCase):
-    def test_set_param(self):
-        rp = self.create_reflect_params("""
+    def test_responses(self):
+        oa = self.create_openapi("""
             class Foo(Controller):
-                @param("foo", type=str, required=False, help="che variable")
-                def POST(self, **kwargs):
-                    pass
-        """)[0]
+                @version("v2")
+                def POST(self) -> dict:
+                    raise CallError(401, "error message")
+        """)
 
-        pout.v(rp)
+        self.assertEqual(
+            "error message",
+            oa.paths["/foo"].post.responses["401"]["description"]
+        )
+
+    def test_security_schemas(self):
+        oa = self.create_openapi("")
+        schemas = oa.components.securitySchemas
+        self.assertTrue("auth_basic" in schemas)
+        self.assertTrue("auth_client" in schemas)
+        self.assertTrue("auth_token" in schemas)
+
+    def test_security_requirement(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                @auth_basic()
+                def POST(self):
+                    pass
+        """)
+
+        op = oa.paths["/foo"].post
+        self.assertTrue("auth_basic" in op.security[0])
+
+    def test_any_operation(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def ANY(self):
+                    pass
+        """)
+
+        pi = oa.paths["/foo"]
+        self.assertFalse("any" in pi)
+        for field_name in ["post", "get"]:
+            self.assertTrue(field_name in pi)
+
+    def test_write_json(self):
+        oa = self.create_openapi(
+            {
+                "": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "boo": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Bar(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo.baz": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Che(Controller):",
+                    "    def ANY(*args, **kwargs): pass",
+                    ""
+                ],
+            },
+        )
+
+        dp = self.create_dir()
+        oa.write_json(dp)
 

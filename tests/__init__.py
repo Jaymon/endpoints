@@ -144,6 +144,7 @@ class TestCase(BaseAsyncTestCase):
         else:
             header = [
                 "from endpoints import *",
+                "from endpoints.decorators import *",
             ]
 
         if not kwargs.get("cors", False):

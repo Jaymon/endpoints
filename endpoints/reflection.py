@@ -27,7 +27,8 @@ from datatypes import (
 )
 
 from .compat import *
-from .utils import Url
+from .utils import Url, JSONEncoder
+from .config import environ
 
 
 class ReflectController(ReflectClass):
@@ -49,50 +50,77 @@ class ReflectController(ReflectClass):
             if not http_method_name or method_prefix == http_method_name:
                 for method_name in method_names:
                     yield self.create_reflect_http_method_instance(
-                        getattr(self.target, method_name),
                         method_prefix,
                         name=method_name
                     )
 
-    def create_reflect_http_method_instance(self, *args, **kwargs):
-        kwargs.setdefault("target_class", self.target)
-        kwargs["reflect_controller"] = self
+    def create_reflect_http_method_instance(self, http_method_name, **kwargs):
+        """Creates ReflectMethod instances which are exclusively for
+        a Controller's METHOD_* methods that handle requests"""
+        target = self.get_target()
+        kwargs.setdefault("target_class", target)
         return kwargs.get("reflect_http_method_class", ReflectMethod)(
-            *args,
+            getattr(target, kwargs["name"]),
+            http_method_name,
+            self,
             **kwargs
         )
 
+    def get_url_path(self):
+        """Get the root url path for this controller"""
+        return "/" + "/".join(self.keys)
+
 
 class ReflectMethod(ReflectCallable):
+    """Reflect a controller http handler method
+
+    these are methods on the controller like GET and POST
+    """
     def __init__(self, target, http_method_name, reflect_controller, **kwargs):
+        """
+        :param target: callable, the controller method
+        :param http_method_name: str, since method names can be things like
+            GET_1, etc. this should be the actual http method (eg GET for
+            any GET_* methods)
+        :param reflect_controller: ReflectController, since reflected
+            controllers are instantiated a certain way this gets passed in
+            so things like .reflect_class work as expected
+        """
         super().__init__(target, **kwargs)
         self.http_method_name = http_method_name
         self._reflect_controller = reflect_controller
 
-    def reflect_controller(self):
+    def reflect_class(self):
         return self._reflect_controller
 
     def has_body(self):
+        """Returns True if this method accepts a body in the request"""
         return self.name in set(["PUT", "POST", "PATCH"])
 
     def reflect_params(self):
+        """This will reflect all params defined with the @param decorator"""
         unwrapped = self.get_unwrapped()
         if params := getattr(unwrapped, "params", []):
             for param in (p.param for p in params):
                 yield self.create_reflect_param_instance(param)
 
     def reflect_body_params(self):
+        """This will reflect all the params that are usually passed up using
+        the body on a POST request"""
         if self.has_body():
             for rp in self.reflect_params():
                 if rp.target.is_kwarg:
                     yield rp
 
     def reflect_url_params(self):
+        """This will reflect params that need to be in the url path or the
+        query part of the url"""
         for rp in self.reflect_params():
             if not rp.target.is_kwarg or not self.has_body():
                 yield rp
 
     def reflect_path_params(self):
+        """This will reflect params that need to be in the path"""
         for rp in self.reflect_params():
             if not rp.target.is_kwarg:
                 yield rp
@@ -105,15 +133,35 @@ class ReflectMethod(ReflectCallable):
         )
 
     def get_url_path(self):
-        return "/" + "/".join(
+        """Get the path for this method. The reason why this is on the method
+        and not the controller is because there could be path parameters
+        for specific methods which means a controller, while having the
+        same root path, can have different method paths"""
+        return "/".join(
             itertools.chain(
-                self.reflect_controller().keys,
+                self.reflect_class().get_url_path(),
                 (f"{{{p.name}}}" for p in self.reflect_path_params())
             )
         )
 
+    def get_http_method_names(self):
+        """Controllers support an ANY catch-all method, this doesn't work
+        for things like OpenAPI so this returns all the http methods this
+        method should be used for. By default, ANY would return GET and POST
+
+        :returns: generator[str]
+        """
+        if self.http_method_name == "ANY":
+            names = ["GET", "POST"]
+
+        else:
+            names = [self.http_method_name]
+
+        return names
+
 
 class ReflectParam(object):
+    """Reflects a Param instance"""
     def __init__(self, target, reflect_method, **kwargs):
         self.target = target
         self._reflect_method = reflect_method
@@ -133,8 +181,8 @@ class ReflectParam(object):
                 else:
                     self.name = target.index
 
-    def reflect_controller(self):
-        return self.reflect_method().reflect_controller()
+    def reflect_class(self):
+        return self.reflect_method().reflect_class()
 
     def reflect_method(self):
         return self._reflect_method
@@ -142,8 +190,27 @@ class ReflectParam(object):
     def is_required(self):
         return self.target.flags.get("required", False)
 
+    def reflect_type(self):
+        list_actions = set(["append", "append_list", "store_list"])
+        if self.flags["action"] in list_actions:
+            t = list
+
+        else:
+            t = self.flags.get("type", str)
+            if t is None:
+                t = str
+
+        return self.create_reflect_type(t)
+
 
 class Field(dict):
+    """Represents a field on an OpenABC instance
+
+    By default, fields should be defined on OpenABC children prefixed with
+    an underscore, this is because many fields would conflict with python
+    keywords (like `in`), this underscore will be stripped for the
+    OpenABC.fields dict that maps field names to their Field instances
+    """
     def __init__(self, field_type, **kwargs):
         self.name = kwargs.pop("name", "")
         self.owner = OpenABC
@@ -173,6 +240,7 @@ class Field(dict):
 
 
 class OpenFinder(ClassFinder):
+    """Used by OpenABC to keep track of all children"""
     def _is_valid_subclass(self, klass):
         return issubclass(klass, OpenABC) and klass is not OpenABC
 
@@ -187,28 +255,69 @@ class OpenFinder(ClassFinder):
         self.root.class_keys[class_key] = key
 
 
+class OpenEncoder(JSONEncoder):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+
+        self.item_separator = ": "
+        self.indent = 2
+        self.sort_keys = True
+
+#     def encode(self, o):
+#         pout.v(type(o))
+#         return super().encode(o)
+
+
+
 class OpenABC(dict):
-    """The base type for all the OpenAPI objects"""
+    """The base type for all the OpenAPI objects
+
+    Children classes have a few ways to customize functionality:
+
+        * define `init_instance`, this allows a child class to require 
+            arguments when being created, and also allows instance
+            customization
+        * override `set_keys`, this allows children to customize/normalize
+            the keys/values after all the introspection stuff has ran. Any
+            child that overrides this method *should* call super
+        * define `get_<FIELDNAME>_value(**kwargs)`, this method should always
+            take `**kwargs` and it should return whatever the value the
+            child wants for that key. The majority of customizations will
+            probably be in these methods
+
+    You should always create OpenABC instances using:
+
+        .create_instance(class_key, *args, **kwargs)
+
+    the `class_key` is the class name you want to create, for example, if you
+    wanted to create a `Parameter` instance, you would pass in
+    "parameter_class" as the class_key. The class keys are found in
+    `.classfinder.class_keys` of any OpenABC instance.
+
+    The primary external hook for creating an OpenAPI document is to use the
+    `OpenAPI` class, this class takes an interface Application instance:
+
+        from endpoints.interface.asgi import Application
+        from endpoints.reflection import OpenAPI
+
+        application = Application()
+        oa = OpenAPI(application)
+        oa.write_json("/some/directory")
+    """
 
     fields = None
+    """Holds all the fields defined for the child instance"""
 
     parent = None
+    """Holds the OpenABC class that created this instance"""
 
     root = None
+    """Holds the absolute root of the OpenApi document, this will
+    be an OpenAPI instance"""
 
     classfinder = OpenFinder()
-
-    def find_reflect_controller(self):
-        parent = self
-        while parent := parent.parent:
-            if r := getattr(parent, "reflect_controller", None):
-                return r
-
-    def find_reflect_method(self):
-        parent = self
-        while parent := parent.parent:
-            if r := getattr(parent, "reflect_method", None):
-                return r
+    """This is used for children to easily get the absolute child class and
+    is used in .create_instance"""
 
     def __init__(self, parent, *args, **kwargs):
         if parent:
@@ -254,9 +363,11 @@ class OpenABC(dict):
         super().__setitem__(key, value)
 
     def init_instance(self, *args, **kwargs):
+        """This is here for children to set arguments the class needs to
+        successfully get setup"""
         pass
 
-    def set_keys(self, *args, **kwargs):
+    def set_keys(self, **kwargs):
         if self.fields:
             for k, field in self.fields.items():
                 if k in kwargs:
@@ -291,10 +402,102 @@ class OpenABC(dict):
     def validate(self):
         if self.fields:
             for k, field in self.fields.items():
-                if field["required"] and k not in self:
-                    raise KeyError(
-                        f"{self.__class__.__name__}[{k}]"
-                    )
+                if k in self:
+                    if isinstance(self[k], list):
+                        it = self[k]
+
+                    elif isinstance(self[k], dict):
+                        it = self[k].values()
+
+                    else:
+                        it = [self[k]]
+
+                    for v in it:
+                        if isinstance(v, OpenABC):
+                            v.validate()
+
+                else:
+                    if field["required"]:
+                        raise KeyError(
+                            f"{self.__class__.__name__}[{k}]"
+                        )
+
+
+class Contact(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#contact-object
+    """
+    pass
+
+
+class License(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#license-object
+    """
+    pass
+
+
+class ServerVariable(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#server-variable-object
+    """
+    pass
+
+
+class Reference(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#reference-object
+    """
+    pass
+
+
+class Link(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#link-object
+    """
+    pass
+
+
+class Header(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#header-object
+    """
+    pass
+
+
+class Example(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#example-object
+    """
+    pass
+
+
+class Callback(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#callback-object
+    """
+    pass
+
+
+class OAuthFlows(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#oauth-flows-object
+    """
+    pass
+
+
+class Tag(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
+    """
+    pass
+
+
+class ExternalDocumentation(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
+    """
+    pass
 
 
 class Info(OpenABC):
@@ -312,9 +515,12 @@ class Info(OpenABC):
 
     _termsOfService = Field(str)
 
-    _contact = Field(OpenABC)
+    _contact = Field(Contact)
 
-    _license = Field(OpenABC)
+    _license = Field(License)
+
+    def init_instance(self, application, **kwargs):
+        self.application = application
 
 
 class Server(OpenABC):
@@ -329,28 +535,7 @@ class Server(OpenABC):
 
     _description = Field(str)
 
-    _variables = Field(dict[str, OpenABC])
-
-
-class Reference(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#reference-object
-    """
-    pass
-
-
-class Response(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#responses-object
-    """
-    pass
-
-
-class Example(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#example-object
-    """
-    pass
+    _variables = Field(dict[str, ServerVariable])
 
 
 class Schema(OpenABC):
@@ -442,13 +627,17 @@ class Schema(OpenABC):
     _else = Field(dict)
 
     # https://json-schema.org/understanding-json-schema/reference/schema
+    # this is set in the root OpenAPI document
     _schema = Field(
         str,
         name="$schema",
-        default="https://json-schema.org/draft/2020-12/schema"
+        #default="https://json-schema.org/draft/2020-12/schema"
     )
 
+    DIALECT = "https://json-schema.org/draft/2020-12/schema"
+
     def add_param(self, reflect_param):
+        """Add a param to this object schema"""
         if self["type"] != "object":
             raise ValueError(
                 f"Attempted to add param to {self['type']} schema"
@@ -470,24 +659,21 @@ class Schema(OpenABC):
             self["required"].append(reflect_param.name)
 
     def set_param(self, reflect_param):
+        """Set this schema as this param"""
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
+
+    def set_type(self, reflect_type):
+        """Set this schema as this type"""
+        self.reflect_type = reflect_type
+        self.update(self.get_type_fields(reflect_type))
 
     def get_param_fields(self, reflect_param):
         ret = {}
         param = reflect_param.target
 
-        # !!! these type checks should probably be handled in the Param class
-        list_actions = set(["append", "append_list", "store_list"])
-        if param.flags["action"] in list_actions:
-            t = list
-
-        else:
-            t = param.flags.get("type", str)
-            if t is None:
-                t = str
-
-        ret.update(self.get_type_fields(t))
+        reflect_type = reflect_param.reflect_type()
+        ret.update(self.get_type_fields(reflect_type))
 
         min_size = param.flags.get("min_size", 0)
         max_size = param.flags.get("max_size", 0)
@@ -544,13 +730,13 @@ class Schema(OpenABC):
 
         return ret
 
-    def get_type_fields(self, t):
+    def get_type_fields(self, reflect_type):
         """Convert a python type t to a JSON Schema type
 
         https://json-schema.org/understanding-json-schema/reference/type
         """
         ret = {}
-        rt = ReflectType(t)
+        rt = reflect_type
 
         if rt.is_stringish():
             ret["type"] = "string"
@@ -627,6 +813,11 @@ class MediaType(OpenABC):
 
         self["schema"].add_param(reflect_param)
 
+    def set_type(self, reflect_type):
+        schema = self.create_schema_instance()
+        schema.set_type(reflect_type)
+        self["schema"] = schema
+
 
 class RequestBody(OpenABC):
     """
@@ -638,9 +829,18 @@ class RequestBody(OpenABC):
 
     _required = Field(bool)
 
+    def init_instance(self, reflect_method, **kwargs):
+        self.reflect_method = reflect_method
+
     def add_param(self, reflect_param):
         for media_type in self["content"].values():
             media_type.add_param(reflect_param)
+
+    def set_keys(self, **kwargs):
+        super().set_keys(**kwargs)
+
+        for reflect_param in self.reflect_method.reflect_body_params():
+            request_body.add_param(reflect_param)
 
     def get_content_value(self, **kwargs):
         return {
@@ -704,6 +904,86 @@ class Parameter(OpenABC):
         return ret
 
 
+class Response(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#response-object
+    """
+    _description = Field(str, required=True)
+
+    _headers = Field(dict[str, Header|Reference])
+
+    _content = Field(dict[str, MediaType])
+
+    _links = Field(dict[str, Link|Reference])
+
+    def init_instance(self, reflect_method, code, **kwargs):
+        self.reflect_method = reflect_method
+        self.code = str(code)
+
+    def set_type(self, reflect_type):
+        for media_type in self["content"].values():
+            media_type.set_type(reflect_type)
+
+    def set_returns(self, returns):
+        pass
+
+    def get_description_value(self, **kwargs):
+        return f"A {self.code} response"
+
+    def get_content_value(self, **kwargs):
+        #rc = self.reflect_method.reflect_class()
+        # support Accept header response:
+        # https://stackoverflow.com/a/62593737
+        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+        content_type = environ.RESPONSE_CONTENT_TYPE
+        for rd in self.reflect_method.reflect_ast_decorators():
+            if rd.name == "version":
+                dargs, dkwargs = rd.get_parameters()
+                version = dargs[0]
+                content_type += f"; version={version}"
+                break
+
+        return {
+            content_type: self.create_instance("media_type_class")
+        }
+
+
+class SecurityRequirement(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
+    """
+    def init_instance(self, reflect_method, **kwargs):
+        self.reflect_method = reflect_method
+
+    def set_keys(self, **kwargs):
+        super().set_keys(**kwargs)
+
+        for rd in self.reflect_method.reflect_ast_decorators():
+            if rd.name.startswith("auth_"):
+                self[rd.name] = []
+
+
+class SecurityScheme(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-scheme-object
+    """
+    _type = Field(str, required=True)
+
+    _description = Field(str)
+
+    _name = Field(str)
+
+    _in = Field(str)
+
+    _scheme = Field(str)
+
+    _bearerFormat = Field(str)
+
+    _flows = Field(OAuthFlows)
+
+    _openIdConnectUrl = Field(str)
+
+
 class Operation(OpenABC):
     """Represents an OpenAPI operation object
 
@@ -717,7 +997,7 @@ class Operation(OpenABC):
 
     _description = Field(str)
 
-    _externalDocs = Field(OpenABC)
+    _externalDocs = Field(ExternalDocumentation)
 
     _operationId = Field(str)
 
@@ -725,36 +1005,29 @@ class Operation(OpenABC):
 
     _requestBody = Field(RequestBody|Reference)
 
-    _responses = Field(dict[str, Reference|Response])
+    _responses = Field(dict[str, Response|Reference])
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#responses-object
     """
 
-    _callbacks = Field(dict[str, OpenABC])
+    _callbacks = Field(dict[str, Callback])
 
     _deprecated = Field(bool)
 
-    _security = Field(list[OpenABC])
+    _security = Field(list[SecurityRequirement])
 
     _servers = Field(list[Server])
 
     def init_instance(self, reflect_method, **kwargs):
-        self.name = reflect_method.http_method_name.lower()
         self.reflect_method = reflect_method
-
-#         # TODO -- add responses
 
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():
-            request_body = self.create_instance(
+            return self.create_instance(
                 "request_body_class",
+                self.reflect_method,
                 **kwargs
             )
-
-            for reflect_param in self.reflect_method.reflect_body_params():
-                request_body.add_param(reflect_param)
-
-            return request_body
 
     def get_parameters_value(self, **kwargs):
         parameters = []
@@ -767,6 +1040,80 @@ class Operation(OpenABC):
             parameters.append(parameter)
 
         return parameters
+
+    def get_security_value(self, **kwargs):
+        sreqs = []
+        sr = self.create_instance(
+            "security_requirement_class",
+            self.reflect_method,
+            **kwargs
+        )
+        if sr:
+            sreqs = [sr]
+
+        return sreqs
+
+    def get_success_responses_value(self):
+        responses = {}
+        if rt := self.reflect_method.reflect_return_type():
+            response = self.create_response_instance("200")
+            response.set_type(rt)
+            responses[response.code] = response
+
+        elif returns := list(self.reflect_method.reflect_ast_returns()):
+                response = self.create_response_instance("200")
+                response.set_returns(returns)
+                responses[response.code] = response
+
+        else:
+            response = self.create_response_instance("204")
+            responses[response.code] = response
+
+        return responses
+
+    def get_error_responses_value(self):
+        responses = {}
+        for rx in self.reflect_method.reflect_ast_raises():
+            if rx.name == "CallError" or rx.name == "CallStop":
+                errargs, errkwargs = rx.get_parameters()
+                response = self.create_response_instance(
+                    errargs[0],
+                    description=errargs[1]
+                )
+                responses[response.code] = response
+
+            elif rc.name == "ValueError":
+                errargs, errkwargs = rx.get_parameters()
+                response = self.create_response_instance(
+                    "400",
+                    description="Missing value"
+                )
+                responses[response.code] = response
+
+
+        for rp in self.reflect_method.reflect_params():
+            if rp.is_required():
+                response = self.create_response_instance(
+                    "400",
+                    description=f"Invalid params"
+                )
+                responses[response.code] = response
+                break
+
+        return responses
+
+    def get_responses_value(self, **kwargs):
+        responses = self.get_success_responses_value()
+        responses.update(self.get_error_responses_value())
+        return responses
+
+    def create_response_instance(self, code, **kwargs):
+        return self.create_instance(
+            "response_class",
+            self.reflect_method,
+            code,
+            **kwargs
+        )
 
 
 class PathItem(OpenABC):
@@ -800,14 +1147,22 @@ class PathItem(OpenABC):
 
     _parameters = Field(list[Parameter|Reference])
 
-    def add_operation(self, operation, **kwargs):
-        if operation.name in self:
-            raise ValueError(
-                f"PathItem has multiple {operation.name} keys"
-            )
+    def add_method(self, reflect_method, **kwargs):
+        op = self.create_instance(
+            "operation_class",
+            reflect_method,
+            **kwargs
+        )
 
-        else:
-            self[operation.name] = operation
+        for http_method_name in reflect_method.get_http_method_names():
+            field_name = http_method_name.lower()
+            if field_name in self:
+                raise ValueError(
+                    f"PathItem has multiple {field_name} keys"
+                )
+
+            else:
+                self[field_name] = op
 
 
 class Paths(OpenABC):
@@ -823,12 +1178,7 @@ class Paths(OpenABC):
                     **kwargs
                 )
 
-            op = self.create_instance(
-                "operation_class",
-                reflect_method,
-                **kwargs
-            )
-            self[path].add_operation(op)
+            self[path].add_method(reflect_method, **kwargs)
 
     def add_pathfinder(self, pathfinder):
         for keys, value in pathfinder.get_class_items():
@@ -846,8 +1196,71 @@ class Paths(OpenABC):
         )
 
 
+class Components(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
+    """
+    _schemas = Field(dict[str, Schema])
+
+    _responses = Field(dict[str, Response|Reference])
+
+    _parameters = Field(dict[str, Parameter|Reference])
+
+    _examples = Field(dict[str, Example|Reference])
+
+    _requestBodies = Field(dict[str, RequestBody|Reference])
+
+    _headers = Field(dict[str, Header|Reference])
+
+    _securitySchemes = Field(dict[str, SecurityScheme|Reference])
+
+    _links = Field(dict[str, Link|Reference])
+
+    _callbacks = Field(dict[str, Callback|Reference])
+
+    _pathItems = Field(dict[str, PathItem|Reference])
+
+    def get_security_schemas_value(self, **kwargs):
+        security_schemas = {}
+        if auth := self.get_security_auth_basic_value(**kwargs):
+            security_schemas["auth_basic"] = auth
+
+        if auth := self.get_security_auth_client_value(**kwargs):
+            security_schemas["auth_client"] = auth
+
+        if auth := self.get_security_auth_token_value(**kwargs):
+            security_schemas["auth_token"] = auth
+
+        return security_schemas
+
+    def get_security_auth_basic_value(self, **kwargs):
+        schema = self.create_instance(
+            "security_schema_class",
+            **kwargs
+        )
+        schema["type"] = "http"
+        schema["scheme"] = "basic"
+        return schema
+
+    def get_security_auth_client_value(self, **kwargs):
+        # client_id and client_secret
+        return self.get_security_auth_basic_value(**kwargs)
+
+    def get_security_auth_token_value(self, **kwargs):
+        schema = self.create_instance(
+            "security_schema_class",
+            **kwargs
+        )
+        schema["type"] = "http"
+        schema["scheme"] = "bearer"
+        return schema
+
+
 class OpenAPI(OpenABC):
     """Represents an OpenAPI 3.1.0 document
+
+    This is the primary class for creating an OpenAPI document. See the
+    OpenABC docblock for examples
 
     https://github.com/OpenAPITools/openapi-generator
     https://github.com/OAI/OpenAPI-Specification
@@ -863,30 +1276,35 @@ class OpenAPI(OpenABC):
 
     _paths = Field(Paths[str, PathItem])
 
-    _components = Field(OpenABC)
+    _components = Field(Components)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
     """
 
-    _security = Field(OpenABC)
+    _security = Field(list[SecurityRequirement])
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
     """
 
-    _tags = Field(OpenABC)
+    _tags = Field(Tag)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
     """
 
-    _externalDocs = Field(OpenABC)
+    _externalDocs = Field(ExternalDocumentation)
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
     """
 
-    def __init__(self, application, **kwargs):
+    _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
+
+    def init_instance(self, application, **kwargs):
         self.application = application
 
-        super().__init__(None, **kwargs)
+#     def __init__(self, application, **kwargs):
+#         self.application = application
+# 
+#         super().__init__(None, **kwargs)
 
 
 #     def write_yaml(self, directory):
@@ -901,19 +1319,21 @@ class OpenAPI(OpenABC):
 
     def write_json(self, directory):
         """Writes openapi.json file to directory
+
+        :param directory: str, the directory path
+        :returns: str, the path to the openapi.json file
         """
+        self.validate()
+
         dp = Dirpath(directory)
         fp = dp.get_file("openapi.json")
         # https://docs.python.org/3/library/json.html#encoders-and-decoders
-        data = json.dumps(self)
-        # TODO -- maybe add an is_valid that will run for each object and
-        # make sure are the fields that are marked required exist
-        pout.v(data)
-
-        pass
+        data = json.dumps(self, cls=OpenEncoder)
+        fp.write_text(data)
+        return fp
 
     def get_info_value(self, **kwargs):
-        return self.create_instance("info_class", **kwargs)
+        return self.create_instance("info_class", self.application, **kwargs)
 
     def get_paths_value(self, **kwargs):
         """Represents a Pseudo OpenApi paths object
@@ -925,7 +1345,11 @@ class OpenAPI(OpenABC):
 
         :returns: generator[str, PathItem]
         """
+
         paths = self.create_instance("paths_class", **kwargs)
         paths.add_pathfinder(self.application.router.pathfinder)
         return paths
+
+    def get_components_value(self, **kwargs):
+        return self.create_instance("components_class", **kwargs)
 
