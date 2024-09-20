@@ -4,12 +4,7 @@ from endpoints.compat import *
 from endpoints.reflection import (
     OpenAPI,
     Field,
-    Parameter,
-    Operation,
     ReflectController,
-    ReflectMethod,
-    OpenABC,
-    Paths,
 )
 
 from . import TestCase
@@ -41,10 +36,6 @@ class TestCase(TestCase):
         for rm in rms:
             rps.extend(rm.reflect_params())
         return rps
-
-
-class FieldTest(TestCase):
-    pass
 
 
 class ReflectMethodTest(TestCase):

@@ -37,7 +37,7 @@ class ReflectController(ReflectClass):
         self.keys = keys
         self.value = value
 
-    def reflect_http_methods(self, http_method_name=""):
+    def reflect_http_methods(self, http_verb=""):
         """Reflect the controller http methods
 
         :returns generator[ReflectMethod], the controller method.
@@ -47,21 +47,21 @@ class ReflectController(ReflectClass):
         method_names = self.value["method_names"]
 
         for method_prefix, method_names in method_names.items():
-            if not http_method_name or method_prefix == http_method_name:
+            if not http_verb or method_prefix == http_verb:
                 for method_name in method_names:
                     yield self.create_reflect_http_method_instance(
                         method_prefix,
                         name=method_name
                     )
 
-    def create_reflect_http_method_instance(self, http_method_name, **kwargs):
+    def create_reflect_http_method_instance(self, http_verb, **kwargs):
         """Creates ReflectMethod instances which are exclusively for
         a Controller's METHOD_* methods that handle requests"""
         target = self.get_target()
         kwargs.setdefault("target_class", target)
         return kwargs.get("reflect_http_method_class", ReflectMethod)(
             getattr(target, kwargs["name"]),
-            http_method_name,
+            http_verb,
             self,
             **kwargs
         )
@@ -76,10 +76,10 @@ class ReflectMethod(ReflectCallable):
 
     these are methods on the controller like GET and POST
     """
-    def __init__(self, target, http_method_name, reflect_controller, **kwargs):
+    def __init__(self, target, http_verb, reflect_controller, **kwargs):
         """
         :param target: callable, the controller method
-        :param http_method_name: str, since method names can be things like
+        :param http_verb: str, since method names can be things like
             GET_1, etc. this should be the actual http method (eg GET for
             any GET_* methods)
         :param reflect_controller: ReflectController, since reflected
@@ -87,7 +87,7 @@ class ReflectMethod(ReflectCallable):
             so things like .reflect_class work as expected
         """
         super().__init__(target, **kwargs)
-        self.http_method_name = http_method_name
+        self.http_verb = http_verb
         self._reflect_controller = reflect_controller
 
     def reflect_class(self):
@@ -144,18 +144,18 @@ class ReflectMethod(ReflectCallable):
             )
         )
 
-    def get_http_method_names(self):
+    def get_http_verbs(self):
         """Controllers support an ANY catch-all method, this doesn't work
         for things like OpenAPI so this returns all the http methods this
         method should be used for. By default, ANY would return GET and POST
 
         :returns: generator[str]
         """
-        if self.http_method_name == "ANY":
+        if self.http_verb == "ANY":
             names = ["GET", "POST"]
 
         else:
-            names = [self.http_method_name]
+            names = [self.http_verb]
 
         return names
 
@@ -1100,6 +1100,15 @@ class Operation(OpenABC):
                 responses[response.code] = response
                 break
 
+        for rd in self.reflect_method.reflect_ast_decorators():
+            if rd.name.startswith("auth"):
+                response = self.create_response_instance(
+                    "401",
+                    description="Unauthorized request"
+                )
+                responses[response.code] = response
+                break
+
         return responses
 
     def get_responses_value(self, **kwargs):
@@ -1154,8 +1163,8 @@ class PathItem(OpenABC):
             **kwargs
         )
 
-        for http_method_name in reflect_method.get_http_method_names():
-            field_name = http_method_name.lower()
+        for http_verb in reflect_method.get_http_verbs():
+            field_name = http_verb.lower()
             if field_name in self:
                 raise ValueError(
                     f"PathItem has multiple {field_name} keys"
