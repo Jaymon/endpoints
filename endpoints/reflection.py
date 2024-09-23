@@ -1175,9 +1175,6 @@ class PathItem(OpenABC):
 
 
 class Paths(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
-    """
     def add_controller(self, reflect_controller, **kwargs):
         for reflect_method in reflect_controller.reflect_http_methods():
             path = reflect_method.get_url_path()
@@ -1188,21 +1185,6 @@ class Paths(OpenABC):
                 )
 
             self[path].add_method(reflect_method, **kwargs)
-
-    def add_pathfinder(self, pathfinder):
-        for keys, value in pathfinder.get_class_items():
-            reflect_controller = self.create_reflect_controller_instance(
-                keys,
-                value
-            )
-
-            self.add_controller(reflect_controller)
-
-    def create_reflect_controller_instance(self, keys, value, **kwargs):
-        return kwargs.get("reflect_controller_class", ReflectController)(
-            keys,
-            value
-        )
 
 
 class Components(OpenABC):
@@ -1231,14 +1213,14 @@ class Components(OpenABC):
 
     def get_security_schemas_value(self, **kwargs):
         security_schemas = {}
-        if auth := self.get_security_auth_basic_value(**kwargs):
-            security_schemas["auth_basic"] = auth
 
-        if auth := self.get_security_auth_client_value(**kwargs):
-            security_schemas["auth_client"] = auth
-
-        if auth := self.get_security_auth_token_value(**kwargs):
-            security_schemas["auth_token"] = auth
+        methods = [
+            self.get_security_auth_basic_value,
+            self.get_security_auth_client_value,
+            self.get_security_auth_token_value,
+        ]
+        for method in methods:
+            security_schemas.update(method(**kwargs))
 
         return security_schemas
 
@@ -1249,11 +1231,12 @@ class Components(OpenABC):
         )
         schema["type"] = "http"
         schema["scheme"] = "basic"
-        return schema
+        return {"auth_basic": schema}
 
     def get_security_auth_client_value(self, **kwargs):
         # client_id and client_secret
-        return self.get_security_auth_basic_value(**kwargs)
+        schema = self.get_security_auth_basic_value(**kwargs)
+        return {"auth_client": schema.pop("auth_basic")}
 
     def get_security_auth_token_value(self, **kwargs):
         schema = self.create_instance(
@@ -1262,7 +1245,7 @@ class Components(OpenABC):
         )
         schema["type"] = "http"
         schema["scheme"] = "bearer"
-        return schema
+        return {"auth_token": schema}
 
 
 class OpenAPI(OpenABC):
@@ -1271,11 +1254,11 @@ class OpenAPI(OpenABC):
     This is the primary class for creating an OpenAPI document. See the
     OpenABC docblock for examples
 
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md
     https://github.com/OpenAPITools/openapi-generator
     https://github.com/OAI/OpenAPI-Specification
 
-    the document format is defined here:
-        https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#openapi-object
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#openapi-object
     """
     _openapi = Field(str, default="3.1.0", required=True)
 
@@ -1283,38 +1266,23 @@ class OpenAPI(OpenABC):
 
     _servers = Field(list[Server])
 
-    _paths = Field(Paths[str, PathItem])
+    _paths = Field(dict[str, PathItem])
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
+    """
 
     _components = Field(Components)
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
-    """
 
     _security = Field(list[SecurityRequirement])
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
-    """
 
     _tags = Field(Tag)
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
-    """
 
     _externalDocs = Field(ExternalDocumentation)
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
-    """
 
     _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
 
     def init_instance(self, application, **kwargs):
         self.application = application
-
-#     def __init__(self, application, **kwargs):
-#         self.application = application
-# 
-#         super().__init__(None, **kwargs)
-
 
 #     def write_yaml(self, directory):
 #         """Writes openapi.yaml file to directory
@@ -1352,13 +1320,37 @@ class OpenAPI(OpenABC):
         The keys are the path (starting with /) and the value are a Path Item
         object
 
-        :returns: generator[str, PathItem]
+        :returns: dict[str, PathItem]
         """
+        paths = {}
+        for reflect_controller in self.reflect_controllers():
+            for reflect_method in reflect_controller.reflect_http_methods():
+                path = reflect_method.get_url_path()
+                if path not in paths:
+                    paths[path] = self.create_instance(
+                        "path_item_class",
+                        **kwargs
+                    )
 
-        paths = self.create_instance("paths_class", **kwargs)
-        paths.add_pathfinder(self.application.router.pathfinder)
+                paths[path].add_method(reflect_method, **kwargs)
+
         return paths
 
     def get_components_value(self, **kwargs):
         return self.create_instance("components_class", **kwargs)
+
+    def reflect_controllers(self):
+        """Reflect all the controllers of this application"""
+        pathfinder = self.application.router.pathfinder
+        for keys, value in pathfinder.get_class_items():
+            yield self.create_reflect_controller_instance(
+                keys,
+                value
+            )
+
+    def create_reflect_controller_instance(self, keys, value, **kwargs):
+        return kwargs.get("reflect_controller_class", ReflectController)(
+            keys,
+            value
+        )
 
