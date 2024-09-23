@@ -929,57 +929,6 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    def get_access_token(self, *args, **kwargs):
-        """return an Oauth 2.0 Bearer access token if it can be found
-
-        This was moved here from Request.access_token on 2024-04-24 because
-        the controller can mess with the controller params and so it didn't
-        make sense to have the controller decorators try to pull the
-        access token from the request when the controller could've
-        customized it in some way
-
-        :param *args: the controller args that will be passed to the
-            controller's handler method
-        :param **kwargs: the controller kwargs that will be passed to the
-            controller's handler method
-        :returns: str, the access token
-        """
-        access_token = self.request.get_auth_bearer()
-
-        if not access_token:
-            access_token = kwargs.get("access_token", "")
-
-        return access_token
-
-    def get_client_tokens(self, *args, **kwargs):
-        """try and get Oauth 2.0 client id and secret first from basic auth
-        header, then from GET or POST parameters
-
-        see .get_access_token for why this method is here instead of on
-        the Request instance
-
-        :param *args: the controller args that will be passed to the
-            controller's handler method
-        :param **kwargs: the controller kwargs that will be passed to the
-            controller's handler method
-        :returns: tuple[str, str], client_id, client_secret
-        """
-        client_id, client_secret = self.request.get_auth_basic()
-
-        if not client_id:
-            client_id = kwargs.get(
-                "client_id",
-                ""
-            )
-
-        if not client_secret:
-            client_secret = kwargs.get(
-                "client_secret",
-                ""
-            )
-
-        return client_id, client_secret
-
     async def get_controller_params(self, *controller_args, **controller_kwargs):
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
@@ -1677,13 +1626,13 @@ class Request(Call):
 
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""
-        access_token = ''
+        token = ''
         auth_header = self.get_header('authorization')
         if auth_header:
             m = re.search(r"^Bearer\s+(\S+)$", auth_header, re.I)
-            if m: access_token = m.group(1)
+            if m: token = m.group(1)
 
-        return access_token
+        return token
 
     def get_auth_basic(self):
         """return the username and password of a basic auth header if it exists

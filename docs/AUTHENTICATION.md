@@ -12,7 +12,7 @@ Want to require a simple username and password? Use the `endpoints.decorators.au
 # create a basic http auth decorator
 
 from endpoints import Controller
-from endpoints.decorators.auth import AuthBackend, auth_basic
+from endpoints.decorators.auth import auth_basic
 
 
 async def target(self, controller, username, password):
@@ -27,12 +27,26 @@ class Default(Controller):
 That's it, now any request to `/` will required a username and password.
 
 
-## Other authentication
+## HTTP bearer authentication
 
-Check out the `endpoints.decorators.auth` module for other authentication decorators
+Want to authenticate a token? This example (which could also be done with `auth_basic`) shows how to override the default bearer token authentication to perform token authentication.
 
-* `auth_client` - Similar to `auth_basic` but checks for **client_id** and **client_secret** instead of username and password.
-* `auth_token` - Checks for an `Authorization  Bearer <TOKEN>` header.
+```python
+# controller.py
+# create a bearer http auth decorator
+
+from endpoints import Controller
+from endpoints.decorators.auth import auth_bearer
+
+class auth_foo(auth_bearer):
+    async def target(self, controller, token):
+        return token == "foo"
+
+class Default(Controller):
+    @auth_foo()
+    async def GET(self):
+        return "hello world"
+```
 
 
 ## Customization
@@ -63,6 +77,7 @@ class auth(AuthDecorator):
     async def handle(self, controller, **kwargs):
         # check something or do something to validate the request
         # return True if auth was valid, False otherwise
+        pass
 
 
 class Default(Controller):
@@ -82,8 +97,6 @@ from endpoints.decorators.auth import AuthBackend, AuthDecorator
 
 
 class auth_perm(AuthDecorator):
-    backend_class = Backend
-    
     def definition(self, *perms):
         self.perms = perms
 
@@ -124,5 +137,4 @@ class Default(Controller):
     @auth_perm("bar") # you must have `bar` perms to POST
     async def POST(self, **kwargs):
         return "user can POST\n"
-
 ```

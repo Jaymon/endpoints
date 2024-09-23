@@ -583,7 +583,7 @@ class _WebSocketTestCase(TestCase):
         for x in range(count):
             for c in cs:
                 r = c.get("/")
-                self.assertEqual(c.client_id, r.body)
+                self.assertEqual(c.uuid, r.body)
 
     def test_rapid_requests(self):
         """We were dropping requests when making a whole bunch of websocket

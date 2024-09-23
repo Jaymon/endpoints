@@ -14,18 +14,14 @@ class AuthDecorator(ControllerDecorator):
     used on its own if you want, but I would look at using the other decorators
     first before deciding to use this one
 
-    the Request .get_auth_client(), .get_auth_basic(), .get_auth_schem(), and 
-    .get_auth_bearer() methods and .access_token property should come in handy
-    here
-
     :example:
         # create a token auth decorator
         from endpoints import Controller
         from endpoints.decorators.auth import auth
 
         def target(controller, *args, **kwargs):
-            if controller.request.access_token != "foo":
-                raise ValueError("invalid access token")
+            if controller.request.get_bearer_token() != "foo":
+                raise ValueError("invalid bearer token")
 
         class Default(Controller):
             @AuthDecorator(target=target)
@@ -64,7 +60,7 @@ class AuthDecorator(ControllerDecorator):
         elif isinstance(e, NotImplementedError):
             raise CallError(
                 403,
-                "You need a validator function to use authentication"
+                "You need a target function to use authentication"
             ) from e
 
         else:
@@ -76,9 +72,8 @@ class AuthDecorator(ControllerDecorator):
 
 
 class auth_basic(AuthDecorator):
-    """
-    handy basic auth decorator that checks for username, password in an auth
-    header
+    """Auth decorator that checks for username, password in an Authorization
+    basic header
 
     :example:
 
@@ -112,48 +107,8 @@ class auth_basic(AuthDecorator):
         }
 
 
-class auth_client(auth_basic):
-    """
-    handy OAuth client auth decorator that checks for client_id and
-    client_secret
-
-    :example:
-
-        # create a client auth decorator
-        from endpoints import Controller
-        from endpoints.decorators.auth import auth_client
-
-        def target(controller, client_id, client_secret):
-            return client_id == "foo" and client_secret == "bar"
-
-        class Default(Controller):
-            @auth_client(target=target)
-            def GET(self):
-                return "hello world"
-    """
-    async def handle_kwargs(self, controller, **kwargs):
-        client_id, client_secret = controller.get_client_tokens(
-            *kwargs["controller_args"],
-            **kwargs["controller_kwargs"]
-        )
-
-        if not client_id:
-            raise ValueError("client_id is required")
-
-        if not client_secret:
-            raise ValueError("client_secret is required")
-
-        return {
-            "controller": controller,
-            "client_id": client_id,
-            "client_secret": client_secret,
-        }
-
-
-class auth_token(AuthDecorator):
-    """
-    handy token auth decorator that checks for access_token in an
-    authorization Bearer header
+class auth_bearer(AuthDecorator):
+    """Auth decorator that checks for token in an authorization Bearer header
 
     :example:
 
@@ -161,8 +116,8 @@ class auth_token(AuthDecorator):
         from endpoints import Controller
         from endpoints.decorators.auth import auth_token
 
-        def target(controller, access_token):
-            return access_token == "foo"
+        def target(controller, token):
+            return token == "foo"
 
         class Default(Controller):
             @auth_token(target=target)
@@ -172,16 +127,12 @@ class auth_token(AuthDecorator):
     scheme = AccessDenied.SCHEME_BEARER
 
     async def handle_kwargs(self, controller, **kwargs):
-        access_token = controller.get_access_token(
-            *kwargs["controller_args"],
-            **kwargs["controller_kwargs"]
-        )
-
-        if not access_token:
-            raise ValueError("access_token is required")
+        token = controller.request.get_auth_bearer()
+        if not token:
+            raise ValueError("Authorization bearer token is required")
 
         return {
             "controller": controller,
-            "access_token": access_token,
+            "token": token,
         }
 

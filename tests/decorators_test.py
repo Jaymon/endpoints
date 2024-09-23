@@ -20,15 +20,13 @@ from endpoints.decorators.base import (
 from endpoints.decorators.limit import (
     RateLimitDecorator,
     ratelimit_ip,
-    ratelimit_access_token,
     ratelimit_param,
     ratelimit_param_ip,
 )
 from endpoints.decorators.auth import (
     AuthDecorator,
     auth_basic,
-    auth_client,
-    auth_token,
+    auth_bearer,
 )
 from endpoints.decorators.utils import (
     httpcache,
@@ -47,6 +45,19 @@ from . import (
 
 
 class TestCase(IsolatedAsyncioTestCase):
+    def get_basic_auth_header(self, username, password):
+        credentials = Base64.encode('{}:{}'.format(username, password))
+        return 'Basic {}'.format(credentials)
+
+    def get_bearer_auth_header(self, token):
+        return 'Bearer {}'.format(token)
+
+    def set_bearer_auth_header(self, request, token):
+        request.set_header(
+            "Authorization",
+            self.get_bearer_auth_header(token)
+        )
+
     def create_controller(self, *methods):
         """Create a fake controller to make it easier to test controller
         decorators
@@ -156,9 +167,6 @@ class BackendDecoratorTest(TestCase):
 
 
 class RateLimitTest(TestCase):
-    def set_bearer_auth_header(self, request, access_token):
-        request.set_header("authorization", 'Bearer {}'.format(access_token))
-
     def rollback_now(self, method, ttl):
         """Rolls back the "date" time on the decorator so expiration can be
         tested, this is better than calling time.sleep
@@ -247,39 +255,6 @@ class RateLimitTest(TestCase):
 
         self.rollback_now(o.foo, 1)
         o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
-        r = await o.foo()
-        self.assertEqual(1, r)
-
-    async def test_ratelimit_access_token(self):
-        @ratelimit_access_token(limit=2, ttl=1)
-        def foo(self):
-            return 1
-
-        o = self.create_controller(foo)
-        self.set_bearer_auth_header(o.request, "footoken")
-        o.request.path = "/footoken"
-
-        o.request.set_header("X_FORWARDED_FOR", "1.1.1.1")
-        await o.foo()
-
-        o.request.set_header("X_FORWARDED_FOR", "1.1.1.2")
-        await o.foo()
-
-        with self.assertRaises(CallError) as cm:
-            await o.foo()
-        self.assertEqual(429, cm.exception.code)
-
-        # make sure another request gets through just fine
-        orig_r = o.request
-        o.request = Request()
-        o.request.path = "/footoken"
-        self.set_bearer_auth_header(o.request, "footoken2")
-        await o.foo()
-        o.request = orig_r
-
-        self.rollback_now(o.foo, 1)
-        self.set_bearer_auth_header(o.request, "footoken")
-        o.request.set_header("X_FORWARDED_FOR", "1.1.1.3")
         r = await o.foo()
         self.assertEqual(1, r)
 
@@ -375,10 +350,6 @@ class RateLimitTest(TestCase):
                 def rl_param(self, **kwargs):
                     return 4
 
-                @ratelimit_access_token()
-                def rl_access_token(self):
-                    return 5
-
             o = MockObject()
 
             with self.assertRaises(CallError):
@@ -389,9 +360,6 @@ class RateLimitTest(TestCase):
 
             with self.assertRaises(CallError):
                 await o.rl_param(bar=1)
-
-            with self.assertRaises(CallError):
-                await o.rl_access_token()
 
     async def test_async(self):
         @ratelimit_ip()
@@ -406,42 +374,25 @@ class RateLimitTest(TestCase):
         async def rl_param(self, **kwargs):
             return 4
 
-        @ratelimit_access_token()
-        async def rl_access_token(self):
-            return 5
-
         o = self.create_controller(
             rl_ip,
             rl_param_ip,
             rl_param,
-            rl_access_token
         )
 
         self.assertEqual(2, await o.rl_ip())
         self.assertEqual(3, await o.rl_param_ip(bar=1))
         self.assertEqual(4, await o.rl_param(bar=1))
-        self.assertEqual(5, await o.rl_access_token())
 
 
 class AuthDecoratorTest(TestCase):
-    def get_basic_auth_header(self, username, password):
-        credentials = Base64.encode('{}:{}'.format(username, password))
-        return 'Basic {}'.format(credentials)
-
-    def get_bearer_auth_header(self, access_token):
-        return 'Bearer {}'.format(access_token)
-
     async def test_bad_setup(self):
         async def target(*args, **kwargs):
             return False
 
         class MockObject(object):
-            @auth_token(target=target)
-            def foo_token(self):
-                pass
-
-            @auth_client(target=target)
-            async def foo_client(self):
+            @auth_bearer(target=target)
+            def foo_bearer(self):
                 pass
 
             @auth_basic(target=target)
@@ -451,22 +402,22 @@ class AuthDecoratorTest(TestCase):
         c = MockObject()
         c.request = Request()
 
-        for m in ["foo_token", "foo_client", "foo_basic"]: 
+        for m in ["foo_bearer", "foo_basic"]: 
             with self.assertRaises(AccessDenied):
                 await getattr(c, m)()
 
-    async def test_auth_token(self):
-        async def target(controller, access_token):
-            if access_token == "foo":
+    async def test_auth_bearer(self):
+        async def target(controller, token):
+            if token == "foo":
                 raise ValueError()
 
-            if access_token == "bar":
+            if token == "bar":
                 return True
 
-            elif access_token == "che":
+            elif token == "che":
                 return False
 
-        @auth_token(target=target)
+        @auth_bearer(target=target)
         def foo(self, **kwargs):
             pass
 
@@ -486,54 +437,6 @@ class AuthDecoratorTest(TestCase):
         await c.foo()
 
         c.request = Request()
-
-        with self.assertRaises(AccessDenied):
-            await c.foo(access_token="foo")
-
-        await c.foo(access_token="bar")
-
-    async def test_auth_client_header(self):
-        async def target(controller, client_id, client_secret):
-            return client_id == "foo" and client_secret == "bar"
-
-        @auth_client(target=target)
-        async def foo(self):
-            pass
-
-        c = self.create_controller(foo)
-
-        c.request.set_header(
-            'authorization',
-            self.get_basic_auth_header("foo", "...")
-        )
-        with self.assertRaises(AccessDenied):
-            await c.foo()
-
-        c.request.set_header(
-            'authorization',
-            self.get_basic_auth_header("foo", "bar")
-        )
-        await c.foo()
-
-    async def test_auth_client_kwargs(self):
-        async def target(controller, client_id, client_secret):
-            return client_id == "foo" and client_secret == "bar"
-
-        @auth_client(target=target)
-        async def foo(self, **kwargs):
-            pass
-
-        c = self.create_controller(foo)
-        kwargs = {
-            "client_id": "foo",
-            "client_secret": "..."
-        }
-
-        with self.assertRaises(AccessDenied):
-            await c.foo()
-
-        kwargs["client_secret"] = "bar"
-        await c.foo(**kwargs)
 
     async def test_auth_basic_simple(self):
         async def target(controller, username, password):
@@ -666,15 +569,11 @@ class AuthDecoratorTest(TestCase):
         async def foo_basic(self):
             raise ValueError("foo_basic")
 
-        @auth_client(target=target)
-        async def foo_client(self):
-            raise ValueError("foo_client")
-
-        @auth_token(target=target)
+        @auth_bearer(target=target)
         async def foo_token(self):
             raise ValueError("foo_token")
 
-        c = self.create_controller(foo_basic, foo_client, foo_token)
+        c = self.create_controller(foo_basic, foo_token)
 
         c.request = self.mock(
             get_auth_basic=("foo", "bar"),
@@ -683,9 +582,6 @@ class AuthDecoratorTest(TestCase):
 
         with self.assertRaises(ValueError):
             await c.foo_basic()
-
-        with self.assertRaises(ValueError):
-            await c.foo_client()
 
         with self.assertRaises(ValueError):
             await c.foo_token()
