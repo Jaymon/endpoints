@@ -26,7 +26,6 @@ That's it, now any unique ip request to `/` will be limited to 10 request every 
 ## The Limit Decorators
 
 * `ratelimit_ip` - limit requests for a unique ip address.
-* `ratelimit_access_token` - limit requests for a unique _access_token_.
 * `ratelimit_param` - limit requests to a certain parameter.
 * `ratelimit_param_ip` - limit requests to a certain parameter and a unique ip address.
 
@@ -68,4 +67,3 @@ class Default(Controller):
     async def POST(self):
         return "POST users limit and ttl passed into backend"
 ```
-

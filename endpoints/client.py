@@ -238,32 +238,16 @@ class HTTPClient(object):
 #         auth_string = 'Basic {}'.format(credentials())
 #         self.headers['authorization'] = auth_string
 
-    def token_auth(self, access_token):
+    def bearer_auth(self, token):
         """add bearer TOKEN auth to this client"""
-        self.headers['authorization'] = 'Bearer {}'.format(access_token)
-
-    def remove_auth(self):
-        """Clear the authentication header and any authentication parameters"""
-        self.headers.pop("Authorization", None)
-        query = getattr(self, "query", {})
-        for k in ["client_id", "client_secret", "access_token"]:
-            query.pop(k, None)
-        self.query = query
+        self.headers['authorization'] = 'Bearer {}'.format(token)
 
     def clear_auth(self):
         return self.remove_auth()
 
-    def basic_oauth_query(self, client_id, client_secret):
-        self.remove_auth()
-        query = getattr(self, "query", {})
-        query.update({"client_id": client_id, "client_secret": client_secret})
-        self.query = query
-
-    def token_oauth_query(self, access_token):
-        self.remove_auth()
-        query = getattr(self, "query", {})
-        query.update({"access_token": access_token})
-        self.query = query
+    def remove_auth(self):
+        """Clear the authentication header and any authentication parameters"""
+        self.headers.pop("Authorization", None)
 
     def set_version(self, version):
         self.headers["accept"] = "{};version={}".format(
@@ -305,9 +289,7 @@ class WebSocketClient(HTTPClient):
         # consisting of a randomly selected 16-byte value that has been
         # base64-encoded.  The nonce MUST be selected randomly for each
         # connection.
-        self.client_id = Base64.encode(uuid.uuid4().bytes)
-        #self.client_id = Base64.encode(String(id(self)))
-        #self.client_id = Base64.encode(os.urandom(16))
+        self.uuid = Base64.encode(uuid.uuid4().bytes)
         self.send_count = 0
         self.attempts = kwargs.pop("attempts", self.attempts)
 
@@ -336,7 +318,7 @@ class WebSocketClient(HTTPClient):
 
     def get_fetch_headers(self, method, headers):
         headers = super().get_fetch_headers(method, headers)
-        headers.setdefault("Sec-WebSocket-Key", self.client_id)
+        headers.setdefault("Sec-WebSocket-Key", self.uuid)
         return headers
 
     def get_fetch_host(self):
@@ -373,7 +355,7 @@ class WebSocketClient(HTTPClient):
         self.set_trace(kwargs.pop("trace", False))
 
         try:
-            logger.debug("{} connecting to {}".format(self.client_id, ws_url))
+            logger.debug("{} connecting to {}".format(self.uuid, ws_url))
             self.ws = websocket.create_connection(
                 ws_url,
                 header=dict(ws_headers),
@@ -387,7 +369,7 @@ class WebSocketClient(HTTPClient):
             if ret.code >= 400:
                 raise IOError("Failed to connect with code {}".format(ret.code))
 
-            logger.debug("{} connected to {}".format(self.client_id, ws_url))
+            logger.debug("{} connected to {}".format(self.uuid, ws_url))
 
         except websocket.WebSocketTimeoutException as e:
             raise IOError(
@@ -410,7 +392,7 @@ class WebSocketClient(HTTPClient):
         payload_body = self.get_fetch_query({})
         payload_body.update(self.get_fetch_body(body))
 
-        kwargs.setdefault("uuid", self.client_id)
+        kwargs.setdefault("uuid", self.uuid)
 
         p = self.application_class.get_websocket_dumps(
             method=method.upper(),
@@ -441,7 +423,7 @@ class WebSocketClient(HTTPClient):
         payload_body.update(body)
 
         self.send_count += 1
-        uuid = self.client_id
+        uuid = self.uuid
         payload = self.get_fetch_request(
             method,
             path,
@@ -466,7 +448,7 @@ class WebSocketClient(HTTPClient):
 
                         logger.debug(
                             '{} send {} attempt {}/{} with timeout {}'.format(
-                                self.client_id,
+                                self.uuid,
                                 uuid,
                                 attempt,
                                 max_attempts,
@@ -476,7 +458,7 @@ class WebSocketClient(HTTPClient):
 
                         sent_bits = self.ws.send(payload)
                         logger.debug('{} sent {} bytes'.format(
-                            self.client_id,
+                            self.uuid,
                             sent_bits
                         ))
                         if sent_bits:
@@ -489,7 +471,7 @@ class WebSocketClient(HTTPClient):
 
             except (IOError, TypeError) as e:
                 logger.debug('{} error on send attempt {}: {}'.format(
-                    self.client_id,
+                    self.uuid,
                     attempt,
                     e
                 ))
@@ -510,7 +492,7 @@ class WebSocketClient(HTTPClient):
                         timeout *= 2
                         if (attempt / max_attempts) > 0.50:
                             logger.debug(" ".join([
-                                f"{self.client_id} closing and re-opening",
+                                f"{self.uuid} closing and re-opening",
                                 "connection for next attempt",
                             ]))
                             self.close()
@@ -529,7 +511,7 @@ class WebSocketClient(HTTPClient):
             ret = res_payload.uuid == uuid
             if ret:
                 logger.debug('{} received {} response for {}'.format(
-                    self.client_id,
+                    self.uuid,
                     res_payload.code,
                     res_payload.uuid,
                 ))
@@ -572,7 +554,7 @@ class WebSocketClient(HTTPClient):
 
             with self.wstimeout(timeout, **kwargs) as timeout:
                 logger.debug('{} waiting to receive for {} seconds'.format(
-                    self.client_id,
+                    self.uuid,
                     timeout
                 ))
                 try:

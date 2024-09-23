@@ -169,25 +169,6 @@ class ratelimit_ip(RateLimitDecorator):
         return ret
 
 
-class ratelimit_access_token(RateLimitDecorator):
-    """Limit by the requested client's access token, because certain endpoints
-    can only be requested a certain amount of times for the given access token
-    """
-    async def normalize_key(self, controller, **kwargs):
-        access_token = controller.get_access_token(
-            *kwargs["controller_args"],
-            **kwargs["controller_kwargs"]
-        )
-
-        if self.path_in_key:
-            ret = "{}{}".format(access_token, controller.request.path)
-
-        else:
-            ret = access_token
-
-        return ret
-
-
 class ratelimit_param(RateLimitDecorator):
     """this will limit on a parameter value. So, for example, if you want to
     limit login attempts for an email address you would pass in "email" to this
