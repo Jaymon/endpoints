@@ -840,7 +840,7 @@ class RequestBody(OpenABC):
         super().set_keys(**kwargs)
 
         for reflect_param in self.reflect_method.reflect_body_params():
-            request_body.add_param(reflect_param)
+            self.add_param(reflect_param)
 
     def get_content_value(self, **kwargs):
         return {
@@ -1211,41 +1211,21 @@ class Components(OpenABC):
 
     _pathItems = Field(dict[str, PathItem|Reference])
 
-    def get_security_schemas_value(self, **kwargs):
-        security_schemas = {}
+    def get_security_schemes_value(self, **kwargs):
+        schemas = {}
+        class_key = "security_scheme_class"
 
-        methods = [
-            self.get_security_auth_basic_value,
-            self.get_security_auth_client_value,
-            self.get_security_auth_token_value,
-        ]
-        for method in methods:
-            security_schemas.update(method(**kwargs))
-
-        return security_schemas
-
-    def get_security_auth_basic_value(self, **kwargs):
-        schema = self.create_instance(
-            "security_schema_class",
-            **kwargs
-        )
+        schema = self.create_instance(class_key, **kwargs)
         schema["type"] = "http"
         schema["scheme"] = "basic"
-        return {"auth_basic": schema}
+        schemas["auth_basic"] = schema
 
-    def get_security_auth_client_value(self, **kwargs):
-        # client_id and client_secret
-        schema = self.get_security_auth_basic_value(**kwargs)
-        return {"auth_client": schema.pop("auth_basic")}
-
-    def get_security_auth_token_value(self, **kwargs):
-        schema = self.create_instance(
-            "security_schema_class",
-            **kwargs
-        )
+        schema = self.create_instance(class_key, **kwargs)
         schema["type"] = "http"
         schema["scheme"] = "bearer"
-        return {"auth_token": schema}
+        schemas["auth_bearer"] = schema
+
+        return schemas
 
 
 class OpenAPI(OpenABC):
@@ -1281,8 +1261,13 @@ class OpenAPI(OpenABC):
 
     _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
 
-    def init_instance(self, application, **kwargs):
+    def __init__(self, application, **kwargs):
+        """
+        NOTE -- this has to override __init__ because it takes the application
+        as the first argument, something none of the other OpenABC children
+        do"""
         self.application = application
+        super().__init__(None, **kwargs)
 
 #     def write_yaml(self, directory):
 #         """Writes openapi.yaml file to directory
