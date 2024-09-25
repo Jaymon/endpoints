@@ -426,14 +426,6 @@ class Pathfinder(ClasspathFinder):
                 key = kwargs["class"].get_name()
                 keys = kwargs["keys"] + [key]
 
-            logger.debug(
-                "Registering path: /{} to controller: {}:{}".format(
-                    "/".join(keys),
-                    kwargs["class"].__module__,
-                    kwargs["class"].__qualname__
-                )
-            )
-
         else:
             key = NamingConvention(key).kebabcase()
 
@@ -441,6 +433,19 @@ class Pathfinder(ClasspathFinder):
 
         if "class" in value:
             value["method_names"] = value["class"].get_method_names()
+
+            logger.debug(
+                (
+                    "Registering verbs: {}"
+                    " to path: /{}"
+                    " and controller: {}:{}"
+                ).format(
+                    ", ".join(value["method_names"].keys()),
+                    "/".join(keys),
+                    value["class"].__module__,
+                    value["class"].__qualname__
+                )
+            )
 
         return key, value
 

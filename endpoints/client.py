@@ -33,7 +33,18 @@ logger = logging.getLogger(__name__)
 
 
 class HTTPClient(object):
-    """A generic test client that can make endpoints requests"""
+    """A generic test client that can make endpoints requests
+
+    You can add headers to every request with the instance's .headers
+    property:
+
+        self.headers["Foo-Bar"] = "..."
+
+    You can add query params to every request with the instance's .query
+    property:
+
+        self.query["foo_bar"] = "..."
+    """
     timeout = 10
 
     def __init__(self, host, *args, **kwargs):
@@ -59,6 +70,7 @@ class HTTPClient(object):
             self.headers.update(headers)
 
         self.timeout = kwargs.get("timeout", self.timeout)
+        self.query = {}
 
     def set_json_request(self, value="application/json"):
         self.headers.set_header("content-type", value)
@@ -101,7 +113,9 @@ class HTTPClient(object):
         wrapper method that all the top level methods (get, post, etc.) use to actually
         make the request
         """
-        if not query: query = {}
+        if not query:
+            query = {}
+
         fetch_url = self.get_fetch_url(uri, query)
 
         args = [fetch_url]
@@ -122,8 +136,7 @@ class HTTPClient(object):
         return res
 
     def get_fetch_query(self, query):
-        ret = getattr(self, "query", {})
-        if not ret: ret = {}
+        ret = getattr(self, "query", {}) or {}
         if query:
             ret.update(query)
         return ret
