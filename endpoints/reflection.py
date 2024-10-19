@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+import re
 import itertools
 from collections import defaultdict
 import inspect
@@ -14,6 +15,7 @@ from types import (
 )
 import json
 import datetime
+import logging
 
 from datatypes import (
     ReflectClass,
@@ -25,10 +27,14 @@ from datatypes import (
     NamingConvention,
     ClassFinder,
 )
+from datatypes.reflection import ReflectObject
 
 from .compat import *
 from .utils import Url, JSONEncoder
 from .config import environ
+
+
+logger = logging.getLogger(__name__)
 
 
 class ReflectController(ReflectClass):
@@ -45,30 +51,70 @@ class ReflectController(ReflectClass):
             yield N GET methods, etc.
         """
         method_names = self.value["method_names"]
+        if http_verb:
+            items = []
+            if http_verb in method_names:
+                items.append((http_verb, method_names[http_verb]))
 
-        for method_prefix, method_names in method_names.items():
-            if not http_verb or method_prefix == http_verb:
-                for method_name in method_names:
-                    yield self.create_reflect_http_method_instance(
-                        method_prefix,
-                        name=method_name
-                    )
+        else:
+            items = method_names.items()
+
+        for method_prefix, method_names in items:
+            for method_name in method_names:
+                yield self.create_reflect_http_method_instance(
+                    method_prefix,
+                    name=method_name
+                )
+
+#         for method_prefix, method_names in method_names.items():
+#             if not http_verb or method_prefix == http_verb:
+#                 for method_name in method_names:
+#                     yield self.create_reflect_http_method_instance(
+#                         method_prefix,
+#                         name=method_name
+#                     )
 
     def create_reflect_http_method_instance(self, http_verb, **kwargs):
         """Creates ReflectMethod instances which are exclusively for
         a Controller's METHOD_* methods that handle requests"""
         target = self.get_target()
-        kwargs.setdefault("target_class", target)
         return kwargs.get("reflect_http_method_class", ReflectMethod)(
             getattr(target, kwargs["name"]),
             http_verb,
             self,
-            **kwargs
+            target_class=target,
+            name=kwargs["name"]
         )
 
     def get_url_path(self):
         """Get the root url path for this controller"""
         return "/" + "/".join(self.keys)
+
+    def reflect_url_paths(self):
+        """Returns all the url paths of this controller
+
+        The http methods on the controller can have their own url paths,
+        and OPTIONS is nebulous and should be included on all the paths
+        of this controller. This compiles all the paths and returns
+        `ReflectMethod` instances for each url path
+
+        :returns: dict[str, list[ReflectMethod]]
+        """
+        reflect_options = None
+        for rm in self.reflect_http_methods("OPTIONS"):
+            reflect_options = rm
+            break
+
+        url_paths = defaultdict(list)
+        for rm in self.reflect_http_methods():
+            if rm.http_verb != "OPTIONS":
+                url_path = rm.get_url_path()
+                if reflect_options and url_path not in url_paths:
+                    url_paths[url_path].append(reflect_options)
+
+                url_paths[url_path].append(rm)
+
+        return url_paths
 
 
 class ReflectMethod(ReflectCallable):
@@ -121,14 +167,18 @@ class ReflectMethod(ReflectCallable):
 
     def reflect_path_params(self):
         """This will reflect params that need to be in the path"""
+        rps = []
         for rp in self.reflect_params():
             if not rp.target.is_kwarg:
-                yield rp
+                rps.append(rp)
 
-    def create_reflect_param_instance(self, *args, **kwargs):
+        # now they need to be sorted to make sure they are in order: 0 -> N
+        return sorted(rps, key=lambda rp: rp.get_target().index)
+
+    def create_reflect_param_instance(self, param, **kwargs):
         kwargs["reflect_method"] = self
-        return kwargs.get("reflect_param_class", ReflectParam)(
-            *args,
+        return kwargs.pop("reflect_param_class", ReflectParam)(
+            param,
             **kwargs
         )
 
@@ -139,7 +189,7 @@ class ReflectMethod(ReflectCallable):
         same root path, can have different method paths"""
         return "/".join(
             itertools.chain(
-                self.reflect_class().get_url_path(),
+                [self.reflect_class().get_url_path()],
                 (f"{{{p.name}}}" for p in self.reflect_path_params())
             )
         )
@@ -159,12 +209,24 @@ class ReflectMethod(ReflectCallable):
 
         return names
 
+    def get_version(self):
+        """Get the version for this method"""
+        version = ""
 
-class ReflectParam(object):
+        for rd in self.reflect_ast_decorators():
+            if rd.name == "version":
+                dargs, dkwargs = rd.get_parameters()
+                version = dargs[0]
+                break
+
+        return version
+
+
+class ReflectParam(ReflectObject):
     """Reflects a Param instance"""
     def __init__(self, target, reflect_method, **kwargs):
-        self.target = target
         self._reflect_method = reflect_method
+        super().__init__(target)
 
         if "name" in kwargs:
             self.name = kwargs["name"]
@@ -191,12 +253,18 @@ class ReflectParam(object):
         return self.target.flags.get("required", False)
 
     def reflect_type(self):
-        list_actions = set(["append", "append_list", "store_list"])
-        if self.flags["action"] in list_actions:
+        flags = self.get_target().flags
+        list_actions = set([
+            "store_list",
+            "append",
+            "append_list",
+            "extend",
+        ])
+        if flags["action"] in list_actions:
             t = list
 
         else:
-            t = self.flags.get("type", str)
+            t = flags.get("type", str)
             if t is None:
                 t = str
 
@@ -253,6 +321,9 @@ class OpenFinder(ClassFinder):
 
         class_key = f"{NamingConvention(key.__name__).varname()}_class"
         self.root.class_keys[class_key] = key
+
+    def find_class(self, class_key):
+        return self.root.class_keys[class_key]
 
 
 class OpenEncoder(JSONEncoder):
@@ -319,15 +390,27 @@ class OpenABC(dict):
     """This is used for children to easily get the absolute child class and
     is used in .create_instance"""
 
+    @property
+    def path_str(self):
+        return " -> ".join(
+            (p.__class__.__name__ for p in self.get_traversal_path())
+        )
+
     def __init__(self, parent, *args, **kwargs):
-        if parent:
+        if parent is None:
+            self.root = self
+
+        else:
             self.parent = parent
             self.root = parent.root
 
-        else:
-            self.root = self
-
         super().__init__()
+
+        if parent is None:
+            logger.debug(f"Creating class: {self.__class__.__name__}")
+
+        else:
+            logger.debug(f"Created child: {self.path_str}")
 
         self.init_instance(*args, **kwargs)
         self.set_keys(**kwargs)
@@ -358,9 +441,25 @@ class OpenABC(dict):
 
     def __setitem__(self, key, value):
         if isinstance(value, OpenABC):
-            value.validate()
+            value.validate_fields()
 
         super().__setitem__(key, value)
+
+    def get_traversal_path(self):
+        """Returns the classes/node starting from the root class/node to get
+        to this class/node of the document
+
+        :returns: list[OpenABC]
+        """
+        path = []
+        p = self.parent
+        while p is not None:
+            path.insert(0, p)
+            p = p.parent
+
+        path.append(self)
+
+        return path
 
     def init_instance(self, *args, **kwargs):
         """This is here for children to set arguments the class needs to
@@ -376,6 +475,10 @@ class OpenABC(dict):
 
                 else:
                     if m := field.get_value_method(self, k, field):
+                        logger.debug(
+                            f"Calling {self.path_str}.{m.__name__}"
+                            f" to set {k} key"
+                        )
                         if v := m(**kwargs):
                             self[k] = v
 
@@ -388,18 +491,59 @@ class OpenABC(dict):
                     self["summary"] = self["description"].partition("\n")[0]
 
     def create_instance(self, class_key, *args, **kwargs):
+        """
+        NOTE -- these create_* methods can't be class methods because they
+        pass self in as the first argument to any new instance to make the
+        tree traversable
+        """
         if class_key in kwargs:
             open_class = kwargs[class_key]
 
         else:
-            open_class = self.classfinder.class_keys[class_key]
+            open_class = self.classfinder.find_class(class_key)
 
         return open_class(self, *args, **kwargs)
 
     def create_schema_instance(self, **kwargs):
         return self.create_instance("schema_class", **kwargs)
 
-    def validate(self):
+    def create_object_schema_instance(self):
+        schema = self.create_schema_instance()
+
+        if "type" not in schema:
+            schema["type"] = "object"
+
+        else:
+            if schema["type"] != "object":
+                raise ValueError(
+                    f"Attempted to set type {schema['type']} schema as object"
+                )
+
+        schema["properties"] = {}
+        schema["required"] = []
+
+        return schema
+
+    def create_array_schema_instance(self):
+        """
+        https://json-schema.org/understanding-json-schema/reference/array
+        """
+        schema = self.create_schema_instance()
+
+        if "type" in schema:
+            if schema["type"] != "array":
+                raise ValueError(
+                    f"Attempted to set type {schema['type']} schema as array"
+                )
+
+        else:
+            schema["type"] = "array"
+
+        schema["items"] = self.create_schema_instance()
+
+        return schema
+
+    def validate_fields(self):
         if self.fields:
             for k, field in self.fields.items():
                 if k in self:
@@ -414,12 +558,12 @@ class OpenABC(dict):
 
                     for v in it:
                         if isinstance(v, OpenABC):
-                            v.validate()
+                            v.validate_fields()
 
                 else:
                     if field["required"]:
                         raise KeyError(
-                            f"{self.__class__.__name__}[{k}]"
+                            f"Class {self.path_str} missing {k} key"
                         )
 
 
@@ -577,7 +721,7 @@ class Schema(OpenABC):
     # https://json-schema.org/understanding-json-schema/reference/object
     _properties = Field(dict[str, dict])
     _patternProperties = Field(dict[str, dict])
-    _additionalProperties = Field(bool)
+    _additionalProperties = Field(bool|dict)
     _unevaluatedProperties = Field(bool)
     _required = Field(list[str])
     _propertyNames = Field(dict)
@@ -636,41 +780,73 @@ class Schema(OpenABC):
 
     DIALECT = "https://json-schema.org/draft/2020-12/schema"
 
-    def add_param(self, reflect_param):
-        """Add a param to this object schema"""
-        if self["type"] != "object":
-            raise ValueError(
-                f"Attempted to add param to {self['type']} schema"
-            )
+    def is_type(self, typename):
+        """Helper method that returns True if self's type is typename"""
+        return self["type"] == typename
 
-        if "properties" not in self:
-            self["properties"] = {}
+    def is_object(self):
+        """Helper method that returns True if self is an object schema"""
+        return self.is_type("object")
 
-        schema = self.create_schema_instance()
-        schema.set_param(reflect_param)
-        schema.pop("$schema", None)
+    def is_array(self):
+        """Helper method that returns True if self is an array schema"""
+        return self.is_type("array")
 
-        self["properties"][reflect_param.name] = schema
-
-        if reflect_param.is_required():
-            if "required" not in self:
-                self["required"] = []
-
-            self["required"].append(reflect_param.name)
+#     def add_param(self, reflect_param):
+#         """Add a param to this object schema"""
+#         self.set_object_keys()
+#         self.add_param_to_schema(self, reflect_param)
 
     def set_param(self, reflect_param):
         """Set this schema as this param"""
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
 
+    def set_request_method(self, reflect_method):
+        self.reflect_method = reflect_method
+        self.set_object_keys()
+
+        for reflect_param in reflect_method.reflect_body_params():
+            self.add_param(reflect_param)
+
+    def set_response_method(self, reflect_method):
+        self.reflect_method = reflect_method
+        if rt := self.reflect_method.reflect_return_type():
+            self.set_type(rt)
+
+#     def set_method(self, reflect_method):
+#         self.reflect_method = reflect_method
+# 
+#         for reflect_param in reflect_method.reflect_body_params():
+#             self.add_param(reflect_param)
+#             self.add_param(reflect_param)
+
     def set_type(self, reflect_type):
         """Set this schema as this type"""
         self.reflect_type = reflect_type
         self.update(self.get_type_fields(reflect_type))
 
+    def add_param(self, reflect_param):
+        """Internal method. Children might override .add_param for custom
+        functionality but will still need to add a param to a sub-schema
+
+        :param schema: Schema, usually a sub object schema of self that
+            reflect_param is going be added to
+        :param reflect_param: ReflectParam
+        :returns: Schema
+        """
+        param_schema = self.create_schema_instance()
+        param_schema.set_param(reflect_param)
+        param_schema.pop("$schema", None)
+
+        self["properties"][reflect_param.name] = param_schema
+
+        if reflect_param.is_required():
+            self["required"].append(reflect_param.name)
+
     def get_param_fields(self, reflect_param):
         ret = {}
-        param = reflect_param.target
+        param = reflect_param.get_target()
 
         reflect_type = reflect_param.reflect_type()
         ret.update(self.get_type_fields(reflect_type))
@@ -753,20 +929,40 @@ class Schema(OpenABC):
         elif rt.is_dictish():
             ret["type"] = "object"
 
+            values = []
+            for vt in rt.reflect_value_types():
+                s = self.create_schema_instance()
+                s.set_type(vt)
+                values.append(s)
+
+            if values:
+                if len(values) > 1:
+                    ret["additionalProperties"] = {"anyOf": values}
+
+                else:
+                    ret["additionalProperties"] = values[0]
+
         elif rt.is_listish():
             ret["type"] = "array"
 
             items = []
-            for at in ret.get_value_types():
-                items.append(self.get_type_fields(at))
+            for vt in rt.reflect_value_types():
+                s = self.create_schema_instance()
+                s.set_type(vt)
+                items.append(s)
 
             if items:
-                if len(items) > 1:
-                    # https://stackoverflow.com/a/70863145
-                    ret["items"] = {"anyOf": items}
+                if rt.is_tuple():
+                    # https://json-schema.org/understanding-json-schema/reference/array#tupleValidation
+                    ret["prefixItems"] = items
 
                 else:
-                    ret.append({"items": items[0]})
+                    if len(items) > 1:
+                        # https://stackoverflow.com/a/70863145
+                        ret["items"] = {"anyOf": items}
+
+                    else:
+                        ret["items"] = items[0]
 
         elif rt.is_type(uuid.UUID):
             ret["type"] = "string"
@@ -790,6 +986,54 @@ class Schema(OpenABC):
 
         return ret
 
+    def set_object_keys(self):
+        """Internal method. Children need to create sub-schemas of type object
+        and this makes that possible
+
+        :returns: Schema
+        """
+        if "type" not in self:
+            self["type"] = "object"
+
+        else:
+            if self["type"] != "object":
+                raise ValueError(
+                    f"Attempted to set type {self['type']} schema as object"
+                )
+
+        self.setdefault("properties", {})
+        self.setdefault("required", [])
+
+#         if "properties" not in self:
+#             self["properties"] = {}
+# 
+#         if "required" not in self:
+#             self["required"] = []
+
+#     def init_schema_object(self, schema):
+#         """Internal method. Children need to create sub-schemas of type object
+#         and this makes that possible
+# 
+#         :param schema: Schema, the schema to setup as an object schema
+#         :returns: Schema
+#         """
+#         if "type" not in schema:
+#             schema["type"] = "object"
+# 
+#         else:
+#             if schema["type"] != "object":
+#                 raise ValueError(
+#                     f"Attempted to init type {schema['type']} schema as object"
+#                 )
+# 
+#         if "properties" not in schema:
+#             schema["properties"] = {}
+# 
+#         if "required" not in schema:
+#             schema["required"] = []
+# 
+#         return schema
+
 
 class MediaType(OpenABC):
     """
@@ -807,16 +1051,36 @@ class MediaType(OpenABC):
     # this one has some strange requirements so I'm ignoring it right now
     #_encoding = Field(dict[str, Encoding])
 
-    def add_param(self, reflect_param):
-        if "schema" not in self:
-            self["schema"] = self.create_schema_instance(type="object")
+    def set_request_method(self, reflect_method):
+        """Called from RequestBody"""
+        self["schema"] = self.create_schema_instance()
+        self["schema"].set_request_method(reflect_method)
 
-        self["schema"].add_param(reflect_param)
+    def set_response_method(self, reflect_method):
+        """Called from Response"""
+        self["schema"] = self.create_schema_instance()
+        self["schema"].set_response_method(reflect_method)
 
-    def set_type(self, reflect_type):
-        schema = self.create_schema_instance()
-        schema.set_type(reflect_type)
-        self["schema"] = schema
+#         if "schema" not in self:
+#             self["schema"] = self.create_object_schema_instance()
+# 
+#         self["schema"].set_request_method(reflect_method)
+
+#     def add_param(self, reflect_param):
+#         if "schema" not in self:
+#             self["schema"] = self.create_object_schema_instance()
+# 
+#         self["schema"].add_param(reflect_param)
+
+#         if "schema" not in self:
+#             self["schema"] = self.create_schema_instance()
+# 
+#         self["schema"].set_response_method(reflect_method)
+
+#     def set_type(self, reflect_type):
+#         schema = self.create_schema_instance()
+#         schema.set_type(reflect_type)
+#         self["schema"] = schema
 
 
 class RequestBody(OpenABC):
@@ -829,23 +1093,119 @@ class RequestBody(OpenABC):
 
     _required = Field(bool)
 
-    def init_instance(self, reflect_method, **kwargs):
+#     def init_instance(self, reflect_method, **kwargs):
+#         self.reflect_method = reflect_method
+
+    def set_method(self, reflect_method):
         self.reflect_method = reflect_method
 
-    def add_param(self, reflect_param):
-        for media_type in self["content"].values():
-            media_type.add_param(reflect_param)
+        content = {}
 
-    def set_keys(self, **kwargs):
-        super().set_keys(**kwargs)
+        for media_range in self.get_content_media_ranges(reflect_method):
+            content[media_range] = self.create_instance("media_type_class")
+            content[media_range].set_request_method(reflect_method)
 
-        for reflect_param in self.reflect_method.reflect_body_params():
-            self.add_param(reflect_param)
+        self["content"] = content
 
-    def get_content_value(self, **kwargs):
-        return {
-            "*/*": self.create_instance("media_type_class", **kwargs)
-        }
+#         for media_type in self["content"].values():
+#             media_type.set_request_method(reflect_method)
+
+#     def add_param(self, reflect_param):
+#         for media_type in self["content"].values():
+#             media_type.add_param(reflect_param)
+
+#     def set_keys(self, **kwargs):
+#         super().set_keys(**kwargs)
+#         self.set_method(self.reflect_method)
+
+    def get_content_media_ranges(self, reflect_method):
+        """Get all the media types/ranges this should support
+
+        The media-range and media-type abnfs:
+            media-range = ( "*/*" / ( type "/*" ) / ( type "/" subtype ) )
+                *( OWS ";" OWS parameter )
+            media-type = type "/" subtype *( OWS ";" OWS parameter )
+
+        So media-range is a superset of media-type, and the key values for
+        the content keys can be media-ranges, that's why this is using
+        `*_media_ranges` instead of `*_media_types`
+
+        https://en.wikipedia.org/wiki/Media_type
+
+        :returns: list[str]
+        """
+        return ["*/*"]
+
+#     def get_content_value(self, **kwargs):
+#         content = {}
+# 
+#         for media_range in self.get_content_media_ranges():
+#             content[media_range] = self.create_instance(
+#                 "media_type_class",
+#                 **kwargs
+#             )
+# 
+#         return content
+
+
+class Response(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#response-object
+    """
+    _description = Field(str, required=True)
+
+    _headers = Field(dict[str, Header|Reference])
+
+    _content = Field(dict[str, MediaType])
+
+    _links = Field(dict[str, Link|Reference])
+
+    def init_instance(self, code, **kwargs):
+        self.code = str(code)
+
+    def set_method(self, reflect_method):
+        self.reflect_method = reflect_method
+
+        content = {}
+
+        for media_range in self.get_content_media_ranges(reflect_method):
+            content[media_range] = self.create_instance("media_type_class")
+            content[media_range].set_response_method(reflect_method)
+
+        if content:
+            self["content"] = content
+
+#         for media_type in self["content"].values():
+#             media_type.set_response_method(reflect_method)
+
+#     def set_type(self, reflect_type):
+#         for media_type in self["content"].values():
+#             media_type.set_response_type(reflect_type)
+
+    def get_description_value(self, **kwargs):
+        return f"A {self.code} response"
+
+    def get_content_media_ranges(self, reflect_method):
+        """See RequestBody.get_content_media_ranges"""
+        #rc = self.reflect_method.reflect_class()
+        # support Accept header response:
+        # https://stackoverflow.com/a/62593737
+        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+        media_type = environ.RESPONSE_CONTENT_TYPE
+        if version := reflect_method.get_version():
+            media_type += f"; version={version}"
+        return [media_type]
+
+#     def get_content_value(self, **kwargs):
+#         content = {}
+# 
+#         for media_range in self.get_content_media_ranges():
+#             content[media_range] = self.create_instance(
+#                 "media_type_class",
+#                 **kwargs
+#             )
+# 
+#         return content
 
 
 class Parameter(OpenABC):
@@ -904,50 +1264,6 @@ class Parameter(OpenABC):
         return ret
 
 
-class Response(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#response-object
-    """
-    _description = Field(str, required=True)
-
-    _headers = Field(dict[str, Header|Reference])
-
-    _content = Field(dict[str, MediaType])
-
-    _links = Field(dict[str, Link|Reference])
-
-    def init_instance(self, reflect_method, code, **kwargs):
-        self.reflect_method = reflect_method
-        self.code = str(code)
-
-    def set_type(self, reflect_type):
-        for media_type in self["content"].values():
-            media_type.set_type(reflect_type)
-
-    def set_returns(self, returns):
-        pass
-
-    def get_description_value(self, **kwargs):
-        return f"A {self.code} response"
-
-    def get_content_value(self, **kwargs):
-        #rc = self.reflect_method.reflect_class()
-        # support Accept header response:
-        # https://stackoverflow.com/a/62593737
-        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-        content_type = environ.RESPONSE_CONTENT_TYPE
-        for rd in self.reflect_method.reflect_ast_decorators():
-            if rd.name == "version":
-                dargs, dkwargs = rd.get_parameters()
-                version = dargs[0]
-                content_type += f"; version={version}"
-                break
-
-        return {
-            content_type: self.create_instance("media_type_class")
-        }
-
-
 class SecurityRequirement(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
@@ -959,8 +1275,12 @@ class SecurityRequirement(OpenABC):
         super().set_keys(**kwargs)
 
         for rd in self.reflect_method.reflect_ast_decorators():
-            if rd.name.startswith("auth_"):
-                self[rd.name] = []
+            name = rd.name
+            if name.startswith("auth_"):
+                security_schemes = self.root.components.securitySchemes
+                for scheme_name in security_schemes.keys():
+                    if scheme_name.startswith(name):
+                        self[name] = []
 
 
 class SecurityScheme(OpenABC):
@@ -1023,11 +1343,12 @@ class Operation(OpenABC):
 
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():
-            return self.create_instance(
+            rb = self.create_instance(
                 "request_body_class",
-                self.reflect_method,
                 **kwargs
             )
+            rb.set_method(self.reflect_method)
+            return rb
 
     def get_parameters_value(self, **kwargs):
         parameters = []
@@ -1053,17 +1374,22 @@ class Operation(OpenABC):
 
         return sreqs
 
-    def get_success_responses_value(self):
+    def get_responses_success_value(self):
         responses = {}
+
         if rt := self.reflect_method.reflect_return_type():
-            response = self.create_response_instance("200")
-            response.set_type(rt)
+            if rt.is_none():
+                response = self.create_response_instance("204")
+
+            else:
+                response = self.create_response_instance("200")
+                response.set_method(self.reflect_method)
+
             responses[response.code] = response
 
         elif returns := list(self.reflect_method.reflect_ast_returns()):
-                response = self.create_response_instance("200")
-                response.set_returns(returns)
-                responses[response.code] = response
+            response = self.create_response_instance("200")
+            responses[response.code] = response
 
         else:
             response = self.create_response_instance("204")
@@ -1071,31 +1397,52 @@ class Operation(OpenABC):
 
         return responses
 
-    def get_error_responses_value(self):
+#         response = self.create_response_instance("200")
+#         response.set_method(self.reflect_method)
+#         return {response.code: response}
+
+    def get_responses_error_value(self):
         responses = {}
         for rx in self.reflect_method.reflect_ast_raises():
             if rx.name == "CallError" or rx.name == "CallStop":
                 errargs, errkwargs = rx.get_parameters()
-                response = self.create_response_instance(
-                    errargs[0],
-                    description=errargs[1]
-                )
+                res_kwargs = {}
+
+                if len(errargs) > 1:
+                    res_kwargs["code"] = errargs[0]
+                    if errargs[1]:
+                        res_kwargs["description"] = errargs[1]
+
+                    else:
+                        res_kwargs["description"] = (
+                            "Call error with unparsed description"
+                        )
+
+                elif len(errargs) > 0:
+                    res_kwargs["code"] = errargs[0]
+                    res_kwargs["description"] = "Call error raised"
+
+                else:
+                    res_kwargs["code"] = 500
+                    res_kwargs["description"] = (
+                        "Call error raised with unknown code"
+                    )
+
+                response = self.create_response_instance(**res_kwargs)
                 responses[response.code] = response
 
-            elif rc.name == "ValueError":
-                errargs, errkwargs = rx.get_parameters()
+            elif rx.name == "ValueError":
                 response = self.create_response_instance(
                     "400",
                     description="Missing value"
                 )
                 responses[response.code] = response
 
-
         for rp in self.reflect_method.reflect_params():
             if rp.is_required():
                 response = self.create_response_instance(
                     "400",
-                    description=f"Invalid params"
+                    description="Invalid params"
                 )
                 responses[response.code] = response
                 break
@@ -1112,14 +1459,13 @@ class Operation(OpenABC):
         return responses
 
     def get_responses_value(self, **kwargs):
-        responses = self.get_success_responses_value()
-        responses.update(self.get_error_responses_value())
+        responses = self.get_responses_success_value()
+        responses.update(self.get_responses_error_value())
         return responses
 
     def create_response_instance(self, code, **kwargs):
         return self.create_instance(
             "response_class",
-            self.reflect_method,
             code,
             **kwargs
         )
@@ -1174,19 +1520,6 @@ class PathItem(OpenABC):
                 self[field_name] = op
 
 
-class Paths(OpenABC):
-    def add_controller(self, reflect_controller, **kwargs):
-        for reflect_method in reflect_controller.reflect_http_methods():
-            path = reflect_method.get_url_path()
-            if path not in self:
-                self[path] = self.create_instance(
-                    "path_item_class",
-                    **kwargs
-                )
-
-            self[path].add_method(reflect_method, **kwargs)
-
-
 class Components(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#components-object
@@ -1212,20 +1545,20 @@ class Components(OpenABC):
     _pathItems = Field(dict[str, PathItem|Reference])
 
     def get_security_schemes_value(self, **kwargs):
-        schemas = {}
+        schemes = {}
         class_key = "security_scheme_class"
 
-        schema = self.create_instance(class_key, **kwargs)
-        schema["type"] = "http"
-        schema["scheme"] = "basic"
-        schemas["auth_basic"] = schema
+        scheme = self.create_instance(class_key, **kwargs)
+        scheme["type"] = "http"
+        scheme["scheme"] = "basic"
+        schemes["auth_basic"] = scheme
 
-        schema = self.create_instance(class_key, **kwargs)
-        schema["type"] = "http"
-        schema["scheme"] = "bearer"
-        schemas["auth_bearer"] = schema
+        scheme = self.create_instance(class_key, **kwargs)
+        scheme["type"] = "http"
+        scheme["scheme"] = "bearer"
+        schemes["auth_bearer"] = scheme
 
-        return schemas
+        return schemes
 
 
 class OpenAPI(OpenABC):
@@ -1246,12 +1579,12 @@ class OpenAPI(OpenABC):
 
     _servers = Field(list[Server])
 
+    _components = Field(Components)
+
     _paths = Field(dict[str, PathItem])
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
     """
-
-    _components = Field(Components)
 
     _security = Field(list[SecurityRequirement])
 
@@ -1285,7 +1618,7 @@ class OpenAPI(OpenABC):
         :param directory: str, the directory path
         :returns: str, the path to the openapi.json file
         """
-        self.validate()
+        self.validate_fields()
 
         dp = Dirpath(directory)
         fp = dp.get_file("openapi.json")
@@ -1302,22 +1635,27 @@ class OpenAPI(OpenABC):
 
         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#paths-object
 
-        The keys are the path (starting with /) and the value are a Path Item
-        object
+        The keys are the path (starting with /) and the value is a PathItem
+        instance
 
         :returns: dict[str, PathItem]
         """
         paths = {}
         for reflect_controller in self.reflect_controllers():
-            for reflect_method in reflect_controller.reflect_http_methods():
-                path = reflect_method.get_url_path()
-                if path not in paths:
-                    paths[path] = self.create_instance(
+            url_paths = reflect_controller.reflect_url_paths()
+            for url_path, reflect_methods in url_paths.items(): 
+                if url_path not in paths:
+                    logger.debug(f"Creating {url_path} path item")
+                    paths[url_path] = self.create_instance(
                         "path_item_class",
                         **kwargs
                     )
 
-                paths[path].add_method(reflect_method, **kwargs)
+                for reflect_method in reflect_methods:
+                    logger.debug(
+                        f"Adding {reflect_method.http_verb} {url_path}"
+                    )
+                    paths[url_path].add_method(reflect_method, **kwargs)
 
         return paths
 
@@ -1328,10 +1666,16 @@ class OpenAPI(OpenABC):
         """Reflect all the controllers of this application"""
         pathfinder = self.application.router.pathfinder
         for keys, value in pathfinder.get_class_items():
-            yield self.create_reflect_controller_instance(
+            reflect_controller = self.create_reflect_controller_instance(
                 keys,
                 value
             )
+
+            logger.debug(
+                f"Adding Controller: {reflect_controller.classpath}"
+            )
+
+            yield reflect_controller
 
     def create_reflect_controller_instance(self, keys, value, **kwargs):
         return kwargs.get("reflect_controller_class", ReflectController)(

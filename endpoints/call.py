@@ -238,35 +238,29 @@ class Param(object):
         flags = self.flags
         name = self.name
 
-        try:
-            pdefault = self.normalize_default(flags.get('default', None))
-            prequired = flags['required']
-            dest_name = flags.get('dest', name)
+        pdefault = self.normalize_default(flags.get('default', None))
+        prequired = flags['required']
+        dest_name = flags.get('dest', name)
 
-            has_val = True
-            found_name, val = self.find_kwarg(
-                self.names,
-                prequired,
-                pdefault,
-                kwargs
-            )
-            if found_name:
-                # we are going to replace found_name with dest_name
-                kwargs.pop(found_name)
+        has_val = True
+        found_name, val = self.find_kwarg(
+            self.names,
+            prequired,
+            pdefault,
+            kwargs
+        )
+        if found_name:
+            # we are going to replace found_name with dest_name
+            kwargs.pop(found_name)
 
-            else:
-                # we still want to run a default value through normalization
-                # but if we didn't find a value and don't have a default, don't
-                # set any value
-                has_val = 'default' in flags
+        else:
+            # we still want to run a default value through normalization
+            # but if we didn't find a value and don't have a default, don't
+            # set any value
+            has_val = 'default' in flags
 
-            if has_val:
-                    kwargs[dest_name] = self.normalize_val(val)
-
-        except ValueError as e:
-            raise ValueError(
-                "{} failed with {}".format(name, String(e))
-            ) from e
+        if has_val:
+            kwargs[dest_name] = self.normalize_val(val)
 
         return kwargs
 

@@ -4,7 +4,9 @@ from endpoints.compat import *
 from endpoints.reflection import (
     OpenAPI,
     Field,
+    Schema,
     ReflectController,
+    ReflectType,
 )
 
 from . import TestCase
@@ -38,24 +40,55 @@ class TestCase(TestCase):
         return rps
 
 
+class ReflectControllerTest(TestCase):
+    def test_reflect_url_paths(self):
+        rc = self.create_reflect_controllers("""
+            class Foo(Controller):
+                cors = True
+                @param(0)
+                @param(1)
+                def GET(self, bar, che):
+                    pass
+
+                def POST(self, **kwargs):
+                    pass
+        """)[0]
+
+        url_paths = rc.reflect_url_paths()
+        self.assertEqual(2, len(url_paths))
+
+        verbs = set(rm.http_verb for rm in url_paths["/foo/{bar}/{che}"])
+        self.assertEqual(set(["GET", "OPTIONS"]), verbs)
+
+        verbs = set(rm.http_verb for rm in url_paths["/foo"])
+        self.assertEqual(set(["POST", "OPTIONS"]), verbs)
+
+
 class ReflectMethodTest(TestCase):
     def test_reflect_params(self):
-        server = self.create_server("""
+        rc = self.create_reflect_controllers("""
             class Foo(Controller):
                 @param(0)
                 @param("bar", type=int, help="bar variable")
                 @param("che", type=str, required=False, help="che variable")
                 def POST(self, *args, **kwargs):
                     pass
-        """)
+        """)[0]
 
-        pf = server.application.router.pathfinder
-        keys, value = next(pf.get_class_items())
-        rc = ReflectController(keys, value)
         rm = list(rc.reflect_http_methods("POST"))[0]
         self.assertEqual(3, len(list(rm.reflect_params())))
         self.assertEqual(2, len(list(rm.reflect_body_params())))
         self.assertEqual(1, len(list(rm.reflect_url_params())))
+
+    def test_get_url_path(self):
+        rm = self.create_reflect_methods("""
+            class Foo(Controller):
+                @param(0)
+                @param(1)
+                def POST(self, bar, che):
+                    pass
+        """)[0]
+        self.assertEqual("/foo/{bar}/{che}", rm.get_url_path())
 
 
 class OpenABCTest(TestCase):
@@ -69,7 +102,7 @@ class OpenABCTest(TestCase):
     def test_set_keys(self):
         c = self.create_server("")
         oa = OpenAPI(c.application)
-        self.assertEqual(2, len(oa))
+        self.assertEqual(4, len(oa))
 
     def test_classfinder(self):
         oa = self.create_openapi()
@@ -141,12 +174,11 @@ class OpenAPITest(TestCase):
             oa.paths["/foo"].post.responses["401"]["description"]
         )
 
-    def test_security_schemas(self):
+    def test_security_schemes(self):
         oa = self.create_openapi("")
-        schemas = oa.components.securitySchemas
-        self.assertTrue("auth_basic" in schemas)
-        self.assertTrue("auth_client" in schemas)
-        self.assertTrue("auth_token" in schemas)
+        schemes = oa.components.securitySchemes
+        self.assertTrue("auth_basic" in schemes)
+        self.assertTrue("auth_bearer" in schemes)
 
     def test_security_requirement(self):
         oa = self.create_openapi("""
@@ -206,4 +238,23 @@ class OpenAPITest(TestCase):
 
         dp = self.create_dir()
         oa.write_json(dp)
+
+    def test_multiple_path_with_options(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                cors = True
+                @param(0)
+                @param(1)
+                def GET(self, bar, che):
+                    pass
+        """)
+
+
+class SchemaTest(TestCase):
+    def test_list_value_types(self):
+        rt = ReflectType(list[dict[str, int]|tuple[float, float]])
+        schema = Schema(None)
+        schema.set_type(rt)
+        self.assertTrue(schema.is_array())
+        self.assertEqual(2, len(schema["items"]["anyOf"]))
 
