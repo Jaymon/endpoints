@@ -39,6 +39,10 @@ logger = logging.getLogger(__name__)
 
 class ReflectController(ReflectClass):
     def __init__(self, keys, value):
+        """
+        :param keys: list[str], the Controller path keys used in Pathfinder
+        :param value: dict[str, Any], the Controller information in Pathfinder
+        """
         super().__init__(value["class"])
         self.keys = keys
         self.value = value
@@ -65,14 +69,6 @@ class ReflectController(ReflectClass):
                     method_prefix,
                     name=method_name
                 )
-
-#         for method_prefix, method_names in method_names.items():
-#             if not http_verb or method_prefix == http_verb:
-#                 for method_name in method_names:
-#                     yield self.create_reflect_http_method_instance(
-#                         method_prefix,
-#                         name=method_name
-#                     )
 
     def create_reflect_http_method_instance(self, http_verb, **kwargs):
         """Creates ReflectMethod instances which are exclusively for
@@ -166,7 +162,7 @@ class ReflectMethod(ReflectCallable):
                 yield rp
 
     def reflect_path_params(self):
-        """This will reflect params that need to be in the path"""
+        """This will reflect params that need to be in the url path"""
         rps = []
         for rp in self.reflect_params():
             if not rp.target.is_kwarg:
@@ -223,7 +219,10 @@ class ReflectMethod(ReflectCallable):
 
 
 class ReflectParam(ReflectObject):
-    """Reflects a Param instance"""
+    """Reflects a Param instance
+
+    Reflected params only apply to http methods on controllers
+    """
     def __init__(self, target, reflect_method, **kwargs):
         self._reflect_method = reflect_method
         super().__init__(target)
@@ -253,6 +252,7 @@ class ReflectParam(ReflectObject):
         return self.target.flags.get("required", False)
 
     def reflect_type(self):
+        """Reflect the param's type argument if present"""
         flags = self.get_target().flags
         list_actions = set([
             "store_list",
@@ -327,17 +327,16 @@ class OpenFinder(ClassFinder):
 
 
 class OpenEncoder(JSONEncoder):
+    """Specific json settings to make it easier to read and edit manually
+
+    See OpenAPI.write_json
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
 
         self.item_separator = ": "
         self.indent = 2
         self.sort_keys = True
-
-#     def encode(self, o):
-#         pout.v(type(o))
-#         return super().encode(o)
-
 
 
 class OpenABC(dict):
@@ -353,8 +352,8 @@ class OpenABC(dict):
             child that overrides this method *should* call super
         * define `get_<FIELDNAME>_value(**kwargs)`, this method should always
             take `**kwargs` and it should return whatever the value the
-            child wants for that key. The majority of customizations will
-            probably be in these methods
+            child wants for that key in the instance. The majority of
+            customizations will probably be in these methods
 
     You should always create OpenABC instances using:
 
@@ -683,7 +682,8 @@ class Server(OpenABC):
 
 
 class Schema(OpenABC):
-    """
+    """Represents a JSON Schema
+
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
 
     Validation is based off of:
@@ -792,17 +792,14 @@ class Schema(OpenABC):
         """Helper method that returns True if self is an array schema"""
         return self.is_type("array")
 
-#     def add_param(self, reflect_param):
-#         """Add a param to this object schema"""
-#         self.set_object_keys()
-#         self.add_param_to_schema(self, reflect_param)
-
     def set_param(self, reflect_param):
         """Set this schema as this param"""
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
 
     def set_request_method(self, reflect_method):
+        """This is called from RequestBody and is the main hook into
+        customizing and extending the request schema for child projects"""
         self.reflect_method = reflect_method
         self.set_object_keys()
 
@@ -810,16 +807,11 @@ class Schema(OpenABC):
             self.add_param(reflect_param)
 
     def set_response_method(self, reflect_method):
+        """Called from Response and is the main hook into customizing and
+        extending the response schema for child projects"""
         self.reflect_method = reflect_method
         if rt := self.reflect_method.reflect_return_type():
             self.set_type(rt)
-
-#     def set_method(self, reflect_method):
-#         self.reflect_method = reflect_method
-# 
-#         for reflect_param in reflect_method.reflect_body_params():
-#             self.add_param(reflect_param)
-#             self.add_param(reflect_param)
 
     def set_type(self, reflect_type):
         """Set this schema as this type"""
@@ -845,6 +837,7 @@ class Schema(OpenABC):
             self["required"].append(reflect_param.name)
 
     def get_param_fields(self, reflect_param):
+        """Internal method. Returns the schema fields for a param"""
         ret = {}
         param = reflect_param.get_target()
 
@@ -868,7 +861,13 @@ class Schema(OpenABC):
         return ret
 
     def get_size_fields(self, schema_type, min_size, max_size):
-        """
+        """Internal method. Returns the size fields for schema_type
+
+        :param schema_type: str, corresponds to `._type` field choice values
+        :param min_size: int
+        :param max_size: int
+        :returns: dict[str, int], the key names will vary according to the
+            `schema_type`
         """
         ret = {}
 
@@ -907,7 +906,7 @@ class Schema(OpenABC):
         return ret
 
     def get_type_fields(self, reflect_type):
-        """Convert a python type t to a JSON Schema type
+        """Internal method. Convert a python type to a JSON Schema type
 
         https://json-schema.org/understanding-json-schema/reference/type
         """
@@ -1004,36 +1003,6 @@ class Schema(OpenABC):
         self.setdefault("properties", {})
         self.setdefault("required", [])
 
-#         if "properties" not in self:
-#             self["properties"] = {}
-# 
-#         if "required" not in self:
-#             self["required"] = []
-
-#     def init_schema_object(self, schema):
-#         """Internal method. Children need to create sub-schemas of type object
-#         and this makes that possible
-# 
-#         :param schema: Schema, the schema to setup as an object schema
-#         :returns: Schema
-#         """
-#         if "type" not in schema:
-#             schema["type"] = "object"
-# 
-#         else:
-#             if schema["type"] != "object":
-#                 raise ValueError(
-#                     f"Attempted to init type {schema['type']} schema as object"
-#                 )
-# 
-#         if "properties" not in schema:
-#             schema["properties"] = {}
-# 
-#         if "required" not in schema:
-#             schema["required"] = []
-# 
-#         return schema
-
 
 class MediaType(OpenABC):
     """
@@ -1061,27 +1030,6 @@ class MediaType(OpenABC):
         self["schema"] = self.create_schema_instance()
         self["schema"].set_response_method(reflect_method)
 
-#         if "schema" not in self:
-#             self["schema"] = self.create_object_schema_instance()
-# 
-#         self["schema"].set_request_method(reflect_method)
-
-#     def add_param(self, reflect_param):
-#         if "schema" not in self:
-#             self["schema"] = self.create_object_schema_instance()
-# 
-#         self["schema"].add_param(reflect_param)
-
-#         if "schema" not in self:
-#             self["schema"] = self.create_schema_instance()
-# 
-#         self["schema"].set_response_method(reflect_method)
-
-#     def set_type(self, reflect_type):
-#         schema = self.create_schema_instance()
-#         schema.set_type(reflect_type)
-#         self["schema"] = schema
-
 
 class RequestBody(OpenABC):
     """
@@ -1093,9 +1041,6 @@ class RequestBody(OpenABC):
 
     _required = Field(bool)
 
-#     def init_instance(self, reflect_method, **kwargs):
-#         self.reflect_method = reflect_method
-
     def set_method(self, reflect_method):
         self.reflect_method = reflect_method
 
@@ -1106,17 +1051,6 @@ class RequestBody(OpenABC):
             content[media_range].set_request_method(reflect_method)
 
         self["content"] = content
-
-#         for media_type in self["content"].values():
-#             media_type.set_request_method(reflect_method)
-
-#     def add_param(self, reflect_param):
-#         for media_type in self["content"].values():
-#             media_type.add_param(reflect_param)
-
-#     def set_keys(self, **kwargs):
-#         super().set_keys(**kwargs)
-#         self.set_method(self.reflect_method)
 
     def get_content_media_ranges(self, reflect_method):
         """Get all the media types/ranges this should support
@@ -1135,17 +1069,6 @@ class RequestBody(OpenABC):
         :returns: list[str]
         """
         return ["*/*"]
-
-#     def get_content_value(self, **kwargs):
-#         content = {}
-# 
-#         for media_range in self.get_content_media_ranges():
-#             content[media_range] = self.create_instance(
-#                 "media_type_class",
-#                 **kwargs
-#             )
-# 
-#         return content
 
 
 class Response(OpenABC):
@@ -1175,13 +1098,6 @@ class Response(OpenABC):
         if content:
             self["content"] = content
 
-#         for media_type in self["content"].values():
-#             media_type.set_response_method(reflect_method)
-
-#     def set_type(self, reflect_type):
-#         for media_type in self["content"].values():
-#             media_type.set_response_type(reflect_type)
-
     def get_description_value(self, **kwargs):
         return f"A {self.code} response"
 
@@ -1195,17 +1111,6 @@ class Response(OpenABC):
         if version := reflect_method.get_version():
             media_type += f"; version={version}"
         return [media_type]
-
-#     def get_content_value(self, **kwargs):
-#         content = {}
-# 
-#         for media_range in self.get_content_media_ranges():
-#             content[media_range] = self.create_instance(
-#                 "media_type_class",
-#                 **kwargs
-#             )
-# 
-#         return content
 
 
 class Parameter(OpenABC):
@@ -1396,10 +1301,6 @@ class Operation(OpenABC):
             responses[response.code] = response
 
         return responses
-
-#         response = self.create_response_instance("200")
-#         response.set_method(self.reflect_method)
-#         return {response.code: response}
 
     def get_responses_error_value(self):
         responses = {}
@@ -1598,7 +1499,11 @@ class OpenAPI(OpenABC):
         """
         NOTE -- this has to override __init__ because it takes the application
         as the first argument, something none of the other OpenABC children
-        do"""
+        do
+
+        :param application: Application, the application to build an OpenAPI
+            document for
+        """
         self.application = application
         super().__init__(None, **kwargs)
 
