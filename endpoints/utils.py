@@ -285,6 +285,10 @@ class AcceptHeader(object):
 
 class JSONEncoder(json.JSONEncoder):
     """Smooths out some rough edges with the default encoder"""
+    item_separator = ","
+
+    key_separator = ":"
+
     def default(self, obj):
         if isinstance(obj, types.GeneratorType):
             return [x for x in obj]

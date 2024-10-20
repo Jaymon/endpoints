@@ -144,7 +144,14 @@ class TestCase(BaseAsyncTestCase):
         else:
             header = [
                 "from endpoints import *",
+                "from endpoints.decorators import *",
             ]
+
+        if not kwargs.get("cors", False):
+            header.extend([
+                "class Controller(Controller):",
+                "    cors = False",
+            ])
 
         controller_prefix = testdata.create_module(
             data=contents,

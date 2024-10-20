@@ -52,6 +52,10 @@ websockets = [
 templates = [
   "jinja2"
 ]
+openapi = [
+  "jsonschema",
+  "pyyaml"
+]
 
 [project.scripts]
 endpoints = "endpoints.__main__:EntryPoint.handle"
