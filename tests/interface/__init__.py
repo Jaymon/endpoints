@@ -6,6 +6,7 @@ import testdata
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
+from endpoints.utils import JSONEncoder
 from .. import TestCase as BaseTestCase
 
 
@@ -276,7 +277,7 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(String(body), r.body)
 
         r = c.post('/', {'content_type': 'application/json', 'body': body})
-        self.assertEqual(json.dumps(body), r.body)
+        self.assertEqual(json.dumps(body, cls=JSONEncoder), r.body)
 
         r = c.post('/', {'content_type': 'application/json', 'body': {}})
         self.assertEqual("{}", r.body)

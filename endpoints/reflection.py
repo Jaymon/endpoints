@@ -29,6 +29,18 @@ from datatypes import (
 )
 from datatypes.reflection import ReflectObject
 
+# for `OpenAPI.write_yaml` support
+try:
+    import yaml
+except ImportError:
+    yaml = None
+
+# For `Schema.validate` support
+try:
+    import jsonschema
+except ImportError:
+    jsonschema = None
+
 from .compat import *
 from .utils import Url, JSONEncoder
 from .config import environ
@@ -326,19 +338,6 @@ class OpenFinder(ClassFinder):
         return self.root.class_keys[class_key]
 
 
-class OpenEncoder(JSONEncoder):
-    """Specific json settings to make it easier to read and edit manually
-
-    See OpenAPI.write_json
-    """
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-
-        self.item_separator = ": "
-        self.indent = 2
-        self.sort_keys = True
-
-
 class OpenABC(dict):
     """The base type for all the OpenAPI objects
 
@@ -543,6 +542,7 @@ class OpenABC(dict):
         return schema
 
     def validate_fields(self):
+        """Validate self and all children to make sure they are valid"""
         if self.fields:
             for k, field in self.fields.items():
                 if k in self:
@@ -564,6 +564,29 @@ class OpenABC(dict):
                         raise KeyError(
                             f"Class {self.path_str} missing {k} key"
                         )
+
+    def todict(self):
+        """Normalize self and all children as builtin python values (eg dict,
+        list)
+
+        :returns: dict
+        """
+        def tovalue(v):
+            if m := getattr(v, "todict", None):
+                tv = m()
+
+            elif isinstance(v, dict):
+                tv = {vk: tovalue(vv) for vk, vv in v.items()}
+
+            elif isinstance(v, list):
+                tv = [tovalue(vv) for vv in v]
+
+            else:
+                tv = v
+
+            return tv
+
+        return {k: tovalue(v) for k, v in self.items()}
 
 
 class Contact(OpenABC):
@@ -1002,6 +1025,19 @@ class Schema(OpenABC):
 
         self.setdefault("properties", {})
         self.setdefault("required", [])
+
+    def validate(self, data):
+        """Validate data against self (this schema)
+
+        :param data: Mapping, the data to validate
+        :returns: bool
+        :raises: Exception, any validation problems will raise an exception
+        """
+        if not jsonschema:
+            raise ValueError("Missing jsonschema dependency")
+
+        jsonschema.validate(instance=data, schema=self)
+        return True
 
 
 class MediaType(OpenABC):
@@ -1507,15 +1543,31 @@ class OpenAPI(OpenABC):
         self.application = application
         super().__init__(None, **kwargs)
 
-#     def write_yaml(self, directory):
-#         """Writes openapi.yaml file to directory
-# 
-#         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#document-structure
-#         https://github.com/yaml/pyyaml
-#         https://pyyaml.org/
-#         https://stackoverflow.com/a/18210750
-#         """
-#         pass
+    def write_yaml(self, directory):
+        """Writes openapi.yaml file to directory
+
+        Depends on `pyyaml` dependency to be installed
+
+            https://pyyaml.org/
+
+        :param directory: str, the directory path
+        :returns: str, the path to the openapi.json file
+        """
+        if not yaml:
+            raise ValueError("Missing yaml dependency")
+
+        dp = Dirpath(directory)
+        fp = dp.get_file("openapi.yaml")
+
+        with fp.open("w+") as stream:
+            data = yaml.safe_dump(
+                self.todict(),
+                stream,
+                sort_keys=False,
+                default_flow_style=False,
+            )
+
+        return fp
 
     def write_json(self, directory):
         """Writes openapi.json file to directory
@@ -1523,13 +1575,22 @@ class OpenAPI(OpenABC):
         :param directory: str, the directory path
         :returns: str, the path to the openapi.json file
         """
-        self.validate_fields()
-
         dp = Dirpath(directory)
         fp = dp.get_file("openapi.json")
+
+        # Specific json settings to make it easier to read and edit manually
         # https://docs.python.org/3/library/json.html#encoders-and-decoders
-        data = json.dumps(self, cls=OpenEncoder)
-        fp.write_text(data)
+        class OpenEncoder(JSONEncoder):
+            def __init__(self, *args, **kwargs):
+                super().__init__(*args, **kwargs)
+
+                self.item_separator = ": "
+                self.indent = 2
+                self.sort_keys = False
+
+        with fp.open("w+") as stream:
+            json.dump(self, stream, cls=OpenEncoder)
+
         return fp
 
     def get_info_value(self, **kwargs):

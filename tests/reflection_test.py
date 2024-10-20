@@ -237,7 +237,45 @@ class OpenAPITest(TestCase):
         )
 
         dp = self.create_dir()
-        oa.write_json(dp)
+        fp = oa.write_json(dp)
+        self.assertTrue(fp.isfile())
+
+    def test_write_yaml(self):
+        oa = self.create_openapi(
+            {
+                "": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "boo": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Bar(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo.baz": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Che(Controller):",
+                    "    def ANY(*args, **kwargs): pass",
+                    ""
+                ],
+            },
+        )
+
+        dp = self.create_dir()
+        fp = oa.write_yaml(dp)
+        self.assertTrue(fp.isfile())
 
     def test_multiple_path_with_options(self):
         oa = self.create_openapi("""
@@ -248,6 +286,12 @@ class OpenAPITest(TestCase):
                 def GET(self, bar, che):
                     pass
         """)
+
+        pi = oa.paths["/foo/{bar}/{che}"]
+        self.assertEqual(2, len(pi))
+        self.assertTrue("options" in pi)
+        self.assertTrue("get" in pi)
+        self.assertFalse("/foo" in oa.paths)
 
 
 class SchemaTest(TestCase):
