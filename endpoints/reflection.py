@@ -1415,20 +1415,6 @@ class Operation(OpenABC):
                 break
 
         return responses
-#         ret = {}
-#         for code, rs in responses.items():
-#             if len(rs) == 1:
-#                 ret[code] = rs[0]
-# 
-#             else:
-#                 # we are going to choose the first response as canonical and
-#                 # then merge all the other responses into the first response
-#                 r = rs[0]
-#                 for sr in rs[1:]:
-#                     r.merge(sr)
-#                 ret[code] = r
-# 
-#         return ret
 
     def get_responses_value(self, **kwargs):
         responses = self.get_responses_success_value()
