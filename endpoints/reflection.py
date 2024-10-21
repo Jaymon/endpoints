@@ -202,21 +202,6 @@ class ReflectMethod(ReflectCallable):
             )
         )
 
-    def get_http_verbs(self):
-        """Controllers support an ANY catch-all method, this doesn't work
-        for things like OpenAPI so this returns all the http methods this
-        method should be used for. By default, ANY would return GET and POST
-
-        :returns: generator[str]
-        """
-        if self.http_verb == "ANY":
-            names = ["GET", "POST"]
-
-        else:
-            names = [self.http_verb]
-
-        return names
-
     def get_version(self):
         """Get the version for this method"""
         version = ""
@@ -341,7 +326,7 @@ class OpenABC(dict):
         * define `init_instance`, this allows a child class to require 
             arguments when being created, and also allows instance
             customization
-        * override `set_keys`, this allows children to customize/normalize
+        * override `set_fields`, this allows children to customize/normalize
             the keys/values after all the introspection stuff has ran. Any
             child that overrides this method *should* call super
         * define `get_<FIELDNAME>_value(**kwargs)`, this method should always
@@ -406,7 +391,7 @@ class OpenABC(dict):
             logger.debug(f"Created child: {self.path_str}")
 
         self.init_instance(*args, **kwargs)
-        self.set_keys(**kwargs)
+        self.set_fields(**kwargs)
 
     def __init_subclass__(cls):
         """When a child class is loaded into memory it will be saved into
@@ -459,7 +444,7 @@ class OpenABC(dict):
         successfully get setup"""
         pass
 
-    def set_keys(self, **kwargs):
+    def set_fields(self, **kwargs):
         if self.fields:
             for k, field in self.fields.items():
                 if k in kwargs:
@@ -483,8 +468,16 @@ class OpenABC(dict):
                 if desc := self.get("description", ""):
                     self["summary"] = self["description"].partition("\n")[0]
 
-    def get_value_method(self, name, field):
-        name = NamingConvention(name)
+    def get_value_method(self, field_name, field):
+        """Each instance can define a get_<FIELD_NAME>_value method that can
+        be used to set the value for that field, this method checks the
+        instance for that method
+
+        :param field_name: str, the field name
+        :param field: Field, the field instance
+        :returns: Callable[[...], Any]
+        """
+        name = NamingConvention(field_name)
         method_name = f"get_{name.varname()}_value"
         return getattr(self, method_name, None)
 
@@ -1148,6 +1141,26 @@ class Response(OpenABC):
             media_type += f"; version={version}"
         return [media_type]
 
+    def merge(self, other):
+        """Merges self with other
+
+        :param other: Response
+        """
+        descs = []
+        if d := self.get("description", ""):
+            descs.append(d)
+
+        if d := other.get("description", ""):
+            descs.append(d)
+
+        if descs:
+            self["description"] = "\n".join(descs)
+
+        # TODO -- flesh out merging other keys if they are ever needed
+        for k in ["headers", "content", "links"]:
+            if k in self:
+                raise NotImplementedError()
+
 
 class Parameter(OpenABC):
     """
@@ -1212,8 +1225,8 @@ class SecurityRequirement(OpenABC):
     def init_instance(self, reflect_method, **kwargs):
         self.reflect_method = reflect_method
 
-    def set_keys(self, **kwargs):
-        super().set_keys(**kwargs)
+    def set_fields(self, **kwargs):
+        super().set_fields(**kwargs)
 
         for rd in self.reflect_method.reflect_ast_decorators():
             name = rd.name
@@ -1340,6 +1353,14 @@ class Operation(OpenABC):
 
     def get_responses_error_value(self):
         responses = {}
+
+        def append(responses, response):
+            if response.code in responses:
+                responses[response.code].merge(response)
+
+            else:
+                responses[response.code] = response
+
         for rx in self.reflect_method.reflect_ast_raises():
             if rx.name == "CallError" or rx.name == "CallStop":
                 errargs, errkwargs = rx.get_parameters()
@@ -1366,14 +1387,14 @@ class Operation(OpenABC):
                     )
 
                 response = self.create_response_instance(**res_kwargs)
-                responses[response.code] = response
+                append(responses, response)
 
             elif rx.name == "ValueError":
                 response = self.create_response_instance(
                     "400",
                     description="Missing value"
                 )
-                responses[response.code] = response
+                append(responses, response)
 
         for rp in self.reflect_method.reflect_params():
             if rp.is_required():
@@ -1381,7 +1402,7 @@ class Operation(OpenABC):
                     "400",
                     description="Invalid params"
                 )
-                responses[response.code] = response
+                append(responses, response)
                 break
 
         for rd in self.reflect_method.reflect_ast_decorators():
@@ -1390,10 +1411,24 @@ class Operation(OpenABC):
                     "401",
                     description="Unauthorized request"
                 )
-                responses[response.code] = response
+                append(responses, response)
                 break
 
         return responses
+#         ret = {}
+#         for code, rs in responses.items():
+#             if len(rs) == 1:
+#                 ret[code] = rs[0]
+# 
+#             else:
+#                 # we are going to choose the first response as canonical and
+#                 # then merge all the other responses into the first response
+#                 r = rs[0]
+#                 for sr in rs[1:]:
+#                     r.merge(sr)
+#                 ret[code] = r
+# 
+#         return ret
 
     def get_responses_value(self, **kwargs):
         responses = self.get_responses_success_value()
@@ -1455,38 +1490,34 @@ class PathItem(OpenABC):
     def add_method(self, reflect_method, **kwargs):
         """Add the method to this path
 
+        This is the external method called by OpenAPI when populating the
+        `paths` key
+
         :param reflect_method: ReflectMethod
         """
-        operation = self.create_instance(
-            "operation_class",
-            reflect_method,
-            **kwargs
-        )
+        m = self.get_set_method(reflect_method)
+        m(reflect_method)
 
-        # we check if op exists because children may want to ignore certain
-        # operations, this allows more child customization flexibility
-        if operation is not None:
-            m = self.get_set_operation_method(reflect_method)
-            m(operation)
-
-    def get_set_operation_method(self, reflect_method):
+    def get_set_method(self, reflect_method):
         """Get the set operation for this method
 
-        This will try and find a valid .set_<HTTP_VERB>_operation method and
-        fallback to .set_operation
+        This will try and find a valid .set_<HTTP_VERB>_method method and
+        fallback to .set_method
 
         :param reflect_method: ReflectMethod
-        :returns: Callable[[Operation], None]
+        :returns: Callable[[ReflectMethod], None]
         """
         name = reflect_method.http_verb
-        method_name = f"set_{name.lower()}_operation"
-        return getattr(self, method_name, self.set_operation)
+        method_name = f"set_{name.lower()}_method"
+        return getattr(self, method_name, self.set_method)
 
-    def set_operation(self, operation):
-        """The fallback method for .get_set_operation_method"""
-        self._set_operation(operation.reflect_method.http_verb, operation)
+    def set_method(self, reflect_method):
+        """internal method. Used by .add_method as a fallback if .add_method
+        doesn't call a more specific .set_<HTTP_VERB>_method"""
+        operation = self.create_operation_instance(reflect_method)
+        self.set_operation(reflect_method.http_verb, operation)
 
-    def _set_operation(self, http_verb, operation):
+    def set_operation(self, http_verb, operation):
         """Internal method. This sets operation into http_verb keys and does
         error checking around that. It's just here to make child class's
         lives a bit easier
@@ -1503,21 +1534,32 @@ class PathItem(OpenABC):
         else:
             self[op_name] = operation
 
-    def set_options_operation(self, operation):
+    def set_options_method(self, reflect_method):
         """Customize options to get rid of the 405 error if CORS support is
         enabled"""
-        if operation.reflect_method.reflect_controller().cors:
+        operation = self.create_operation_instance(reflect_method)
+
+        if reflect_method.reflect_class().get_target().cors:
             # 405 is raised when OPTION isn't supported but cors support is
             # turned on for this controller
             operation["responses"].pop("405", None)
-            self.set_operation(operation)
+            self.set_operation(reflect_method.http_verb, operation)
 
-    def set_any_operation(self, operation):
+    def set_any_method(self, reflect_method):
         """Controllers support an ANY catch-all http verb method, this doesn't
         work for things like OpenAPI so this converts ANY to GET and POST
         """
+        operation = self.create_operation_instance(reflect_method)
+
         for http_verb in ["GET", "POST"]:
-            self._set_operation(http_verb, operation)
+            self.set_operation(http_verb, operation)
+
+    def create_operation_instance(self, reflect_method, **kwargs):
+        return self.create_instance(
+            "operation_class",
+            reflect_method,
+            **kwargs
+        )
 
 
 class Components(OpenABC):

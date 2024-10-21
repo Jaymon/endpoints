@@ -290,6 +290,7 @@ class OpenAPITest(TestCase):
         pi = oa.paths["/foo/{bar}/{che}"]
         self.assertEqual(2, len(pi))
         self.assertTrue("options" in pi)
+        self.assertFalse("405" in pi["options"]["responses"])
         self.assertTrue("get" in pi)
         self.assertFalse("/foo" in oa.paths)
 
