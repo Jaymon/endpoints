@@ -313,11 +313,6 @@ class Field(dict):
 
         owner.fields[self.name] = self
 
-    def get_value_method(self, owner, name, field):
-        name = NamingConvention(name)
-        method_name = f"get_{name.varname()}_value"
-        return getattr(owner, method_name, None)
-
 
 class OpenFinder(ClassFinder):
     """Used by OpenABC to keep track of all children"""
@@ -472,7 +467,7 @@ class OpenABC(dict):
                         self[k] = kwargs[k]
 
                 else:
-                    if m := field.get_value_method(self, k, field):
+                    if m := self.get_value_method(k, field):
                         logger.debug(
                             f"Calling {self.path_str}.{m.__name__}"
                             f" to set {k} key"
@@ -487,6 +482,11 @@ class OpenABC(dict):
             if "summary" in self.fields and "summary" not in self:
                 if desc := self.get("description", ""):
                     self["summary"] = self["description"].partition("\n")[0]
+
+    def get_value_method(self, name, field):
+        name = NamingConvention(name)
+        method_name = f"get_{name.varname()}_value"
+        return getattr(self, method_name, None)
 
     def create_instance(self, class_key, *args, **kwargs):
         """
@@ -1412,6 +1412,19 @@ class PathItem(OpenABC):
     """Represents an OpenAPI path item object
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#path-item-object
+
+    This has a little bit different lifecycle than other OpenABC children,
+    when `.add_method` is called then this will try and call:
+    `.set_<HTTP-VERB>_operation` with the created operation instance, if it
+    doesn't exist then it will just call `.set_operation`. This allows child
+    classes to customize the output on a per operation basis
+
+    :Example:
+
+        # customize put
+        class CustomPathItem(PathItem):
+            def set_put_operation(self, operation):
+                # custom stuff
     """
     _ref = Field(str, name="$ref")
 
@@ -1440,21 +1453,71 @@ class PathItem(OpenABC):
     _parameters = Field(list[Parameter|Reference])
 
     def add_method(self, reflect_method, **kwargs):
-        op = self.create_instance(
+        """Add the method to this path
+
+        :param reflect_method: ReflectMethod
+        """
+        operation = self.create_instance(
             "operation_class",
             reflect_method,
             **kwargs
         )
 
-        for http_verb in reflect_method.get_http_verbs():
-            field_name = http_verb.lower()
-            if field_name in self:
-                raise ValueError(
-                    f"PathItem has multiple {field_name} keys"
-                )
+        # we check if op exists because children may want to ignore certain
+        # operations, this allows more child customization flexibility
+        if operation is not None:
+            m = self.get_set_operation_method(reflect_method)
+            m(operation)
 
-            else:
-                self[field_name] = op
+    def get_set_operation_method(self, reflect_method):
+        """Get the set operation for this method
+
+        This will try and find a valid .set_<HTTP_VERB>_operation method and
+        fallback to .set_operation
+
+        :param reflect_method: ReflectMethod
+        :returns: Callable[[Operation], None]
+        """
+        name = reflect_method.http_verb
+        method_name = f"set_{name.lower()}_operation"
+        return getattr(self, method_name, self.set_operation)
+
+    def set_operation(self, operation):
+        """The fallback method for .get_set_operation_method"""
+        self._set_operation(operation.reflect_method.http_verb, operation)
+
+    def _set_operation(self, http_verb, operation):
+        """Internal method. This sets operation into http_verb keys and does
+        error checking around that. It's just here to make child class's
+        lives a bit easier
+
+        :param http_verb: str, the http verb for operation
+        :param operation: Operation
+        """
+        op_name = http_verb.lower()
+        if op_name in self:
+            raise ValueError(
+                f"PathItem has multiple {op_name} operations"
+            )
+
+        else:
+            self[op_name] = operation
+
+    def set_options_operation(self, operation):
+        """Customize options to get rid of the 405 error if CORS support is
+        enabled"""
+        if operation.reflect_method.reflect_controller().cors:
+            # 405 is raised when OPTION isn't supported but cors support is
+            # turned on for this controller
+            operation["responses"].pop("405", None)
+            self.set_operation(operation)
+
+    def set_any_operation(self, operation):
+        """Controllers support an ANY catch-all http verb method, this doesn't
+        work for things like OpenAPI so this converts ANY to GET and POST
+        """
+        for http_verb in ["GET", "POST"]:
+            self._set_operation(http_verb, operation)
 
 
 class Components(OpenABC):
