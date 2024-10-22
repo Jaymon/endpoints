@@ -1261,7 +1261,7 @@ class SecurityScheme(OpenABC):
 class Operation(OpenABC):
     """Represents an OpenAPI operation object
 
-    An operation is an HTTP scheme handler (eg GET, POST)
+    An operation is an HTTP scheme verb handler (eg GET, POST)
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#operation-object
     """
@@ -1605,9 +1605,12 @@ class OpenAPI(OpenABC):
 
     _info = Field(Info, required=True)
 
+    _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
+
     _servers = Field(list[Server])
 
     _components = Field(Components)
+
 
     _paths = Field(dict[str, PathItem])
     """
@@ -1620,7 +1623,6 @@ class OpenAPI(OpenABC):
 
     _externalDocs = Field(ExternalDocumentation)
 
-    _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
 
     def __init__(self, application, **kwargs):
         """
@@ -1657,6 +1659,7 @@ class OpenAPI(OpenABC):
                 sort_keys=False,
                 default_flow_style=False,
             )
+            logger.debug(f"YAML written to: {fp}")
 
         return fp
 
@@ -1681,6 +1684,7 @@ class OpenAPI(OpenABC):
 
         with fp.open("w+") as stream:
             json.dump(self, stream, cls=OpenEncoder)
+            logger.debug(f"JSON written to: {fp}")
 
         return fp
 
