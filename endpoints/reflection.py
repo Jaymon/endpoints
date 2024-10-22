@@ -95,7 +95,12 @@ class ReflectController(ReflectClass):
         )
 
     def get_url_path(self):
-        """Get the root url path for this controller"""
+        """Get the root url path for this controller
+
+        This will not include any url path params. Since methods can define
+        url path params you want to call this same method on ReflectMethod
+        instances to get the full url path for a given http verb
+        """
         return "/" + "/".join(self.keys)
 
     def reflect_url_paths(self):
@@ -195,12 +200,25 @@ class ReflectMethod(ReflectCallable):
         and not the controller is because there could be path parameters
         for specific methods which means a controller, while having the
         same root path, can have different method paths"""
-        return "/".join(
-            itertools.chain(
-                [self.reflect_class().get_url_path()],
-                (f"{{{p.name}}}" for p in self.reflect_path_params())
-            )
+        path = self.reflect_class().get_url_path()
+        url_params = "/".join(
+            f"{{{p.name}}}" for p in self.reflect_path_params()
         )
+
+        if url_params:
+            if not path.endswith("/"):
+                path += "/"
+
+            path += url_params
+
+        return path
+
+#         return "/".join(
+#             itertools.chain(
+#                 [self.reflect_class().get_url_path()],
+#                 (f"{{{p.name}}}" for p in self.reflect_path_params())
+#             )
+#         )
 
     def get_version(self):
         """Get the version for this method"""

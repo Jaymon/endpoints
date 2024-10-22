@@ -80,7 +80,7 @@ class ReflectMethodTest(TestCase):
         self.assertEqual(2, len(list(rm.reflect_body_params())))
         self.assertEqual(1, len(list(rm.reflect_url_params())))
 
-    def test_get_url_path(self):
+    def test_get_url_path_1(self):
         rm = self.create_reflect_methods("""
             class Foo(Controller):
                 @param(0)
@@ -89,6 +89,24 @@ class ReflectMethodTest(TestCase):
                     pass
         """)[0]
         self.assertEqual("/foo/{bar}/{che}", rm.get_url_path())
+
+    def test_get_url_path_default(self):
+        """Default controllers with url params had double slashes (eg //{foo})
+        """
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                @param(0)
+                def POST(self, bar):
+                    pass
+        """)[0]
+        self.assertEqual("/{bar}", rm.get_url_path())
+
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def POST(self):
+                    pass
+        """)[0]
+        self.assertEqual("/", rm.get_url_path())
 
 
 class OpenABCTest(TestCase):
@@ -293,6 +311,16 @@ class OpenAPITest(TestCase):
         self.assertFalse("405" in pi["options"]["responses"])
         self.assertTrue("get" in pi)
         self.assertFalse("/foo" in oa.paths)
+
+    def test_url_path(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                @param(0, required=True, help="url param help")
+                def ANY(self, param, *args, **kwargs) -> dict:
+                    pass
+        """)
+
+        pout.v(oa)
 
 
 class SchemaTest(TestCase):
