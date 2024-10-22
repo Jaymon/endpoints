@@ -150,7 +150,7 @@ class OpenAPITest(TestCase):
 
         self.assertTrue("/foo/{zero}" in oa.paths)
 
-        parameter = oa.paths["/foo/{zero}"]["get"].parameters[0]
+        parameter = oa.paths["/foo/{zero}"].parameters[0]
         self.assertEqual("zero", parameter["name"])
         self.assertEqual("path", parameter["in"])
 
@@ -162,8 +162,10 @@ class OpenAPITest(TestCase):
                     pass
         """)
 
-        self.assertEqual("query", oa.paths["/foo"]["get"].parameters[0]["in"])
-        self.assertEqual(1, len(oa.paths["/foo"]["get"].parameters))
+        pi = oa.paths["/foo"]
+
+        self.assertEqual("query", pi.parameters[0]["in"])
+        self.assertEqual(1, len(pi.parameters))
 
     def test_params_body(self):
         oa = self.create_openapi("""
@@ -306,7 +308,7 @@ class OpenAPITest(TestCase):
         """)
 
         pi = oa.paths["/foo/{bar}/{che}"]
-        self.assertEqual(2, len(pi))
+        self.assertEqual(3, len(pi))
         self.assertTrue("options" in pi)
         self.assertFalse("405" in pi["options"]["responses"])
         self.assertTrue("get" in pi)
@@ -320,7 +322,9 @@ class OpenAPITest(TestCase):
                     pass
         """)
 
-        pout.v(oa)
+        pi = oa.paths["/{param}"]
+        self.assertEqual(1, len(pi["parameters"]))
+        self.assertEqual("param", pi["parameters"][0]["name"])
 
 
 class SchemaTest(TestCase):

@@ -473,7 +473,7 @@ class OpenABC(dict):
                     if m := self.get_value_method(k, field):
                         logger.debug(
                             f"Calling {self.path_str}.{m.__name__}"
-                            f" to set {k} key"
+                            f" to set \"{k}\" key"
                         )
                         if v := m(**kwargs):
                             self[k] = v
@@ -1213,14 +1213,14 @@ class Parameter(OpenABC):
         param = self.reflect_param.target
 
         if param.is_kwarg:
-            ret["in"] = "query"
             ret["name"] = param.name
+            ret["in"] = "query"
             ret["required"] = param.flags.get("required", False)
             ret["allowEmptyValue"] = param.flags.get("allow_empty", False)
 
         else:
-            ret["in"] = "path"
             ret["name"] = reflect_param.name
+            ret["in"] = "path"
 
             # spec: "If the parameter location is "path", this property is
             # REQUIRED and its value MUST be true"
@@ -1322,17 +1322,20 @@ class Operation(OpenABC):
             rb.set_method(self.reflect_method)
             return rb
 
-    def get_parameters_value(self, **kwargs):
-        parameters = []
-
-        # this is a positional argument (part of path) or query param
-        # (after the ? in the url)
-        for reflect_param in self.reflect_method.reflect_url_params():
-            parameter = self.create_instance("parameter_class")
-            parameter.set_param(reflect_param)
-            parameters.append(parameter)
-
-        return parameters
+    # this functionality was moved to PathItem in order to support OPTIONS
+    # for the path item since OPTIONS wouldn't have the defined url path
+    # params and so it failed openapi client generation
+#     def get_parameters_value(self, **kwargs):
+#         parameters = []
+# 
+#         # this is a positional argument (part of path) or query param
+#         # (after the ? in the url)
+#         for reflect_param in self.reflect_method.reflect_url_params():
+#             parameter = self.create_instance("parameter_class")
+#             parameter.set_param(reflect_param)
+#             parameters.append(parameter)
+# 
+#         return parameters
 
     def get_security_value(self, **kwargs):
         sreqs = []
@@ -1501,6 +1504,19 @@ class PathItem(OpenABC):
         """
         m = self.get_set_method(reflect_method)
         m(reflect_method)
+        self.add_parameters(reflect_method)
+
+    def add_parameters(self, reflect_method):
+        parameters = self.get("parameters", [])
+
+        # this is a positional argument (part of path) or query param
+        # (after the ? in the url)
+        for reflect_param in reflect_method.reflect_url_params():
+            parameter = self.create_instance("parameter_class")
+            parameter.set_param(reflect_param)
+            parameters.append(parameter)
+
+        self["parameters"] = parameters
 
     def get_set_method(self, reflect_method):
         """Get the set operation for this method
