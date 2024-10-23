@@ -425,6 +425,8 @@ class Pathfinder(ClasspathFinder):
 
         key, value = super()._get_node_class_info(key, **kwargs)
 
+        value["modules"] = kwargs.get("modules", [])
+
         if "class" in value:
             value["method_names"] = value["class"].get_method_names()
 

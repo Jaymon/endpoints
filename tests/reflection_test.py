@@ -63,6 +63,41 @@ class ReflectControllerTest(TestCase):
         verbs = set(rm.http_verb for rm in url_paths["/foo"])
         self.assertEqual(set(["POST", "OPTIONS"]), verbs)
 
+    def test_reflect_url_modules(self):
+        rc = self.create_reflect_controllers(
+            {
+                "": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo_bar": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Bar(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo_bar.baz": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Che(Controller):",
+                    "    def ANY(*args, **kwargs): pass",
+                    ""
+                ],
+            },
+        )[-1]
+
+        rms = list(rc.reflect_url_modules())
+        self.assertEqual(2, len(rms))
+        self.assertEqual("foo-bar", rms[0].module_key)
+        self.assertEqual("foo_bar", rms[0].module_basename)
+        self.assertEqual("baz", rms[1].module_key)
+        self.assertEqual("baz", rms[1].module_basename)
+
 
 class ReflectMethodTest(TestCase):
     def test_reflect_params(self):
@@ -325,6 +360,39 @@ class OpenAPITest(TestCase):
         pi = oa.paths["/{param}"]
         self.assertEqual(1, len(pi["parameters"]))
         self.assertEqual("param", pi["parameters"][0]["name"])
+
+    def test_get_tags_values(self):
+        oa = self.create_openapi(
+            {
+                "": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Bar(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "    def POST(*args, **kwargs): pass",
+                    ""
+                ],
+                "foo.baz": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                    "class Che(Controller):",
+                    "    def ANY(*args, **kwargs): pass",
+                    ""
+                ],
+            },
+        )
+
+        self.assertEqual(2, len(oa["tags"]))
+
+        pi = oa.paths["/foo/baz/che"]
+        self.assertEqual(2, len(pi["get"]["tags"]))
 
 
 class SchemaTest(TestCase):

@@ -59,6 +59,34 @@ class ReflectController(ReflectClass):
         self.keys = keys
         self.value = value
 
+    def reflect_url_modules(self):
+        """Reflect the controller modules for this controller
+
+        Controller modules are modules that can be part of a request path
+
+        :returns: generator[ReflectModule], this returns the reflected module
+            for each iteration
+        """
+        if mks := self.value.get("module_keys", []):
+            for i, mk in enumerate(mks):
+                rm = self.create_reflect_module(self.value["modules"][i])
+                rm.module_key = mk
+                yield rm
+
+#         def reflect_submodule(rm, basename):
+#             try:
+#                 return rm.reflect_module(basename)
+# 
+#             except ModuleNotFoundError:
+#                 for rsm in rm.reflect_submodules(depth=1):
+#                     bn = NamingConvention(rsm.module_basename).kebabcase() 
+#         if mks := self.value.get("module_keys", []):
+#             back = len(mks)
+#             rm = self.reflect_module().reflect_parent(back=len(mks))
+#             for mk in mks:
+#                 rm = rm.reflect_module(mk)
+#                 yield rm
+
     def reflect_http_methods(self, http_verb=""):
         """Reflect the controller http methods
 
@@ -482,9 +510,18 @@ class OpenABC(dict):
                     if "default" in field:
                         self[k] = field["default"]
 
-            if "summary" in self.fields and "summary" not in self:
-                if desc := self.get("description", ""):
-                    self["summary"] = self["description"].partition("\n")[0]
+#             if "summary" in self.fields and "summary" not in self:
+#                 if desc := self.get("description", ""):
+#                     self["summary"] = self["description"].partition("\n")[0]
+
+    def set_docblock(self, docblock, **kwargs):
+        if docblock and "description" in self.fields:
+            self["description"] = docblock
+
+            # let's set the summary using the docblock also
+            if "summary" in self.fields:
+                if not self.get("summary", ""):
+                    self["summary"] = docblock.partition("\n")[0]
 
     def get_value_method(self, field_name, field):
         """Each instance can define a get_<FIELD_NAME>_value method that can
@@ -663,18 +700,31 @@ class OAuthFlows(OpenABC):
     pass
 
 
-class Tag(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
-    """
-    pass
-
-
 class ExternalDocumentation(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#external-documentation-object
     """
     pass
+
+
+class Tag(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
+    """
+    _name = Field(str, required=True)
+
+    _description = Field(str)
+
+    _externalDocs = Field(ExternalDocumentation)
+
+    def init_instance(self, reflect_module, **kwargs):
+        self.reflect_module = reflect_module
+
+    def get_name_value(self):
+        return self.reflect_module.module_key
+
+    def get_description_value(self):
+        return self.reflect_module.get_docblock()
 
 
 class Info(OpenABC):
@@ -698,6 +748,20 @@ class Info(OpenABC):
 
     def init_instance(self, application, **kwargs):
         self.application = application
+
+        # There are multiple endpoints Application classes and we don't want to
+        # use those docblocks, so we will only do it if the Application is from
+        # a non-endpoints project. This is the best way I've thought of to
+        # test for non-endpoints-ness
+        if "endpoints" not in application.__class__.__module__:
+            rc = ReflectClass(application)
+            self.set_docblock(rc.get_docblock())
+
+            if version := rc.get("version", ""):
+                self["version"] = version
+
+            if summary := self.get("summary", ""):
+                self["title"] = summary
 
 
 class Server(OpenABC):
@@ -812,7 +876,9 @@ class Schema(OpenABC):
         #default="https://json-schema.org/draft/2020-12/schema"
     )
 
-    DIALECT = "https://json-schema.org/draft/2020-12/schema"
+    #DIALECT = "https://json-schema.org/draft/2020-12/schema"
+    # Swagger warns that the jsonschema spec needs to be the OpenAPI version
+    DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base"
 
     def is_type(self, typename):
         """Helper method that returns True if self's type is typename"""
@@ -865,7 +931,7 @@ class Schema(OpenABC):
         param_schema.set_param(reflect_param)
         param_schema.pop("$schema", None)
 
-        self["properties"][reflect_param.name] = param_schema
+        self.set_object_property(reflect_param.name, param_schema)
 
         if reflect_param.is_required():
             self["required"].append(reflect_param.name)
@@ -943,6 +1009,12 @@ class Schema(OpenABC):
         """Internal method. Convert a python type to a JSON Schema type
 
         https://json-schema.org/understanding-json-schema/reference/type
+
+        The exanded OpenAPI spec extends type formats:
+            https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#data-types
+
+        The json schema type formats:
+            https://datatracker.ietf.org/doc/html/draft-bhutton-json-schema-validation-00#section-7.3
         """
         ret = {}
         rt = reflect_type
@@ -955,9 +1027,11 @@ class Schema(OpenABC):
 
         elif rt.is_int():
             ret["type"] = "integer"
+            ret["format"] = "int64" # expanded OpenAPI spec
 
         elif rt.is_numberish():
             ret["type"] = "number"
+            ret["format"] = "float" # expanded OpenAPI spec
 
         elif rt.is_dictish():
             ret["type"] = "object"
@@ -1036,6 +1110,14 @@ class Schema(OpenABC):
 
         self.setdefault("properties", {})
         self.setdefault("required", [])
+
+    def set_object_property(self, name, schema, **kwargs):
+        """Set a property in object schema's "properties" key
+
+        :param name: str, the property name
+        :param schema: Schema, the property's json schema
+        """
+        self["properties"][name] = schema
 
     def validate(self, data):
         """Validate data against self (this schema)
@@ -1312,6 +1394,10 @@ class Operation(OpenABC):
 
     def init_instance(self, reflect_method, **kwargs):
         self.reflect_method = reflect_method
+        self.set_docblock(reflect_method.get_docblock())
+
+    def get_tags_value(self, **kwargs):
+        return list(self.reflect_method.reflect_class().value["module_keys"])
 
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():
@@ -1506,6 +1592,9 @@ class PathItem(OpenABC):
         m(reflect_method)
         self.add_parameters(reflect_method)
 
+        if "description" not in self:
+            self.set_docblock(reflect_method.reflect_class().get_docblock())
+
     def add_parameters(self, reflect_method):
         parameters = self.get("parameters", [])
 
@@ -1653,7 +1742,7 @@ class OpenAPI(OpenABC):
 
     _security = Field(list[SecurityRequirement])
 
-    _tags = Field(Tag)
+    _tags = Field(list[Tag])
 
     _externalDocs = Field(ExternalDocumentation)
 
@@ -1737,6 +1826,10 @@ class OpenAPI(OpenABC):
         """
         paths = {}
         for reflect_controller in self.reflect_controllers():
+            logger.debug(
+                f"Adding Controller: {reflect_controller.classpath}"
+            )
+
             url_paths = reflect_controller.reflect_url_paths()
             for url_path, reflect_methods in url_paths.items(): 
                 if url_path not in paths:
@@ -1754,6 +1847,24 @@ class OpenAPI(OpenABC):
 
         return paths
 
+    def get_tags_value(self, **kwargs):
+        tags = []
+        seen = set()
+        for reflect_controller in self.reflect_controllers():
+            for reflect_module in reflect_controller.reflect_url_modules():
+                mk = reflect_module.module_key
+                if mk not in seen:
+                    logger.debug(f"Adding tag: \"{mk}\"")
+                    tags.append(self.create_instance(
+                        "tag_class",
+                        reflect_module,
+                        **kwargs
+                    ))
+
+                    seen.add(mk)
+
+        return tags
+
     def get_components_value(self, **kwargs):
         return self.create_instance("components_class", **kwargs)
 
@@ -1764,10 +1875,6 @@ class OpenAPI(OpenABC):
             reflect_controller = self.create_reflect_controller_instance(
                 keys,
                 value
-            )
-
-            logger.debug(
-                f"Adding Controller: {reflect_controller.classpath}"
             )
 
             yield reflect_controller
