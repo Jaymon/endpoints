@@ -73,20 +73,6 @@ class ReflectController(ReflectClass):
                 rm.module_key = mk
                 yield rm
 
-#         def reflect_submodule(rm, basename):
-#             try:
-#                 return rm.reflect_module(basename)
-# 
-#             except ModuleNotFoundError:
-#                 for rsm in rm.reflect_submodules(depth=1):
-#                     bn = NamingConvention(rsm.module_basename).kebabcase() 
-#         if mks := self.value.get("module_keys", []):
-#             back = len(mks)
-#             rm = self.reflect_module().reflect_parent(back=len(mks))
-#             for mk in mks:
-#                 rm = rm.reflect_module(mk)
-#                 yield rm
-
     def reflect_http_methods(self, http_verb=""):
         """Reflect the controller http methods
 
@@ -240,13 +226,6 @@ class ReflectMethod(ReflectCallable):
             path += url_params
 
         return path
-
-#         return "/".join(
-#             itertools.chain(
-#                 [self.reflect_class().get_url_path()],
-#                 (f"{{{p.name}}}" for p in self.reflect_path_params())
-#             )
-#         )
 
     def get_version(self):
         """Get the version for this method"""
@@ -470,8 +449,10 @@ class OpenABC(dict):
         super().__setitem__(key, value)
 
     def get_traversal_path(self):
-        """Returns the classes/node starting from the root class/node to get
-        to this class/node of the document
+        """Returns the OpenABC classes/node starting from the root class/node
+        to get to this class/node of the document
+
+        This basically traverses the .parent property
 
         :returns: list[OpenABC]
         """
@@ -509,10 +490,6 @@ class OpenABC(dict):
                 if k not in kwargs and k not in self:
                     if "default" in field:
                         self[k] = field["default"]
-
-#             if "summary" in self.fields and "summary" not in self:
-#                 if desc := self.get("description", ""):
-#                     self["summary"] = self["description"].partition("\n")[0]
 
     def set_docblock(self, docblock, **kwargs):
         if docblock and "description" in self.fields:
@@ -876,7 +853,6 @@ class Schema(OpenABC):
         #default="https://json-schema.org/draft/2020-12/schema"
     )
 
-    #DIALECT = "https://json-schema.org/draft/2020-12/schema"
     # Swagger warns that the jsonschema spec needs to be the OpenAPI version
     DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base"
 
@@ -931,10 +907,14 @@ class Schema(OpenABC):
         param_schema.set_param(reflect_param)
         param_schema.pop("$schema", None)
 
-        self.set_object_property(reflect_param.name, param_schema)
+        self.add_property_schema(
+            reflect_param.name,
+            param_schema,
+            reflect_param.is_required()
+        )
 
-        if reflect_param.is_required():
-            self["required"].append(reflect_param.name)
+#         if reflect_param.is_required():
+#             self["required"].append(reflect_param.name)
 
     def get_param_fields(self, reflect_param):
         """Internal method. Returns the schema fields for a param"""
@@ -1111,13 +1091,17 @@ class Schema(OpenABC):
         self.setdefault("properties", {})
         self.setdefault("required", [])
 
-    def set_object_property(self, name, schema, **kwargs):
+    def add_property_schema(self, name, schema, required=False, **kwargs):
         """Set a property in object schema's "properties" key
 
         :param name: str, the property name
         :param schema: Schema, the property's json schema
+        :param required: bool
         """
         self["properties"][name] = schema
+
+        if required:
+            self["required"].append(name)
 
     def validate(self, data):
         """Validate data against self (this schema)
@@ -1142,7 +1126,7 @@ class MediaType(OpenABC):
     """
     _schema = Field(Schema)
 
-    _example = Field(Any)
+    #_example = Field(Any) # deprecated? https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#fixed-fields-20
 
     _examples = Field(dict[str, Example|Reference])
 
@@ -1282,7 +1266,7 @@ class Parameter(OpenABC):
 
     _schema = Field(Schema)
 
-    _example = Field(Any)
+    #_example = Field(Any)
 
     _examples = Field(dict[str, Example|Reference])
 
@@ -1407,21 +1391,6 @@ class Operation(OpenABC):
             )
             rb.set_method(self.reflect_method)
             return rb
-
-    # this functionality was moved to PathItem in order to support OPTIONS
-    # for the path item since OPTIONS wouldn't have the defined url path
-    # params and so it failed openapi client generation
-#     def get_parameters_value(self, **kwargs):
-#         parameters = []
-# 
-#         # this is a positional argument (part of path) or query param
-#         # (after the ? in the url)
-#         for reflect_param in self.reflect_method.reflect_url_params():
-#             parameter = self.create_instance("parameter_class")
-#             parameter.set_param(reflect_param)
-#             parameters.append(parameter)
-# 
-#         return parameters
 
     def get_security_value(self, **kwargs):
         sreqs = []
