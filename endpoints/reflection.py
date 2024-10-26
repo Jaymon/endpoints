@@ -868,6 +868,24 @@ class Schema(OpenABC):
         """Helper method that returns True if self is an array schema"""
         return self.is_type("array")
 
+    def is_empty(self):
+        ret = False
+        if self.is_object():
+            if self.get("properties", ""):
+                ret = True
+
+        elif self.is_array():
+            if items := self.get("items", ""):
+                ret = True
+                if "anyOf" in items:
+                    ret = True if items["anyOf"] else False
+
+        else:
+            if self:
+                ret = True
+
+        return ret
+
     def set_param(self, reflect_param):
         """Set this schema as this param"""
         self.reflect_param = reflect_param
@@ -912,9 +930,6 @@ class Schema(OpenABC):
             param_schema,
             reflect_param.is_required()
         )
-
-#         if reflect_param.is_required():
-#             self["required"].append(reflect_param.name)
 
     def get_param_fields(self, reflect_param):
         """Internal method. Returns the schema fields for a param"""
@@ -1103,6 +1118,30 @@ class Schema(OpenABC):
         if required:
             self["required"].append(name)
 
+    def get_property_schema(self, name, factory=None):
+        """Internal method. Get or create the schema using factory at name
+        and return it
+
+        :param name: str, the schema name
+        :param factory: Callable[[], Schema], the callable used to create the
+            schema, if name doesn't exist, defaults to creating an
+            object schema
+        :returns: Schema, returns the newly added schema
+        """
+        d = self["properties"]
+
+        if not factory:
+            factory = self.create_object_schema_instance
+
+        if name in d:
+            schema = d[name]
+
+        else:
+            schema = factory()
+            d[name] = schema
+
+        return schema
+
     def validate(self, data):
         """Validate data against self (this schema)
 
@@ -1125,8 +1164,6 @@ class MediaType(OpenABC):
         https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#considerations-for-file-uploads
     """
     _schema = Field(Schema)
-
-    #_example = Field(Any) # deprecated? https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#fixed-fields-20
 
     _examples = Field(dict[str, Example|Reference])
 
