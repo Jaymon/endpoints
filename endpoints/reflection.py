@@ -16,6 +16,7 @@ from types import (
 import json
 import datetime
 import logging
+from string import Template
 
 from datatypes import (
     ReflectClass,
@@ -1765,6 +1766,14 @@ class OpenAPI(OpenABC):
         self.application = application
         super().__init__(None, **kwargs)
 
+    def get_yaml(self):
+        """Return this OpenAPI document as a yaml string"""
+        return yaml.safe_dump(
+            self.todict(),
+            sort_keys=False,
+            default_flow_style=False,
+        )
+
     def write_yaml(self, directory):
         """Writes openapi.yaml file to directory
 
@@ -1792,6 +1801,10 @@ class OpenAPI(OpenABC):
 
         return fp
 
+    def get_json(self):
+        """Return this OpenAPI document as a json string"""
+        return json.dumps(self, cls=JSONEncoder)
+
     def write_json(self, directory):
         """Writes openapi.json file to directory
 
@@ -1816,6 +1829,66 @@ class OpenAPI(OpenABC):
             logger.debug(f"JSON written to: {fp}")
 
         return fp
+
+    def get_html(self, **kwargs):
+        """Generate the api as html
+
+        This generates Swagger UI docs, you should be able to absolutely
+        load this html into a browser and it should load the api docs
+
+        HTML comes from here:
+            https://swagger.io/docs/open-source-tools/swagger-ui/usage/installation/#unpkg
+
+        :param **kwargs: these are passed to Template.substitute
+        :returns: str, the html to render Swagger UI docs
+        """
+        # I got the CSS to get rid of OPTIONS here:
+        # https://github.com/swagger-api/swagger-ui/issues/2819
+
+        # SwaggerUIBundle configuration:
+        # https://swagger.io/docs/open-source-tools/swagger-ui/usage/configuration/
+
+        # This is just a simple template
+        # https://docs.python.org/3/library/string.html#string.Template
+
+        return Template("""
+            <!DOCTYPE html>
+            <html lang="en">
+            <head>
+                <meta charset="utf-8" />
+                <meta name="viewport" content="width=device-width, initial-scale=1" />
+                <meta name="description" content="$description" />
+                <title>$title</title>
+                <link rel="stylesheet" href="$cdn_base_url@$swagger_version/swagger-ui.css" />
+                <style>
+                    /* get rid of the header */
+                    .swagger-ui .topbar { display: none; }
+                    /* get rid of OPTIONS requests */
+                    .opblock-options { display: none; }
+                </style>
+            </head>
+            <body>
+                <div id="swagger-ui"></div>
+                <script src="$cdn_base_url@$swagger_version/swagger-ui-bundle.js" crossorigin></script>
+                <script>
+                    window.onload = function() {
+                        window.ui = SwaggerUIBundle({
+                            spec: $spec,
+                            dom_id: '#swagger-ui',
+                            docExpansion: "list"
+                        })
+                    }
+                </script>
+            </body>
+            </html>
+        """).substitute(
+            cdn_base_url="https://unpkg.com/swagger-ui-dist",
+            swagger_version="5.17.14", # https://github.com/swagger-api/swagger-ui/releases/latest
+            title=self["info"]["title"],
+            description=self["info"]["description"],
+            spec=self.get_json(),
+            **kwargs
+        )
 
     def get_info_value(self, **kwargs):
         return self.create_instance("info_class", self.application, **kwargs)

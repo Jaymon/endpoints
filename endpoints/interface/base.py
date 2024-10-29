@@ -419,11 +419,13 @@ class BaseApplication(ApplicationABC):
         :returns: Controller, this Controller instance should be able to handle
             the request
         """
-        return self.router.create_controller(
+        controller = self.router.create_controller(
             request,
             response,
             **kwargs
         )
+        controller.application = self
+        return controller
 
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
