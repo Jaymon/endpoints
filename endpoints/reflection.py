@@ -685,6 +685,61 @@ class ExternalDocumentation(OpenABC):
     pass
 
 
+class Server(OpenABC):
+    """Represents an OpenAPI server object
+
+    From the docs:
+        the default value would be a Server Object with a url value of /
+
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#server-object
+    """
+    _url = Field(str, default="/", required=True)
+
+    _description = Field(str)
+
+    _variables = Field(dict[str, ServerVariable])
+
+
+class SecurityScheme(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-scheme-object
+    """
+    _type = Field(str, required=True)
+
+    _description = Field(str)
+
+    _name = Field(str)
+
+    _in = Field(str)
+
+    _scheme = Field(str)
+
+    _bearerFormat = Field(str)
+
+    _flows = Field(OAuthFlows)
+
+    _openIdConnectUrl = Field(str)
+
+
+class SecurityRequirement(OpenABC):
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
+    """
+    def init_instance(self, reflect_method, **kwargs):
+        self.reflect_method = reflect_method
+
+    def set_fields(self, **kwargs):
+        super().set_fields(**kwargs)
+
+        for rd in self.reflect_method.reflect_ast_decorators():
+            name = rd.name
+            if name.startswith("auth_"):
+                security_schemes = self.root.components.securitySchemes
+                for scheme_name in security_schemes.keys():
+                    if scheme_name.startswith(name):
+                        self[name] = []
+
+
 class Tag(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#tag-object
@@ -703,58 +758,6 @@ class Tag(OpenABC):
 
     def get_description_value(self):
         return self.reflect_module.get_docblock()
-
-
-class Info(OpenABC):
-    """Represents an OpenAPI info object
-
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#info-object
-    """
-    _title = Field(str, required=True, default="Endpoints API")
-
-    _version = Field(str, required=True, default="0.1.0")
-
-    _description = Field(str)
-
-    _summary = Field(str)
-
-    _termsOfService = Field(str)
-
-    _contact = Field(Contact)
-
-    _license = Field(License)
-
-    def init_instance(self, application, **kwargs):
-        self.application = application
-
-        # There are multiple endpoints Application classes and we don't want to
-        # use those docblocks, so we will only do it if the Application is from
-        # a non-endpoints project. This is the best way I've thought of to
-        # test for non-endpoints-ness
-        if "endpoints" not in application.__class__.__module__:
-            rc = ReflectClass(application)
-            self.set_docblock(rc.get_docblock())
-
-            if version := rc.get("version", ""):
-                self["version"] = version
-
-            if summary := self.get("summary", ""):
-                self["title"] = summary
-
-
-class Server(OpenABC):
-    """Represents an OpenAPI server object
-
-    From the docs:
-        the default value would be a Server Object with a url value of /
-
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#server-object
-    """
-    _url = Field(str, default="/", required=True)
-
-    _description = Field(str)
-
-    _variables = Field(dict[str, ServerVariable])
 
 
 class Schema(OpenABC):
@@ -1340,46 +1343,6 @@ class Parameter(OpenABC):
         return ret
 
 
-class SecurityRequirement(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
-    """
-    def init_instance(self, reflect_method, **kwargs):
-        self.reflect_method = reflect_method
-
-    def set_fields(self, **kwargs):
-        super().set_fields(**kwargs)
-
-        for rd in self.reflect_method.reflect_ast_decorators():
-            name = rd.name
-            if name.startswith("auth_"):
-                security_schemes = self.root.components.securitySchemes
-                for scheme_name in security_schemes.keys():
-                    if scheme_name.startswith(name):
-                        self[name] = []
-
-
-class SecurityScheme(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-scheme-object
-    """
-    _type = Field(str, required=True)
-
-    _description = Field(str)
-
-    _name = Field(str)
-
-    _in = Field(str)
-
-    _scheme = Field(str)
-
-    _bearerFormat = Field(str)
-
-    _flows = Field(OAuthFlows)
-
-    _openIdConnectUrl = Field(str)
-
-
 class Operation(OpenABC):
     """Represents an OpenAPI operation object
 
@@ -1717,6 +1680,43 @@ class Components(OpenABC):
         schemes["auth_bearer"] = scheme
 
         return schemes
+
+
+class Info(OpenABC):
+    """Represents an OpenAPI info object
+
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#info-object
+    """
+    _title = Field(str, required=True, default="Endpoints API")
+
+    _version = Field(str, required=True, default="0.1.0")
+
+    _description = Field(str)
+
+    _summary = Field(str)
+
+    _termsOfService = Field(str)
+
+    _contact = Field(Contact)
+
+    _license = Field(License)
+
+    def init_instance(self, application, **kwargs):
+        self.application = application
+
+        # There are multiple endpoints Application classes and we don't want to
+        # use those docblocks, so we will only do it if the Application is from
+        # a non-endpoints project. This is the best way I've thought of to
+        # test for non-endpoints-ness
+        if "endpoints" not in application.__class__.__module__:
+            rc = ReflectClass(application)
+            self.set_docblock(rc.get_docblock())
+
+            if version := rc.get("version", ""):
+                self["version"] = version
+
+            if summary := self.get("summary", ""):
+                self["title"] = summary
 
 
 class OpenAPI(OpenABC):
