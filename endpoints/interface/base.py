@@ -459,11 +459,11 @@ class BaseApplication(ApplicationABC):
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
         controller = None
-        start = time.time()
+#         start = time.time()
 
         try:
             controller = self.create_controller(request, response)
-            controller.log_start(start)
+#             controller.log_start(start)
 
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
@@ -472,11 +472,6 @@ class BaseApplication(ApplicationABC):
                 request.controller_info["method_name"]
             )
 
-            logger.debug("Request handle method: {}.{}.{}".format(
-                controller.__class__.__module__,
-                controller.__class__.__name__,
-                controller_method.__name__
-            ))
             await controller_method(
                 *controller_args,
                 **controller_kwargs
@@ -491,14 +486,14 @@ class BaseApplication(ApplicationABC):
                 **kwargs
             )
 
-        finally:
-            if response.code == 204:
-                response.headers.pop('Content-Type', None)
-                # just to be sure since body could've been ""
-                response.body = None
-
-            if controller:
-                controller.log_stop(start)
+#         finally:
+# #             if response.code == 204:
+# #                 response.headers.pop('Content-Type', None)
+# #                 # just to be sure since body could've been ""
+# #                 response.body = None
+# 
+#             if controller:
+#                 controller.log_stop(start)
 
     async def handle_error(self, req, res, e, controller, **kwargs):
         """if an exception is raised while trying to handle the request it will
@@ -537,13 +532,15 @@ class BaseApplication(ApplicationABC):
             logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
-            res.set_body(e.body)
+            res.body = e.body if e.code != 204 else None
+#             res.set_body(e.body)
 
         elif isinstance(e, Redirect):
             logger.debug(String(e))
             res.code = e.code
             res.add_headers(e.headers)
-            res.set_body(None)
+            res.body = None
+#             res.set_body(None)
 
         elif isinstance(e, (AccessDenied, CallError)):
             log_error_warning(e)

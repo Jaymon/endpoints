@@ -94,24 +94,6 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(204, r.code)
         self.assertTrue("foo-bar" in r.headers)
 
-    def test_get_file_stream(self):
-        content = "this is a text file to stream"
-        filepath = testdata.create_file(content)
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(self, *args, **kwargs):",
-            "        f = open('{}')".format(filepath),
-            "        self.response.set_header('content-type', 'text/plain')",
-            "        return f",
-            "",
-        ])
-
-        c = self.create_client()
-        r = c.get('/')
-        self.assertEqual(200, r.code)
-        self.assertEqual(content, r.body)
-
     def test_get_generators(self):
         server = self.create_server(contents=[
             "from endpoints import Controller",
@@ -350,6 +332,24 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual('"bar"', r.body)
 
+    def test_io_streaming_get_file_stream(self):
+        content = "this is a text file to stream"
+        filepath = testdata.create_file(content)
+        server = self.create_server(contents=[
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(self, *args, **kwargs):",
+            "        f = open('{}')".format(filepath),
+            "        self.response.media_type = 'text/plain'",
+            "        return f",
+            "",
+        ])
+
+        c = self.create_client()
+        r = c.get('/')
+        self.assertEqual(200, r.code)
+        self.assertEqual(content, r.body)
+
     def test_io_streaming_1(self):
         """Make sure a binary file doesn't get into an infinite loop
 
@@ -358,8 +358,9 @@ class _HTTPTestCase(TestCase):
         fp = self.create_file("hello world")
         s = self.create_server([
             "from endpoints import Controller",
+            "import io",
             "class Foo(Controller):",
-            "    def GET(self):",
+            "    def GET(self) -> io.IOBase:",
             "        return open('{}', 'rb')".format(fp),
         ])
         c = self.create_client()
@@ -377,8 +378,9 @@ class _HTTPTestCase(TestCase):
         s = self.create_server([
             "from endpoints import Controller",
             "from datatypes import Filepath",
+            "import io",
             "class Foo(Controller):",
-            "    def GET(self):",
+            "    def GET(self) -> io.IOBase:",
             "        return Filepath('{}').open()".format(fp),
         ])
         c = self.create_client()
@@ -394,8 +396,9 @@ class _HTTPTestCase(TestCase):
         fp = self.create_file("hello world")
         s = self.create_server([
             "from endpoints import Controller",
+            "import io",
             "class Foo(Controller):",
-            "    def GET(self):",
+            "    def GET(self) -> io.IOBase:",
             "        return open('{}', 'r')".format(fp),
         ])
         c = self.create_client()

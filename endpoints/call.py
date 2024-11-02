@@ -1050,6 +1050,9 @@ class Controller(object):
         :param **controller_kwargs: dict, the query and body params merged
             together
         """
+        start = time.time()
+        self.log_start(start)
+
         if self.cors:
             self.handle_cors()
 
@@ -1116,6 +1119,8 @@ class Controller(object):
             await self.handle_success(body)
 #             res.set_body(await self.get_response_body(body))
 
+        self.log_stop(start)
+
     async def handle_success(self, body, **kwargs):
         request = self.request
         response = self.response
@@ -1143,21 +1148,21 @@ class Controller(object):
             if "response_media_type" in  method_info:
                 response.media_type = method_info["response_media_type"]
 
-                if response.encoding:
-                    response.set_header(
-                        "Content-Type",
-                        "{};charset={}".format(
-                            response.media_type,
-                            response.encoding
-                        )
-                    )
-
             elif "response_callback" in method_info:
                 method_info["response_callback"](response)
 
+        if response.media_type and not response.has_header("Content-Type"):
+            if response.encoding:
+                response.set_header(
+                    "Content-Type",
+                    "{};charset={}".format(
+                        response.media_type,
+                        response.encoding
+                    )
+                )
 
-
-
+            else:
+                response.set_header("Content-Type", response.media_type)
 
 #             if body is None:
 #                 response.media_type = None
@@ -1283,7 +1288,7 @@ class Controller(object):
             for k, v in req.headers.items():
                 if k not in ignore_hs:
                     self.logger.info(
-                        "Request {}header {}: {}".format(uuid, k, v)
+                        "Request {}header - {}: {}".format(uuid, k, v)
                     )
 
             self.log_start_body()
@@ -1348,7 +1353,7 @@ class Controller(object):
             uuid += " "
 
         for k, v in res.headers.items():
-            self.logger.info("Response {}header {}: {}".format(uuid, k, v))
+            self.logger.info("Response {}header - {}: {}".format(uuid, k, v))
 
         stop = time.time()
 
