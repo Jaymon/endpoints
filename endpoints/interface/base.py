@@ -416,16 +416,45 @@ class BaseApplication(ApplicationABC):
     def create_controller(self, request, response, **kwargs):
         """Create a controller to handle the request
 
-        :returns: Controller, this Controller instance should be able to handle
-            the request
+        :param request: Request
+        :param response: Response
+        :returns: Controller, this Controller instance should be able to
+            handle the request
         """
-        controller = self.router.create_controller(
+        request.controller_info = self.router.find_controller_info(
+            request,
+            **kwargs
+        )
+
+        controller = request.controller_info['class'](
             request,
             response,
             **kwargs
         )
+
+#         controller = self.router.create_controller(
+#             request,
+#             response,
+#             **kwargs
+#         )
         controller.application = self
         return controller
+
+#     def finalize_response(self, response):
+#         if response.code is None:
+#             # set the http status code to return to the client, by default,
+#             # 200 if a body is present otherwise 204
+#             if response.has_body():
+#                 response.code = 200
+# 
+#             else:
+#                 response.code = 204
+#                 response.headers.pop('Content-Type', None)
+#                 # just to be sure since body could've been ""
+#                 response.body = None
+# 
+# 
+#             response.code = 200 if response.has_body() else 204
 
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
@@ -487,7 +516,8 @@ class BaseApplication(ApplicationABC):
         if isinstance(e, CloseConnection):
             raise
 
-        res.set_body(e)
+        res.body = e
+        #res.set_body(e)
 
         def log_error_warning(e):
             if logger.isEnabledFor(logging.DEBUG):

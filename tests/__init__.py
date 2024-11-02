@@ -30,6 +30,10 @@ class Server(object):
     def controller_prefix(self):
         return self.application.controller_prefixes[0]
 
+    @property
+    def router(self):
+        return self.application.router
+
     def __init__(self, *args, **kwargs):
         self.application = BaseApplication(*args, **kwargs)
 

@@ -6,12 +6,6 @@ import inspect
 import uuid
 from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
-    get_args, # https://stackoverflow.com/a/64643971
-    get_origin,
-)
-from types import (
-    UnionType,
-    GenericAlias,
 )
 import json
 import datetime
@@ -81,7 +75,8 @@ class ReflectController(ReflectClass):
             There can be multiple of each http method name, so this can
             yield N GET methods, etc.
         """
-        method_names = self.value["method_names"]
+#         method_names = self.value["method_names"]
+        method_names = self.get_http_method_names()
         if http_verb:
             items = []
             if http_verb in method_names:
@@ -143,6 +138,41 @@ class ReflectController(ReflectClass):
                 url_paths[url_path].append(rm)
 
         return url_paths
+
+    def get_http_method_names(self):
+        """An HTTP method (eg GET or POST) needs to be handled by a controller
+        class. So a controller can have a method named GET and that will be
+        called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
+        there can actually be multiple methods defined that all start with
+        <HTTP-METHOD> (eg, GET_1, GET_2, etc)
+
+        Although you can define any http methods (a method is valid if it is
+        all uppercase), here is a list of rfc approved http request methods:
+
+            http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
+
+        :returns: dict[str, list[str]], the keys are the HTTP method and the
+            values are all the method names that satisfy that HTTP method.
+            these method names will be in alphabetical order to make it so they
+            can always be checked in the same order
+        """
+        method_names = defaultdict(set)
+
+        controller_class = self.get_target()
+
+        members = inspect.getmembers(controller_class)
+        for member_name, member in members:
+            prefix, sep, postfix = member_name.partition("_")
+            if prefix.isupper() and callable(member):
+                if prefix != "OPTIONS" or controller_class.cors:
+                    method_names[prefix].add(member_name)
+
+        # after compiling them put them in alphabetical order
+        for prefix in method_names.keys():
+            method_names[prefix] = list(method_names[prefix])
+            method_names[prefix].sort()
+
+        return method_names
 
 
 class ReflectMethod(ReflectCallable):

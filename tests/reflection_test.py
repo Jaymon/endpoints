@@ -143,6 +143,46 @@ class ReflectMethodTest(TestCase):
         """)[0]
         self.assertEqual("/", rm.get_url_path())
 
+    def test_get_http_method_names_1(self):
+        rcs = self.create_reflect_controllers([
+            "class _ParentController(Controller):",
+            "    def GET(self):",
+            "        pass",
+            "",
+            "class Foo(_ParentController):",
+            "    def GET_one(self):",
+            "        pass",
+            "    def GET_two(self):",
+            "        pass",
+            "    def POST_one(self):",
+            "        pass",
+            "    def ANY(self):",
+            "        pass",
+        ])
+
+        for rc in rcs:
+            controller_method_names = rc.get_http_method_names()
+
+            method_names = controller_method_names["GET"]
+            self.assertEqual(["GET", "GET_one", "GET_two"], method_names)
+
+            method_names = controller_method_names["POST"]
+            self.assertEqual(["POST_one"], method_names)
+
+            method_names = controller_method_names["ANY"]
+            self.assertEqual(["ANY"], method_names)
+
+    def test_get_http_method_names_no_options(self):
+        rcs = self.create_reflect_controllers([
+            "class Foo(Controller):",
+            "    cors = False",
+            "    def GET(self):",
+            "        pass",
+        ])
+
+        controller_method_names = rcs[0].get_method_names()
+        self.assertFalse("OPTIONS" in controller_method_names)
+
 
 class OpenABCTest(TestCase):
     def test_fields(self):
