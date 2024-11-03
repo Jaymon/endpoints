@@ -165,12 +165,12 @@ class version(ControllerDecorator):
         self.error_code = kwargs.pop("error_code", 404)
 
     async def handle(self, controller, **kwargs):
-        req_version = controller.request.version(controller.content_type)
+        req_version = controller.request.version()
         return req_version in self.versions
 
     async def handle_handle_error(self, controller, e):
         req = controller.request
-        req_version = req.version(controller.content_type)
+        req_version = req.version()
 
         e_msg = " ".join([
             "Request Controller method: {}:{}.{}".format(

@@ -179,7 +179,7 @@ class ApplicationFactory(object):
     """This is convenience wrapper to make it easy to call daphne, because you
     can just do this:
 
-        $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi.ApplicationFactory
+        $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi:ApplicationFactory
     """
     application = None
     """Will hold a cached instance of .application_class"""

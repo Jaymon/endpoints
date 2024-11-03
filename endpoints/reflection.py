@@ -1291,7 +1291,7 @@ class Response(OpenABC):
         # support Accept header response:
         # https://stackoverflow.com/a/62593737
         # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-        media_type = environ.RESPONSE_CONTENT_TYPE
+        media_type = environ.RESPONSE_MEDIA_TYPE
         if version := reflect_method.get_version():
             media_type += f"; version={version}"
         return [media_type]

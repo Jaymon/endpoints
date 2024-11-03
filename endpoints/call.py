@@ -437,16 +437,10 @@ class Pathfinder(ClasspathFinder):
         value["modules"] = kwargs.get("modules", [])
 
         if "class" in value:
-#             value["method_names"] = value["class"].get_method_names()
-
             rc = self.create_reflect_controller_instance(keys, value)
-            #value["method_names"] = rc.get_http_method_names()
             value["method_names"] = defaultdict(list)
-            #value["media_types"] = {}
 
             for rm in rc.reflect_http_methods():
-                #value["method_names"].setdefault(rm.http_verb, [])
-
                 method_info = {
                     "method_name": rm.name
                 }
@@ -560,24 +554,6 @@ class Router(object):
                 pathfinder.add_class(controller_class)
 
         return pathfinder
-
-#     def create_controller(self, request, response, **kwargs):
-#         """Create a controller to handle the request
-# 
-#         :param request: Request
-#         :param response: Response
-#         :returns: Controller
-#         """
-#         request.controller_info = self.find_controller_info(
-#             request,
-#             **kwargs
-#         )
-# 
-#         return request.controller_info['class'](
-#             request,
-#             response,
-#             **kwargs
-#         )
 
     def find_controller(self, path_args):
         """Where all the magic happens, this takes a requested path_args and
@@ -740,20 +716,6 @@ class Controller(object):
     classpath is the key and the class object is the value, see
     __init_subclass__"""
 
-    @cachedproperty(cached="_encoding")
-    def encoding(self):
-        """the response charset of this controller"""
-        req = self.request
-        encoding = req.accept_encoding
-        return encoding if encoding else environ.ENCODING
-
-    @cachedproperty(cached="_content_type")
-    def content_type(self):
-        """the response content type this controller will use"""
-        req = self.request
-        content_type = req.accept_content_type
-        return content_type if content_type else environ.RESPONSE_CONTENT_TYPE
-
     @classmethod
     def is_private(cls):
         """Return True if this class is considered private and is not
@@ -837,42 +799,24 @@ class Controller(object):
 
         return name
 
-#     @classmethod
-#     def get_method_names(cls):
-#         """An HTTP method (eg GET or POST) needs to be handled by a controller
-#         class. So a controller can have a method named GET and that will be
-#         called when GET <PATH-TO-CONTROLLER> is called. But wait, there's more,
-#         there can actually be multiple methods defined that all start with
-#         <HTTP-METHOD> (eg, GET_1, GET_2, etc)
-# 
-#         Although you can define any http methods (a method is valid if it is
-#         all uppercase), here is a list of rfc approved http request methods:
-# 
-#             http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
-# 
-#         :returns: dict[str, list[str]], the keys are the HTTP method and the
-#             values are all the method names that satisfy that HTTP method.
-#             these method names will be in alphabetical order to make it so they
-#             can always be checked in the same order
-#         """
-#         method_names = defaultdict(set)
-# 
-#         members = inspect.getmembers(cls)
-#         for member_name, member in members:
-#             prefix, sep, postfix = member_name.partition("_")
-#             if prefix.isupper() and callable(member):
-#                 if prefix != "OPTIONS" or cls.cors:
-#                     method_names[prefix].add(member_name)
-# 
-#         # after compiling them put them in alphabetical order
-#         for prefix in method_names.keys():
-#             method_names[prefix] = list(method_names[prefix])
-#             method_names[prefix].sort()
-# 
-#         return method_names
-
     @classmethod
-    def get_response_media_types(cls):
+    def get_response_media_types(cls, **kwargs):
+        """Get the response media types this controller can support. This
+        is used to set media types for the controller's http methods
+
+        :param **kwargs:
+        :returns: list[
+            tuple[
+                type|tuple[type, ...],
+                str|Callable[[Response], None]
+            ]
+        ], index 0 are the types that will be compared against the method's
+            defined (eg, the value after -> in the method definition) return
+            type. Index 1 can be the actual media type or a callable that
+            takes the response and sets things like Response.media_type
+            manually. If no matching type is found or the method doesn't have
+            one defined then the tuple of (Any, "<MEDIA-TYPE>") will be used
+        """
         def handle_nonetype(response):
             response.media_type = None
             response.headers.pop('Content-Type', None)
@@ -897,16 +841,24 @@ class Controller(object):
                 # body contains arbitrary binary data
                 response.media_type = "application/octet-stream"
 
+        media_type = kwargs.get("media_type", environ.RESPONSE_MEDIA_TYPE)
+
         return [
-            (Mapping, "application/json"),
-            (str, "text/html"),
-            (bytes, "application/octet-stream"),
-            ((int, bool), "text/plain"),
-            (Sequence, "application/json"),
-            (NoneType, handle_nonetype),
-            (Exception, "text/html"),
-            (io.IOBase, handle_file),
-            (Any, "application/json")
+            (Mapping, kwargs.get("dict_media_type", media_type)),
+            (str, kwargs.get("str_media_type", "text/html")),
+            (
+                bytes,
+                kwargs.get(
+                    "bytes_media_type",
+                    "application/octet-stream"
+                )
+            ),
+            ((int, bool), kwargs.get("int_media_type", "text/plain")),
+            (Sequence, kwargs.get("list_media_type", media_type)),
+            (NoneType, kwargs.get("none_media_type", handle_nonetype)),
+            (Exception, kwargs.get("exception_media_type", media_type)),
+            (io.IOBase, kwargs.get("file_media_type", handle_file)),
+            (Any, kwargs.get("any_media_type", media_type))
         ]
 
     def __init__(self, request, response, **kwargs):
@@ -924,20 +876,6 @@ class Controller(object):
         """
         super().__init_subclass__()
         cls.controller_classes[f"{cls.__module__}:{cls.__qualname__}"] = cls
-
-#     def prepare_response(self):
-#         """Called at the beginning of the handle() call, use to prepare the
-#         response instance with defaults that can be overridden in the
-#         controller's actual http handle method"""
-#         res = self.response
-# 
-#         res.encoding = self.encoding
-# 
-#         if content_type := self.content_type:
-#             res.set_header("Content-Type", "{};charset={}".format(
-#                 content_type,
-#                 res.encoding
-#             ))
 
     def handle_origin(self, origin):
         """Check the origin and decide if it is valid
@@ -1018,22 +956,6 @@ class Controller(object):
         """
         return controller_args, controller_kwargs
 
-    async def get_response_body(self, body):
-        """Called right after the controller's request method (eg GET, POST)
-        returns with the body that it returned
-
-        This is called after all similar decorators methods, it's the last
-        stop before body is sent to the client by the interface
-
-        NOTE -- this is called before Response.body is set, the value returned
-        from this method will be set in Response.body
-
-        :param body: Any, the value returned from the requested method before
-            it is set into Response.body
-        :return: Any
-        """
-        return body
-
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
 
@@ -1055,8 +977,6 @@ class Controller(object):
 
         if self.cors:
             self.handle_cors()
-
-#         self.prepare_response()
 
         req = self.request
         res = self.response
@@ -1117,7 +1037,6 @@ class Controller(object):
 
         else:
             await self.handle_success(body)
-#             res.set_body(await self.get_response_body(body))
 
         self.log_stop(start)
 
@@ -1163,61 +1082,6 @@ class Controller(object):
 
             else:
                 response.set_header("Content-Type", response.media_type)
-
-#             if body is None:
-#                 response.media_type = None
-#                 response.headers.pop('Content-Type', None)
-# 
-#             elif isinstance(body, Mapping):
-#                 response.media_type = "application/json"
-# 
-#             elif isinstance(body, str):
-#                 response.media_type = "text/html"
-# 
-#             elif isinstance(body, bytes):
-#                 response.media_type = "application/octet-stream"
-# 
-#             elif isinstance(body, (int, bool)):
-#                 response.media_type = "text/plain"
-# 
-#             elif isinstance(body, Sequence):
-#                 response.media_type = "application/json"
-# 
-#             elif isinstance(body, io.IOBase):
-#                 filepath = getattr(body, "name", "")
-#                 if filepath:
-#                     mt = MimeType.find_type(filepath)
-#                     filesize = os.path.getsize(filepath)
-#                     response.media_type = mt
-#                     self.set_header("Content-Type", mt)
-#                     response.set_header("Content-Length", filesize)
-#                     logger.debug(" ".join([
-#                         f"Response body set to file: \"{filepath}\"",
-#                         f"with mimetype: \"{mt}\"",
-#                         f"and size: {filesize}",
-#                     ]))
-# 
-#                 else:
-#                     # https://www.rfc-editor.org/rfc/rfc2046.txt 4.5.1
-#                     # The "octet-stream" subtype is used to indicate that a
-#                     # body contains arbitrary binary data
-#                     response.media_type = "application/octet-stream"
-
-#         if response.code is None:
-#             # set the http status code to return to the client, by default,
-#             # 200 if a body is present otherwise 204
-#             if response.has_body():
-#                 response.code = 200
-# 
-#             else:
-#                 response.code = 204
-#                 response.headers.pop('Content-Type', None)
-#                 # just to be sure since body could've been ""
-#                 response.body = None
-# 
-# 
-#             response.code = 200 if response.has_body() else 204
-
 
 
     async def handle_error(self, e, **kwargs):
@@ -1885,12 +1749,6 @@ class Response(Call):
 
     an instance of this class is used to create the text response that will be
     sent back to the client
-
-    Request has a ._body and .body, the ._body property is the raw value that
-    is returned from the Controller method that handled the request, the .body
-    property is a string that is ready to be sent back to the client, so it is
-    _body converted to a string. The reason _body isn't name body_kwargs is
-    because _body can be almost anything (not just a dict)
     """
     encoding = None
 
@@ -1903,26 +1761,6 @@ class Response(Call):
     media_type = None
     """Set this to the media type to return to the client"""
 
-#     @cachedproperty(cached="_code", onget=False)
-#     def code(self):
-#         """the http status code to return to the client, by default, 200 if a
-#         body is present otherwise 204"""
-#         if self.has_body():
-#             code = 200
-#         else:
-#             code = 204
-# 
-#         return code
-# 
-#     @code.setter
-#     def code(self, v):
-#         self._code = v
-#         try:
-#             del(self.status)
-# 
-#         except AttributeError:
-#             pass
-
     @property
     def status_code(self):
         return self.code
@@ -1932,30 +1770,6 @@ class Response(Call):
         """The full http status (the first line of the headers in a server
         response)"""
         return Status(self.code)
-
-#     def set_body(self, body):
-#         """Set the body onto this instance
-# 
-#         :param body: Any, the raw body for the response
-#         """
-#         self.body = body
-#         if self.is_file():
-#             filepath = getattr(body, "name", "")
-#             if filepath:
-#                 mt = MimeType.find_type(filepath)
-#                 filesize = os.path.getsize(filepath)
-#                 self.set_header("Content-Type", mt)
-#                 self.set_header("Content-Length", filesize)
-#                 logger.debug(" ".join([
-#                     f"Response body set to file: \"{filepath}\"",
-#                     f"with mimetype: \"{mt}\"",
-#                     f"and size: {filesize}",
-#                 ]))
-# 
-#             else:
-#                 logger.warn(
-#                     "Response body is a filestream with no .filepath property"
-#                 )
 
     def has_body(self):
         """return True if there is an actual response body"""

@@ -12,8 +12,8 @@ class Environ(Environ):
         # Default encoding
         self.setdefault("ENCODING", "UTF-8")
 
-        # the response content type a controller will set
-        self.setdefault("RESPONSE_CONTENT_TYPE", "application/json")
+        # the fallback response media type a controller will set
+        self.setdefault("RESPONSE_MEDIA_TYPE", "application/json")
 
         # The host string, usually just domain or domain:port, this is used by
         # the server classes and also the tests

@@ -227,7 +227,8 @@ class _HTTPTestCase(TestCase):
         server = self.create_server(contents=[
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
-            "        self.response.headers['content-type'] = 'text/plain'",
+            "        self.response.media_type = 'text/plain'",
+#             "        self.response.headers['content-type'] = 'text/plain'",
             "        return self.request.body",
         ])
 
@@ -243,11 +244,7 @@ class _HTTPTestCase(TestCase):
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, **kwargs):",
-            "        content_type = '{};charset={}'.format(",
-            "            kwargs['content_type'],",
-            "            self.encoding",
-            "        )",
-            "        self.response.set_header('content-type', content_type)",
+            "        self.response.media_type = kwargs['content_type']",
             "        return kwargs['body']",
         ])
 
