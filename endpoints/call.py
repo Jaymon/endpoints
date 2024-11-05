@@ -666,6 +666,20 @@ class Router(object):
         return ret
 
 
+
+from .exception import (
+    CallError,
+    Redirect,
+    CallStop,
+    AccessDenied,
+    VersionError,
+    CloseConnection,
+)
+
+
+
+
+
 class Controller(object):
     """This is the interface for a Controller sub class
 
@@ -996,8 +1010,8 @@ class Controller(object):
             # we update the controller info so other handlers know what
             # method succeeded/failed
             req.controller_info["method_info"] = controller_method_info
-            req.controller_info["method_name"] = controller_method_name
-            req.controller_info["method"] = controller_method
+            req.controller_info["http_method_name"] = controller_method_name
+            req.controller_info["http_method"] = controller_method
 
             try:
                 self.logger.debug(
@@ -1023,17 +1037,21 @@ class Controller(object):
                 exceptions[e.__class__.__name__].append(e)
 
         if exceptions:
-            if len(exceptions) == 1:
-                raise list(exceptions.values())[0][0]
+            try:
+                if len(exceptions) == 1:
+                    raise list(exceptions.values())[0][0]
 
-            else:
-                raise CallError(
-                    400,
-                    "Could not find a method to satisfy {} {}".format(
-                        req.method,
-                        req.path
+                else:
+                    raise CallError(
+                        400,
+                        "Could not find a method to satisfy {} {}".format(
+                            req.method,
+                            req.path
+                        )
                     )
-                )
+
+            except Exception as e:
+                await self.handle_error(e)
 
         else:
             await self.handle_success(body)
@@ -1084,14 +1102,85 @@ class Controller(object):
                 response.set_header("Content-Type", response.media_type)
 
 
+#     async def handle_error(self, e, **kwargs):
+#         """if an exception is raised while trying to handle the request it will
+#         go through this method
+# 
+#         :param e: Exception, the error that was raised
+#         :param **kwargs: dict, any other information that might be handy
+#         """
+#         pass
+
+
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
         go through this method
 
+        This method will set the response body and code
+
         :param e: Exception, the error that was raised
-        :param **kwargs: dict, any other information that might be handy
+        :param **kwargs:
         """
-        pass
+        req = self.request
+        res = self.response
+        logger = self.logger
+
+#         res.error = e
+        res.body = e
+
+        if isinstance(e, CallStop):
+            logger.debug(String(e))
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = e.body if e.code != 204 else None
+
+        elif isinstance(e, Redirect):
+            logger.debug(String(e))
+            res.code = e.code
+            res.add_headers(e.headers)
+            res.body = None
+
+        elif isinstance(e, (AccessDenied, CallError)):
+            self.log_error_warning(e)
+
+            res.code = e.code
+            res.add_headers(e.headers)
+
+        elif isinstance(e, TypeError):
+            e_msg = String(e)
+            controller_info = req.controller_info
+
+            # filter out TypeErrors raised from non handler methods
+            correct_prefix = controller_info["http_method_name"] in e_msg
+            if correct_prefix and 'argument' in e_msg:
+                if "takes" in e_msg and "given" in e_msg:
+                    # TypeError: <METHOD>() takes exactly M argument (N
+                    #   given)
+                    # TypeError: <METHOD>() takes no arguments (N given)
+                    # TypeError: <METHOD>() takes M positional arguments
+                    #   but N were given
+                    # TypeError: <METHOD>() takes 1 positional argument but
+                    #   N were given
+                    res.code = 404
+
+                elif "unexpected keyword argument" in e_msg:
+                    # TypeError: <METHOD>() got an unexpected keyword
+                    # argument '<NAME>'
+                    res.code = 400
+
+                elif "multiple values" in e_msg:
+                    # TypeError: <METHOD>() got multiple values for keyword
+                    # argument '<NAME>'
+                    res.code = 400
+
+                else:
+                    raise e
+
+            else:
+                raise e
+
+        else:
+            raise e
 
     def create_logger(self, request, response):
         # we use self.logger and set the name to endpoints.call.module.class so
@@ -1106,6 +1195,21 @@ class Controller(object):
             module_name,
             class_name,
         ))
+
+    def log_error_warning(self, e):
+        logger = self.logger
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.warning(e, exc_info=True)
+
+        elif logger.isEnabledFor(logging.INFO):
+            e_msg = String(e)
+            ce = e
+            while ce := getattr(ce, "__cause__", None):
+                e_msg += " caused by " + String(ce)
+            logger.warning(e_msg)
+
+        else:
+            logger.warning(e)
 
     def log_start(self, start):
         """log all the headers and stuff at the start of the request"""
@@ -1364,15 +1468,15 @@ class Request(Call):
 
         return uuid or ""
 
-    @cachedproperty(cached="_accept_content_type")
-    def accept_content_type(self):
-        """Return the requested content type
+    @cachedproperty(cached="_accept_media_type")
+    def accept_media_type(self):
+        """Return the requested media type
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
 
-        :returns: string, empty if a suitable content type wasn't found, this
-            will only check the first accept content type and then only if that
-            content type has no wildcards
+        :returns: string, empty if a suitable media type wasn't found, this
+            will only check the first accept media type and then only if that
+            media type has no wildcards
         """
         v = ""
         accept_header = self.get_header('accept', "")
@@ -1752,7 +1856,7 @@ class Response(Call):
     """
     encoding = None
 
-    error = None
+#     error = None
     """Will contain any raised exception"""
 
     code = None

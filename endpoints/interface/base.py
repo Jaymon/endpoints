@@ -437,8 +437,6 @@ class BaseApplication(ApplicationABC):
 
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
-        controller = None
-
         try:
             controller = self.create_controller(request, response)
 
@@ -455,183 +453,193 @@ class BaseApplication(ApplicationABC):
             )
 
         except Exception as e:
-            await self.handle_error(
-                request,
-                response,
-                e,
-                controller,
-                **kwargs
-            )
+            await self.handle_error(req, res, e, **kwargs)
 
-    async def handle_error(self, req, res, e, controller, **kwargs):
-        """if an exception is raised while trying to handle the request it will
-        go through this method
-
-        This method will set the response body and then also calls
-        Controller.handle_error for further customization if the Controller is
-        available
-
-        :param e: Exception, the error that was raised
-        :param **kwargs: dict, any other information that might be handy
-        """
-        res.error = e
+    async def handle_error(self, req, res, e, **kwargs):
+        res.body = e
 
         if isinstance(e, CloseConnection):
             raise
 
-        res.body = e
-        #res.set_body(e)
-
-        def log_error_warning(e):
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.warning(e, exc_info=True)
-
-            elif logger.isEnabledFor(logging.INFO):
-                e_msg = String(e)
-                ce = e
-                while ce := getattr(ce, "__cause__", None):
-                    e_msg += " caused by " + String(ce)
-                logger.warning(e_msg)
-
-            else:
-                logger.warning(e)
-
-        if isinstance(e, CallStop):
-            logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = e.body if e.code != 204 else None
-
-        elif isinstance(e, Redirect):
-            logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = None
-
-        elif isinstance(e, (AccessDenied, CallError)):
-            log_error_warning(e)
-
-            res.code = e.code
-            res.add_headers(e.headers)
-
         elif isinstance(e, NotImplementedError):
-            log_error_warning(e)
             res.code = 501
 
         elif isinstance(e, TypeError):
-            e_msg = String(e)
-            controller_info = req.controller_info
-
-            if controller_info:
-                # filter out TypeErrors raised from non handler methods
-                correct_prefix = controller_info["method_name"] in e_msg
-                if correct_prefix and 'argument' in e_msg:
-                    # there are subtle messaging differences between py2 and
-                    # py3
-                    errs = [
-                        "takes exactly",
-                        "takes no arguments",
-                        "positional argument"
-                    ]
-                    if (
-                        errs[0] in e_msg
-                        or errs[1] in e_msg
-                        or errs[2] in e_msg
-                    ):
-                        # TypeError: <METHOD>() takes exactly M argument (N
-                        #   given)
-                        # TypeError: <METHOD>() takes no arguments (N given)
-                        # TypeError: <METHOD>() takes M positional arguments
-                        #   but N were given
-                        # TypeError: <METHOD>() takes 1 positional argument but
-                        #   N were given
-                        # we shouldn't ever get the "takes no arguments" case
-                        # because of self, but just in case check if there are
-                        # path args, if there are then 404, if not then 405
-                        #logger.debug(e_msg, exc_info=True)
-                        logger.debug(e_msg)
-
-                        if len(controller_info["method_args"]):
-                            res.code = 404
-
-                        else:
-                            res.code = 405
-
-                    elif "unexpected keyword argument" in e_msg:
-                        # TypeError: <METHOD>() got an unexpected keyword
-                        # argument '<NAME>'
-
-                        try:
-                            # if the binding of just the *args works then the
-                            # problem is the **kwargs so a 405 is appropriate,
-                            # otherwise return a 404
-                            inspect.getcallargs(
-                                controller_info["method"],
-                                *controller_info["method_args"]
-                            )
-                            res.code = 405
-
-                            logger.warning("Controller method {}.{}.{}".format(
-                                controller_info['module_name'],
-                                controller_info['class_name'],
-                                e_msg
-                            ))
-
-                        except TypeError:
-                            res.code = 404
-
-                    elif "multiple values" in e_msg:
-                        # TypeError: <METHOD>() got multiple values for keyword
-                        # argument '<NAME>'
-                        try:
-                            inspect.getcallargs(
-                                controller_info["method"],
-                                *controller_info["method_args"]
-                            )
-                            res.code = 409
-
-                            log_error_warning(e)
-
-                        except TypeError:
-                            res.code = 404
-
-                    else:
-                        res.code = 500
-                        logger.exception(e)
-
-                else:
-                    res.code = 500
-                    logger.exception(e)
-
-            else:
-                res.code = 404
-                log_error_warning(e)
+            res.code = 404
 
         else:
             res.code = 500
             logger.exception(e)
 
-        if controller:
-            error_method = getattr(
-                controller,
-                "handle_{}_error".format(res.code),
-                None
-            )
-            if not error_method:
-                error_method = getattr(
-                    controller,
-                    "handle_{}_error".format(req.method),
-                    None
-                )
-                if not error_method:
-                    error_method = getattr(controller, "handle_error")
-
-            logger.debug("Handle {} error using method: {}.{}".format(
-                res.code,
-                controller.__class__.__name__,
-                error_method.__name__
-            ))
-            await error_method(e, **kwargs)
+#     async def handle_error(self, req, res, e, controller, **kwargs):
+#         """if an exception is raised while trying to handle the request it will
+#         go through this method
+# 
+#         This method will set the response body and then also calls
+#         Controller.handle_error for further customization if the Controller is
+#         available
+# 
+#         :param e: Exception, the error that was raised
+#         :param **kwargs: dict, any other information that might be handy
+#         """
+#         res.error = e
+# 
+#         if isinstance(e, CloseConnection):
+#             raise
+# 
+#         res.body = e
+#         #res.set_body(e)
+# 
+#         def log_error_warning(e):
+#             if logger.isEnabledFor(logging.DEBUG):
+#                 logger.warning(e, exc_info=True)
+# 
+#             elif logger.isEnabledFor(logging.INFO):
+#                 e_msg = String(e)
+#                 ce = e
+#                 while ce := getattr(ce, "__cause__", None):
+#                     e_msg += " caused by " + String(ce)
+#                 logger.warning(e_msg)
+# 
+#             else:
+#                 logger.warning(e)
+# 
+#         if isinstance(e, CallStop):
+#             logger.debug(String(e))
+#             res.code = e.code
+#             res.add_headers(e.headers)
+#             res.body = e.body if e.code != 204 else None
+# 
+#         elif isinstance(e, Redirect):
+#             logger.debug(String(e))
+#             res.code = e.code
+#             res.add_headers(e.headers)
+#             res.body = None
+# 
+#         elif isinstance(e, (AccessDenied, CallError)):
+#             log_error_warning(e)
+# 
+#             res.code = e.code
+#             res.add_headers(e.headers)
+# 
+#         elif isinstance(e, NotImplementedError):
+#             log_error_warning(e)
+#             res.code = 501
+# 
+#         elif isinstance(e, TypeError):
+#             e_msg = String(e)
+#             controller_info = req.controller_info
+# 
+#             if controller_info:
+#                 # filter out TypeErrors raised from non handler methods
+#                 correct_prefix = controller_info["method_name"] in e_msg
+#                 if correct_prefix and 'argument' in e_msg:
+#                     # there are subtle messaging differences between py2 and
+#                     # py3
+#                     errs = [
+#                         "takes exactly",
+#                         "takes no arguments",
+#                         "positional argument"
+#                     ]
+#                     if (
+#                         errs[0] in e_msg
+#                         or errs[1] in e_msg
+#                         or errs[2] in e_msg
+#                     ):
+#                         # TypeError: <METHOD>() takes exactly M argument (N
+#                         #   given)
+#                         # TypeError: <METHOD>() takes no arguments (N given)
+#                         # TypeError: <METHOD>() takes M positional arguments
+#                         #   but N were given
+#                         # TypeError: <METHOD>() takes 1 positional argument but
+#                         #   N were given
+#                         # we shouldn't ever get the "takes no arguments" case
+#                         # because of self, but just in case check if there are
+#                         # path args, if there are then 404, if not then 405
+#                         #logger.debug(e_msg, exc_info=True)
+#                         logger.debug(e_msg)
+# 
+#                         if len(controller_info["method_args"]):
+#                             res.code = 404
+# 
+#                         else:
+#                             res.code = 405
+# 
+#                     elif "unexpected keyword argument" in e_msg:
+#                         # TypeError: <METHOD>() got an unexpected keyword
+#                         # argument '<NAME>'
+# 
+#                         try:
+#                             # if the binding of just the *args works then the
+#                             # problem is the **kwargs so a 405 is appropriate,
+#                             # otherwise return a 404
+#                             inspect.getcallargs(
+#                                 controller_info["method"],
+#                                 *controller_info["method_args"]
+#                             )
+#                             res.code = 405
+# 
+#                             logger.warning("Controller method {}.{}.{}".format(
+#                                 controller_info['module_name'],
+#                                 controller_info['class_name'],
+#                                 e_msg
+#                             ))
+# 
+#                         except TypeError:
+#                             res.code = 404
+# 
+#                     elif "multiple values" in e_msg:
+#                         # TypeError: <METHOD>() got multiple values for keyword
+#                         # argument '<NAME>'
+#                         try:
+#                             inspect.getcallargs(
+#                                 controller_info["method"],
+#                                 *controller_info["method_args"]
+#                             )
+#                             res.code = 409
+# 
+#                             log_error_warning(e)
+# 
+#                         except TypeError:
+#                             res.code = 404
+# 
+#                     else:
+#                         res.code = 500
+#                         logger.exception(e)
+# 
+#                 else:
+#                     res.code = 500
+#                     logger.exception(e)
+# 
+#             else:
+#                 res.code = 404
+#                 log_error_warning(e)
+# 
+#         else:
+#             res.code = 500
+#             logger.exception(e)
+# 
+#         if controller:
+#             error_method = getattr(
+#                 controller,
+#                 "handle_{}_error".format(res.code),
+#                 None
+#             )
+#             if not error_method:
+#                 error_method = getattr(
+#                     controller,
+#                     "handle_{}_error".format(req.method),
+#                     None
+#                 )
+#                 if not error_method:
+#                     error_method = getattr(controller, "handle_error")
+# 
+#             logger.debug("Handle {} error using method: {}.{}".format(
+#                 res.code,
+#                 controller.__class__.__name__,
+#                 error_method.__name__
+#             ))
+#             await error_method(e, **kwargs)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):
