@@ -6,19 +6,23 @@ class CallError(Exception):
 
     All Endpoints' exceptions extend this
     """
-    def __init__(self, code=500, msg='', *args, **kwargs):
+    def __init__(self, code=500, msg="", headers=None, body=None, **kwargs):
         '''
         create the error
 
-        code -- integer -- http status code
-        msg -- string -- the message you want to accompany your status code
+        :param code: int, http status code
+        :param msg: str, the message you want to accompany your status code
+        :param headers: dict[str, str]
+        :param body: Any
         '''
         self.code = code
-        self.headers = kwargs.pop('headers', {})
-        super(CallError, self).__init__(msg, *args, **kwargs)
+        self.headers = headers or {}
+        self.body = body
+        super().__init__(msg, **kwargs)
 
     def __str__(self):
-        if not (s := super().__str__()):
+        s = super().__str__()
+        if not s:
             s = f"{self.__class__.__name__}({self.code})"
         return s
 
@@ -27,9 +31,9 @@ class Redirect(CallError):
     """controllers can raise this to redirect to the new location"""
     def __init__(self, location, code=302, **kwargs):
         # set the realm header
-        headers = kwargs.pop('headers', {})
-        headers.setdefault('Location', location)
-        kwargs['headers'] = headers
+        headers = kwargs.pop("headers", {})
+        headers.setdefault("Location", location)
+        kwargs["headers"] = headers
         super().__init__(code, location, **kwargs)
 
 
@@ -49,7 +53,7 @@ class AccessDenied(CallError):
     # used when nothing is specified
     SCHEME_DEFAULT = "Auth"
 
-    def __init__(self, msg='', scheme="", realm="", **kwargs):
+    def __init__(self, msg="", scheme="", realm="", **kwargs):
         """create an access denied error (401)
 
         This error adds the needed WWW-Authenticate header using the passed in
@@ -85,14 +89,13 @@ class CallStop(CallError):
     don't want to continue to run code, this is just an easy way to short
     circuit processing
     """
-    def __init__(self, code, body=None, msg='', **kwargs):
+    def __init__(self, code, body=None, msg="", **kwargs):
         """Create the stop object
 
         :param code: int, http status code
         :param body: Any, the body of the response
         """
-        self.body = body
-        super().__init__(code, msg, **kwargs)
+        super().__init__(code, msg, body=body, **kwargs)
 
 
 class VersionError(CallError):
@@ -104,7 +107,7 @@ class VersionError(CallError):
 
 
 class CloseConnection(CallError):
-    def __init__(self, msg='', *args, **kwargs):
+    def __init__(self, msg="", *args, **kwargs):
         """Close a connection, so in a websocket request this will cause the
         server to close the websocket connection.
 

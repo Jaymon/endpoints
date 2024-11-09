@@ -73,52 +73,46 @@ class BaseApplicationTest(TestCase):
 
     def test_routing_error_unexpected_args(self):
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
         ])
         res = c.handle("/foo/bar", query_kwargs=dict(foo=2))
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
         ])
         res = c.handle("/foo/bar", query_kwargs=dict(che=2))
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
         ])
         res = c.handle("/foo/bar", query_kwargs=dict(foo=1, bar=2))
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
         ])
         res = c.handle("/foo", query_kwargs=dict(foo=1, bar=2))
-        self.assertEqual(409, res.code)
+        self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
         ])
         res = c.handle("/foo", query_kwargs=dict(bar=2))
-        self.assertEqual(405, res.code)
+        self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -127,15 +121,22 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo, **kwargs):",
             "        pass",
         ])
         res = c.handle("/foo/bar", query_kwargs=dict(foo=1, bar=2))
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
     def test_routing_error_no_args(self):
+        c = self.create_server(contents=[
+            "class Default(Controller):",
+            "    def GET(self):",
+            "        return kwargs",
+        ])
+        res = c.handle("/", query_kwargs=dict(foo=1, bar=2))
+        self.assertEqual(400, res.code)
+
         c = self.create_server(contents=[
             "from endpoints import Controller, param",
             "class Default(Controller):",
@@ -146,7 +147,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, **kwargs):",
             "        pass",
@@ -158,7 +158,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, **kwargs):",
             "        return kwargs",
@@ -167,18 +166,8 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(200, res.code)
         self.assertTrue("foo" in res._body)
 
-        c = self.create_server(contents=[
-            "from endpoints import Controller, param",
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        return kwargs",
-        ])
-        res = c.handle("/", query_kwargs=dict(foo=1, bar=2))
-        self.assertEqual(405, res.code)
-
     def test_lowercase_method(self):
         c = self.create_server(contents={"foo2": [
-            "from endpoints import Controller",
             "class Bar(Controller):",
             "    def get(*args, **kwargs): pass"
         ]})
@@ -188,7 +177,6 @@ class BaseApplicationTest(TestCase):
 
     def test_handle_redirect(self):
         c = self.create_server(contents={"handle": [
-            "from endpoints import Controller, Redirect",
             "class Testredirect(Controller):",
             "    def GET(*args, **kwargs):",
             "        raise Redirect('http://example.com')"
@@ -201,7 +189,6 @@ class BaseApplicationTest(TestCase):
     def test_handle_404_typeerror_1(self):
         """make sure not having a controller is correctly identified as a 404"""
         c = self.create_server(contents=[
-            "from endpoints import Controller, Redirect",
             "class NoFoo(Controller):",
             "    def GET(*args, **kwargs):",
             "        pass",
@@ -210,10 +197,9 @@ class BaseApplicationTest(TestCase):
         res = c.handle("/foo/boom")
         self.assertEqual(404, res.code)
 
-    def test_handle_405_typeerror_2(self):
-        """make sure 405 works when a path bit is missing"""
+    def test_handle_404_typeerror_2(self):
+        """make sure 404 works when a path bit is missing"""
         c = self.create_server(contents=[
-            "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    def GET(self, needed_bit, **kwargs):",
             "       return ''",
@@ -226,27 +212,28 @@ class BaseApplicationTest(TestCase):
             "       return ''",
             "",
             "class Hdec(Controller):",
-            "    @decorators.param('foo', default='bar')",
+            "    @param('foo', default='bar')",
             "    def POST(self, needed_bit, **kwargs):",
             "       return ''",
             "",
         ])
 
         res = c.handle("/hdec", "POST")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         res = c.handle("/htype", "POST")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         res = c.handle("/")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         res = c.handle("/", "POST")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
-    def test_handle_404_typeerror_3(self):
-        """there was an error when there was only one expected argument, turns out
-        the call was checking for "arguments" when the message just had "argument"
+    def test_handle_400_typeerror_3(self):
+        """there was an error when there was only one expected argument, turns
+        out the call was checking for "arguments" when the message just had
+        "argument"
         """
         c = self.create_server(contents=[
             "from endpoints import Controller",
@@ -256,7 +243,7 @@ class BaseApplicationTest(TestCase):
         ])
 
         res = c.handle("/foo/bar/baz", query='che=1&boo=2')
-        self.assertEqual(404, res.code)
+        self.assertEqual(400, res.code)
 
     def test_handle_accessdenied(self):
         """raising an AccessDenied error should set code to 401 and the correct
@@ -292,7 +279,7 @@ class BaseApplicationTest(TestCase):
             "",
             "class Testcallstop3(Controller):",
             "    def GET(*args, **kwargs):",
-            "        raise CallStop(204, 'this is ignored')",
+            "        raise CallStop(204)",
         ])
 
         res = c.handle("/testcallstop")
@@ -318,7 +305,7 @@ class BaseApplicationTest(TestCase):
 
         # this path is technically valid but is missing required arguments
         res = c.handle("/foo", "GET")
-        self.assertEqual(405, res.code)
+        self.assertEqual(404, res.code)
 
         # there is no POST method for this path
         res = c.handle("/foo/bar", "POST")
@@ -326,6 +313,21 @@ class BaseApplicationTest(TestCase):
 
         # there is no GET method that has this path
         res = c.handle("/foo/bar/che", "GET")
+        self.assertEqual(404, res.code)
+
+    def test_routing_typeerrors(self):
+        c = self.create_server([
+            "class Foo(Controller):",
+            "    def GET(self, /, bar, *, che): pass",
+            "",
+        ])
+
+        # Foo.GET() missing 1 required keyword-only argument: 'che'
+        res = c.handle("/foo/bar", "GET")
+        self.assertEqual(400, res.code)
+
+        # Foo.GET() missing 1 required positional argument: 'bar'
+        res = c.handle("/foo", "GET")
         self.assertEqual(404, res.code)
 
     def test_handle_method_chain(self):

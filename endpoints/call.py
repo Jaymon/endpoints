@@ -438,7 +438,7 @@ class Pathfinder(ClasspathFinder):
 
         if "class" in value:
             rc = self.create_reflect_controller_instance(keys, value)
-            value["method_names"] = defaultdict(list)
+            value["http_method_names"] = defaultdict(list)
 
             for rm in rc.reflect_http_methods():
                 method_info = {
@@ -448,7 +448,7 @@ class Pathfinder(ClasspathFinder):
                 rt = rm.reflect_return_type()
                 for mtinfo in value["class"].get_response_media_types():
                     typecheck = rt is not None and rt.is_type(mtinfo[0])
-                    if typecheck or mtinfo[0] is Any:
+                    if typecheck or mtinfo[0] is Any or mtinfo[0] is object:
                         if callable(mtinfo[1]):
                             method_info["response_callback"] = mtinfo[1]
 
@@ -458,7 +458,7 @@ class Pathfinder(ClasspathFinder):
                         if typecheck:
                             break
 
-                value["method_names"][rm.http_verb].append(method_info)
+                value["http_method_names"][rm.http_verb].append(method_info)
 
             logger.debug(
                 (
@@ -466,7 +466,7 @@ class Pathfinder(ClasspathFinder):
                     " to path: /{}"
                     " and controller: {}:{}"
                 ).format(
-                    ", ".join(value["method_names"].keys()),
+                    ", ".join(value["http_method_names"].keys()),
                     "/".join(keys),
                     value["class"].__module__,
                     value["class"].__qualname__
@@ -622,11 +622,12 @@ class Router(object):
 
         ret['method_kwargs'] = request.kwargs
 
-        if method_names := value["method_names"].get(request.method.upper()):
-            ret['method_names'] = method_names
+        http_verb = request.method.upper()
+        if method_names := value["http_method_names"].get(http_verb):
+            ret['http_method_names'] = method_names
 
-        elif method_names := value["method_names"].get("ANY"):
-            ret['method_names'] = method_names
+        elif method_names := value["http_method_names"].get("ANY"):
+            ret['http_method_names'] = method_names
 
         else:
             if len(ret["method_args"]) > 0:
@@ -651,7 +652,7 @@ class Router(object):
                     )
                 )
 
-        ret['method_name'] = "handle"
+#         ret['method_name'] = "handle"
 
         ret["module_name"] = controller_class.__module__
         ret['module_path'] = "/".join(value["module_keys"])
@@ -666,7 +667,6 @@ class Router(object):
         return ret
 
 
-
 from .exception import (
     CallError,
     Redirect,
@@ -675,7 +675,6 @@ from .exception import (
     VersionError,
     CloseConnection,
 )
-
 
 
 
@@ -829,7 +828,7 @@ class Controller(object):
             type. Index 1 can be the actual media type or a callable that
             takes the response and sets things like Response.media_type
             manually. If no matching type is found or the method doesn't have
-            one defined then the tuple of (Any, "<MEDIA-TYPE>") will be used
+            one defined then the tuple of (object, "<MEDIA-TYPE>") will be used
         """
         def handle_nonetype(response):
             response.media_type = None
@@ -872,13 +871,13 @@ class Controller(object):
             (NoneType, kwargs.get("none_media_type", handle_nonetype)),
             (Exception, kwargs.get("exception_media_type", media_type)),
             (io.IOBase, kwargs.get("file_media_type", handle_file)),
-            (Any, kwargs.get("any_media_type", media_type))
+            (object, kwargs.get("any_media_type", media_type))
         ]
 
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
-        self.logger = self.create_logger(request, response)
+#         self.logger = self.create_logger(request, response)
 
     def __init_subclass__(cls):
         """When a child class is loaded into memory it will be saved into
@@ -986,43 +985,39 @@ class Controller(object):
         :param **controller_kwargs: dict, the query and body params merged
             together
         """
-        start = time.time()
-        self.log_start(start)
-
         if self.cors:
             self.handle_cors()
 
-        req = self.request
-        res = self.response
+        request = self.request
         exceptions = defaultdict(list)
 
-        controller_method_names = req.controller_info["method_names"]
+        http_method_names = request.controller_info["http_method_names"]
 
         controller_args, controller_kwargs = await self.get_controller_params(
             *controller_args,
             **controller_kwargs
         )
 
-        for controller_method_info in controller_method_names:
-            controller_method_name = controller_method_info["method_name"]
-            controller_method = getattr(self, controller_method_name)
+        for http_method_info in http_method_names:
+            http_method_name = http_method_info["method_name"]
+            http_method = getattr(self, http_method_name)
 
             # we update the controller info so other handlers know what
             # method succeeded/failed
-            req.controller_info["method_info"] = controller_method_info
-            req.controller_info["http_method_name"] = controller_method_name
-            req.controller_info["http_method"] = controller_method
+            request.controller_info["http_method_info"] = http_method_info
+            request.controller_info["http_method_name"] = http_method_name
+            request.controller_info["http_method"] = http_method
 
             try:
-                self.logger.debug(
+                logger.debug(
                     "Request Controller method: {}:{}.{}".format(
-                        req.controller_info['module_name'],
-                        req.controller_info['class_name'],
-                        controller_method_name
+                        request.controller_info['module_name'],
+                        request.controller_info['class_name'],
+                        http_method_name
                     )
                 )
 
-                body = controller_method(
+                body = http_method(
                     *controller_args,
                     **controller_kwargs
                 )
@@ -1045,8 +1040,8 @@ class Controller(object):
                     raise CallError(
                         400,
                         "Could not find a method to satisfy {} {}".format(
-                            req.method,
-                            req.path
+                            request.method,
+                            request.path
                         )
                     )
 
@@ -1054,52 +1049,64 @@ class Controller(object):
                 await self.handle_error(e)
 
         else:
-            await self.handle_success(body)
+            response = self.response
 
-        self.log_stop(start)
-
-    async def handle_success(self, body, **kwargs):
-        request = self.request
-        response = self.response
-
-        response.body = body
-
-        if response.code is None:
-            # set the http status code to return to the client, by default,
-            # 200 if a body is present otherwise 204
-            if body is None:
-                response.code = 204
-
-            else:
-                response.code = 200
-
-        if response.encoding is None:
-            if encoding := request.accept_encoding:
-                response.encoding = encoding
-
-            else:
-                response.encoding = environ.ENCODING
-
-        if response.media_type is None:
-            method_info = request.controller_info["method_info"]
-            if "response_media_type" in  method_info:
-                response.media_type = method_info["response_media_type"]
-
-            elif "response_callback" in method_info:
-                method_info["response_callback"](response)
-
-        if response.media_type and not response.has_header("Content-Type"):
-            if response.encoding:
-                response.set_header(
-                    "Content-Type",
-                    "{};charset={}".format(
-                        response.media_type,
-                        response.encoding
-                    )
+            if response.media_type is None:
+                method_info = request.controller_info.get(
+                    "http_method_info",
+                    {}
                 )
+                if "response_media_type" in method_info:
+                    response.media_type = method_info["response_media_type"]
 
-            else:
-                response.set_header("Content-Type", response.media_type)
+                elif "response_callback" in method_info:
+                    method_info["response_callback"](response)
+
+            response.body = await self.get_response_body(body)
+#             await self.handle_success(body)
+
+#     async def handle_success(self, body, **kwargs):
+#         request = self.request
+#         response = self.response
+# 
+#         response.body = body
+# 
+#         if response.code is None:
+#             # set the http status code to return to the client, by default,
+#             # 200 if a body is present otherwise 204
+#             if body is None:
+#                 response.code = 204
+# 
+#             else:
+#                 response.code = 200
+# 
+#         if response.encoding is None:
+#             if encoding := request.accept_encoding:
+#                 response.encoding = encoding
+# 
+#             else:
+#                 response.encoding = environ.ENCODING
+# 
+#         if response.media_type is None:
+#             method_info = request.controller_info["method_info"]
+#             if "response_media_type" in  method_info:
+#                 response.media_type = method_info["response_media_type"]
+# 
+#             elif "response_callback" in method_info:
+#                 method_info["response_callback"](response)
+# 
+#         if response.media_type and not response.has_header("Content-Type"):
+#             if response.encoding:
+#                 response.set_header(
+#                     "Content-Type",
+#                     "{};charset={}".format(
+#                         response.media_type,
+#                         response.encoding
+#                     )
+#                 )
+# 
+#             else:
+#                 response.set_header("Content-Type", response.media_type)
 
 
 #     async def handle_error(self, e, **kwargs):
@@ -1111,7 +1118,6 @@ class Controller(object):
 #         """
 #         pass
 
-
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
         go through this method
@@ -1121,83 +1127,120 @@ class Controller(object):
         :param e: Exception, the error that was raised
         :param **kwargs:
         """
-        req = self.request
-        res = self.response
-        logger = self.logger
-
-#         res.error = e
-        res.body = e
-
         if isinstance(e, CallStop):
+            # CallStop is a special case exception because it's not actually
+            # an error, so any body passed into it should be treated like
+            # a success and should set the values found in the raised instance
             logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = e.body if e.code != 204 else None
-
-        elif isinstance(e, Redirect):
-            logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = None
-
-        elif isinstance(e, (AccessDenied, CallError)):
-            self.log_error_warning(e)
-
-            res.code = e.code
-            res.add_headers(e.headers)
-
-        elif isinstance(e, TypeError):
-            e_msg = String(e)
-            controller_info = req.controller_info
-
-            # filter out TypeErrors raised from non handler methods
-            correct_prefix = controller_info["http_method_name"] in e_msg
-            if correct_prefix and 'argument' in e_msg:
-                if "takes" in e_msg and "given" in e_msg:
-                    # TypeError: <METHOD>() takes exactly M argument (N
-                    #   given)
-                    # TypeError: <METHOD>() takes no arguments (N given)
-                    # TypeError: <METHOD>() takes M positional arguments
-                    #   but N were given
-                    # TypeError: <METHOD>() takes 1 positional argument but
-                    #   N were given
-                    res.code = 404
-
-                elif "unexpected keyword argument" in e_msg:
-                    # TypeError: <METHOD>() got an unexpected keyword
-                    # argument '<NAME>'
-                    res.code = 400
-
-                elif "multiple values" in e_msg:
-                    # TypeError: <METHOD>() got multiple values for keyword
-                    # argument '<NAME>'
-                    res.code = 400
-
-                else:
-                    raise e
-
-            else:
-                raise e
+            self.response.code = e.code
+            self.response.add_headers(e.headers)
+            #response.body = e.body if e.code != 204 else None
+            self.response.body = await self.get_response_body(e.body)
 
         else:
             raise e
 
-    def create_logger(self, request, response):
-        # we use self.logger and set the name to endpoints.call.module.class so
-        # you can filter all controllers using endpoints.call, filter all
-        # controllers in a certain module using endpoints.call.module or just a
-        # specific controller using endpoints.call.module.class
-        logger_name = logger.name
-        module_name = self.__class__.__module__
-        class_name = self.__class__.__name__
-        return logging.getLogger("{}.{}.{}".format(
-            logger_name,
-            module_name,
-            class_name,
-        ))
+    async def get_response_body(self, body):
+        """Called right after the controller's request method (eg GET, POST)
+        returns with the body that it returned
+
+        This is called after all similar decorators methods, it's the last
+        stop before body is sent to the client by the interface
+
+        NOTE -- this is called before Response.body is set, the value returned
+        from this method will be set in Response.body
+
+        :param body: Any, the value returned from the requested method before
+            it is set into Response.body
+        :return: Any
+        """
+        return body
+
+#     async def handle_error(self, e, **kwargs):
+#         """if an exception is raised while trying to handle the request it will
+#         go through this method
+# 
+#         This method will set the response body and code
+# 
+#         :param e: Exception, the error that was raised
+#         :param **kwargs:
+#         """
+#         req = self.request
+#         res = self.response
+#         logger = self.logger
+# 
+#         res.body = e
+# 
+#         if isinstance(e, CallStop):
+#             logger.debug(String(e))
+#             res.code = e.code
+#             res.add_headers(e.headers)
+#             res.body = e.body if e.code != 204 else None
+# 
+#         elif isinstance(e, Redirect):
+#             logger.debug(String(e))
+#             res.code = e.code
+#             res.add_headers(e.headers)
+#             res.body = None
+# 
+#         elif isinstance(e, (AccessDenied, CallError)):
+#             self.log_error_warning(e)
+# 
+#             res.code = e.code
+#             res.add_headers(e.headers)
+# 
+#         elif isinstance(e, TypeError):
+#             e_msg = String(e)
+#             controller_info = req.controller_info
+# 
+#             # filter out TypeErrors raised from non handler methods
+#             correct_prefix = controller_info["http_method_name"] in e_msg
+#             if correct_prefix and 'argument' in e_msg:
+#                 if "takes" in e_msg and "given" in e_msg:
+#                     # TypeError: <METHOD>() takes exactly M argument (N
+#                     #   given)
+#                     # TypeError: <METHOD>() takes no arguments (N given)
+#                     # TypeError: <METHOD>() takes M positional arguments
+#                     #   but N were given
+#                     # TypeError: <METHOD>() takes 1 positional argument but
+#                     #   N were given
+#                     res.code = 404
+# 
+#                 elif "unexpected keyword argument" in e_msg:
+#                     # TypeError: <METHOD>() got an unexpected keyword
+#                     # argument '<NAME>'
+#                     res.code = 400
+# 
+#                 elif "multiple values" in e_msg:
+#                     # TypeError: <METHOD>() got multiple values for keyword
+#                     # argument '<NAME>'
+#                     res.code = 400
+# 
+#                 else:
+#                     raise e
+# 
+#             else:
+#                 raise e
+# 
+#         else:
+#             raise e
+
+#     def create_logger(self, request, response):
+#         # we use self.logger and set the name to endpoints.call.module.class so
+#         # you can filter all controllers using endpoints.call, filter all
+#         # controllers in a certain module using endpoints.call.module or just a
+#         # specific controller using endpoints.call.module.class
+#         logger_name = logger.name
+#         module_name = self.__class__.__module__
+#         class_name = self.__class__.__name__
+#         return logging.getLogger("{}.{}.{}".format(
+#             logger_name,
+#             module_name,
+#             class_name,
+#         ))
 
     def log_error_warning(self, e):
-        logger = self.logger
+        #logger = self.logger
         if logger.isEnabledFor(logging.DEBUG):
             logger.warning(e, exc_info=True)
 
@@ -1211,131 +1254,119 @@ class Controller(object):
         else:
             logger.warning(e)
 
-    def log_start(self, start):
-        """log all the headers and stuff at the start of the request"""
-        if not self.logger.isEnabledFor(logging.INFO):
-            return
 
-        try:
-            req = self.request
-            if uuid := getattr(req, "uuid", ""):
-                uuid += " "
 
-            self.logger.info("Request {}{} {}{}".format(
-                uuid,
-                req.method,
-                req.path,
-                f"?{String(req.query)}" if req.query else "",
-            ))
+class ErrorController(Controller):
+    private = True
+    cors = False
 
-            self.logger.info("Request {}date: {}".format(
-                uuid,
-                datetime.datetime.utcfromtimestamp(start).strftime(
-                    "%Y-%m-%dT%H:%M:%S.%f"
-                ),
-            ))
+#     @classmethod
+#     def get_response_media_types(cls, **kwargs):
+#         """
+#         """
+#         media_type = kwargs.get("media_type", environ.RESPONSE_MEDIA_TYPE)
+#         def handle_exc(response):
+#             response.media_type = media_type
+#             response.body = {
+#                 "errmsg": string(response.body)
+#             }
+# 
+#         def handle_ce(response):
+# 
+# 
+#         return [
+#             (CallError, kwargs.get("callerror_media_type", handle_ce)),
+#             (Exception, kwargs.get("exception_media_type", handle_exc)),
+#         ]
 
-            ip = req.ip
-            if ip:
-                self.logger.info("Request {}IP address: {}".format(uuid, ip))
+    async def handle(self, e):
+        request = self.request
+        response = self.response
+#         logger = self.logger
 
-            if 'authorization' in req.headers:
-                self.logger.info('Request {}auth: {}'.format(
-                    uuid,
-                    req.headers['authorization']
-                ))
+        response.code = 500
+        response.body = e
 
-            ignore_hs = set([
-                'accept-language',
-                'accept-encoding',
-                'connection',
-                'authorization',
-                'host',
-                'x-forwarded-for'
-            ])
-            for k, v in req.headers.items():
-                if k not in ignore_hs:
-                    self.logger.info(
-                        "Request {}header - {}: {}".format(uuid, k, v)
-                    )
-
-            self.log_start_body()
-
-        except Exception as e:
-            self.logger.warn(e, exc_info=True)
-
-    def log_start_body(self):
-        """Log the request body
-
-        this is separate from log_start so it can be easily overridden in
-        children
-        """
-        if not self.logger.isEnabledFor(logging.DEBUG):
-            return
-
-        req = self.request
-        if uuid := getattr(req, "uuid", ""):
-            uuid += " "
-
-        try:
-            if req.has_body():
-                body_args = req.body_args
-                body_kwargs = req.body_kwargs
-
-                if body_args or body_kwargs:
-                    self.logger.debug(
-                        "Request {}body args: {}, body kwargs: {}".format(
-                            uuid,
-                            req.body_args,
-                            req.body_kwargs
-                        )
-                    )
-
-                else:
-                    self.logger.debug(
-                        "Request {}body: {}".format(
-                            uuid,
-                            req.body,
-                        )
-                    )
-
-            elif req.should_have_body():
-                self.logger.debug(
-                    "Request {}body: <EMPTY>".format(uuid)
-                )
-
-        except Exception:
-            self.logger.debug(
-                "Request {}body raw: {}".format(uuid, req.body)
-            )
+        if isinstance(e, CloseConnection):
             raise
 
-    def log_stop(self, start):
-        """log a summary line on how the request went"""
-        if not self.logger.isEnabledFor(logging.INFO):
-            return
+        elif isinstance(e, Redirect):
+            logger.debug(String(e))
+            response.code = e.code
+            response.add_headers(e.headers)
+            response.body = None
 
-        res = self.response
-        req = self.request
-        if uuid := getattr(req, "uuid", ""):
-            uuid += " "
+        elif isinstance(e, CallError):
+            self.log_error_warning(e)
 
-        for k, v in res.headers.items():
-            self.logger.info("Response {}header - {}: {}".format(uuid, k, v))
+            response.code = e.code
+            response.add_headers(e.headers)
+            if e.body is not None:
+                response.body = e.body
 
-        stop = time.time()
+        elif isinstance(e, NotImplementedError):
+            response.code = 501
 
-        self.logger.info(
-            "Response {}{} {} in {} for Request {} {}{}".format(
-                uuid,
-                self.response.code,
-                self.response.status,
-                Profiler.get_output(start, stop),
-                req.method,
-                req.path,
-                f"?{String(req.query)}" if req.query else "",
-            )
-        )
+        elif isinstance(e, TypeError):
+            e_msg = String(e)
+            if controller_info := request.controller_info:
+                # filter out TypeErrors raised from non handler methods
+                correct_prefix = controller_info["http_method_name"] in e_msg
+                if correct_prefix and "argument" in e_msg:
+                    if "positional" in e_msg:
+                        # <METHOD>() missing 1 required positional
+                        # argument: <ARGUMENT> TypeError: <METHOD>() takes
+                        # exactly M argument (N given) TypeError:
+                        # <METHOD>() takes no arguments (N given)
+                        # TypeError: <METHOD>() takes M positional
+                        # arguments but N were given TypeError: <METHOD>()
+                        # takes 1 positional argument but N were given
+                        logger.warning(e)
+                        response.code = 404
+
+                    elif "keyword" in e_msg or "multiple values" in e_msg:
+                        # <METHOD>() got an unexpected keyword
+                        # argument '<NAME>'
+                        # <METHOD>() missing 1 required keyword-only
+                        # argument: <ARGUMENT>
+                        # TypeError: <METHOD>() got multiple values for keyword
+                        # argument '<NAME>'
+                        logger.warning(e)
+                        response.code = 400
+
+                    else:
+                        logger.exception(e)
+
+                else:
+                    logger.exception(e)
+
+            else:
+                logger.warning(e)
+                response.code = 404
+
+        else:
+            logger.exception(e)
+
+        response.body = await self.get_response_body(response.body)
+
+        if not response.media_type:
+            for mtinfo in self.get_response_media_types():
+                if isinstance(response.body, mtinfo[0]):
+                    if callable(mtinfo[1]):
+                        mtinfo[1](response)
+
+                    else:
+                        response.media_type = mtinfo[1]
+
+                    break
+
+    async def get_response_body(self, body):
+        if isinstance(body, Exception):
+            body = {
+                "errmsg": str(body)
+            }
+
+        return body
 
 
 class Call(object):
@@ -1614,6 +1645,19 @@ class Request(Call):
             controller_module_path=module_path
         )
         return u
+
+    @cachedproperty(cached="_uri")
+    def uri(self):
+        """Returns <PATH>?<QUERY>"""
+        uri = self.path
+        if query := self.query:
+            uri += "?" + String(query)
+
+        return uri
+#         return "{}{}".format(
+#             self.path,
+#             f"?{String(self.query)}" if self.query else "",
+#         )
 
     @cachedproperty(cached="_path")
     def path(self):

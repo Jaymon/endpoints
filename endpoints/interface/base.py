@@ -7,11 +7,24 @@ import email
 import time
 import inspect
 import os
+import datetime
 
-from datatypes import String, ReflectModule, ReflectPath, Dirpath
+from datatypes import (
+    String,
+    ReflectModule,
+    ReflectPath,
+    Dirpath,
+    Profiler,
+)
 
 from ..config import environ
-from ..call import Controller, Request, Response, Router
+from ..call import (
+    Controller,
+    ErrorController,
+    Request,
+    Response,
+    Router,
+)
 from ..exception import (
     CallError,
     Redirect,
@@ -121,6 +134,9 @@ class BaseApplication(ApplicationABC):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
+    error_controller_class = ErrorController
+    """All errors will go through this class"""
+
     router_class = Router
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
@@ -158,6 +174,126 @@ class BaseApplication(ApplicationABC):
 
         else:
             logger.warning("Request was not HTTP or WebSocket")
+
+    def log_start(self, request, response):
+        """log all the headers and stuff at the start of the request"""
+        if not logger.isEnabledFor(logging.INFO):
+            return
+
+        try:
+            if uuid := getattr(request, "uuid", ""):
+                uuid += " "
+
+            logger.info("Request {}{} {}".format(
+                uuid,
+                request.method,
+                request.uri,
+            ))
+
+            logger.info("Request {}date: {}".format(
+                uuid,
+                datetime.datetime.utcfromtimestamp(response.start).strftime(
+                    "%Y-%m-%dT%H:%M:%S.%f"
+                ),
+            ))
+
+            ip = request.ip
+            if ip:
+                logger.info("Request {}IP address: {}".format(uuid, ip))
+
+            if 'authorization' in request.headers:
+                logger.info('Request {}auth: {}'.format(
+                    uuid,
+                    request.headers['authorization']
+                ))
+
+            ignore_hs = set([
+                'accept-language',
+                'accept-encoding',
+                'connection',
+                'authorization',
+                'host',
+                'x-forwarded-for'
+            ])
+            for k, v in request.headers.items():
+                if k not in ignore_hs:
+                    logger.info(
+                        "Request {}header - {}: {}".format(uuid, k, v)
+                    )
+
+            self.log_start_body(request, response)
+
+        except Exception as e:
+            logger.warn(e, exc_info=True)
+
+    def log_start_body(self, request, response):
+        """Log the request body
+
+        this is separate from log_start so it can be easily overridden in
+        children
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        if uuid := getattr(request, "uuid", ""):
+            uuid += " "
+
+        try:
+            if request.has_body():
+                body_args = request.body_args
+                body_kwargs = request.body_kwargs
+
+                if body_args or body_kwargs:
+                    logger.debug(
+                        "Request {}body args: {}, body kwargs: {}".format(
+                            uuid,
+                            request.body_args,
+                            request.body_kwargs
+                        )
+                    )
+
+                else:
+                    logger.debug(
+                        "Request {}body: {}".format(
+                            uuid,
+                            request.body,
+                        )
+                    )
+
+            elif request.should_have_body():
+                logger.debug(
+                    "Request {}body: <EMPTY>".format(uuid)
+                )
+
+        except Exception as e:
+            logger.debug(
+                "Request {}body raw: {}".format(uuid, request.body)
+            )
+            logger.exception(e)
+
+    def log_stop(self, request, response):
+        """log a summary line on how the request went"""
+        if not logger.isEnabledFor(logging.INFO):
+            return
+
+        if uuid := getattr(request, "uuid", ""):
+            uuid += " "
+
+        for k, v in response.headers.items():
+            logger.info("Response {}header - {}: {}".format(uuid, k, v))
+
+        response.stop = time.time()
+
+        logger.info(
+            "Response {}{} {} in {} for Request {} {}".format(
+                uuid,
+                response.code,
+                response.status,
+                Profiler.get_output(response.start, response.stop),
+                request.method,
+                request.uri,
+            )
+        )
 
     def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints
@@ -435,41 +571,87 @@ class BaseApplication(ApplicationABC):
         controller.application = self
         return controller
 
+    def create_error_controller(self, request, response, **kwargs):
+        controller = self.error_controller_class(
+            request,
+            response,
+            **kwargs
+        )
+
+        controller.application = self
+        return controller
+
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
+        response.start = time.time()
+        self.log_start(request, response)
+
         try:
             controller = self.create_controller(request, response)
 
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
-            controller_method = getattr(
-                controller,
-                request.controller_info["method_name"]
-            )
+#             controller_method = getattr(
+#                 controller,
+#                 request.controller_info["method_name"]
+#             )
 
-            await controller_method(
-                *controller_args,
-                **controller_kwargs
-            )
+            await controller.handle(*controller_args, **controller_kwargs)
+#             await self.handle_success(request, response)
 
         except Exception as e:
-            await self.handle_error(req, res, e, **kwargs)
+            await self.handle_error(request, response, e, **kwargs)
 
-    async def handle_error(self, req, res, e, **kwargs):
-        res.body = e
+        finally:
+            if response.code is None:
+                # set the http status code to return to the client, by default,
+                # 200 if a body is present otherwise 204
+                if response.body is None:
+                    response.code = 204
 
-        if isinstance(e, CloseConnection):
-            raise
+                else:
+                    response.code = 200
 
-        elif isinstance(e, NotImplementedError):
-            res.code = 501
+            if response.encoding is None:
+                if encoding := request.accept_encoding:
+                    response.encoding = encoding
 
-        elif isinstance(e, TypeError):
-            res.code = 404
+                else:
+                    response.encoding = environ.ENCODING
 
-        else:
-            res.code = 500
-            logger.exception(e)
+            if response.media_type and not response.has_header("Content-Type"):
+                if response.encoding:
+                    response.set_header(
+                        "Content-Type",
+                        "{};charset={}".format(
+                            response.media_type,
+                            response.encoding
+                        )
+                    )
+
+                else:
+                    response.set_header("Content-Type", response.media_type)
+
+        self.log_stop(request, response)
+
+    async def handle_error(self, request, response, e, **kwargs):
+        err_controller = self.create_error_controller(request, response)
+        await err_controller.handle(e)
+
+#         res.body = e
+# 
+#         if isinstance(e, CloseConnection):
+#             raise
+# 
+#         elif isinstance(e, NotImplementedError):
+#             res.code = 501
+# 
+#         elif isinstance(e, TypeError):
+#             res.code = 404
+# 
+#         else:
+#             res.code = 500
+#             logger.exception(e)
 
 #     async def handle_error(self, req, res, e, controller, **kwargs):
 #         """if an exception is raised while trying to handle the request it will

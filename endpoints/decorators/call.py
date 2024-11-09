@@ -172,17 +172,28 @@ class version(ControllerDecorator):
         req = controller.request
         req_version = req.version()
 
-        e_msg = " ".join([
-            "Request Controller method: {}:{}.{}".format(
-                req.controller_info['module_name'],
-                req.controller_info['class_name'],
-                req.controller_info['method_name'],
-            ),
-            "failed version check ({} not in {})".format(
-                req_version,
-                self.versions,
-            ),
-        ])
+        e_msg = (
+            "Request Controller method: {}:{}.{}"
+            " failed version check ({} not in {})"
+        ).format(
+            req.controller_info['module_name'],
+            req.controller_info['class_name'],
+            req.controller_info['http_method_name'],
+            req_version,
+            self.versions,
+        )
+
+#         e_msg = " ".join([
+#             "Request Controller method: {}:{}.{}".format(
+#                 req.controller_info['module_name'],
+#                 req.controller_info['class_name'],
+#                 req.controller_info['http_method_name'],
+#             ),
+#             "failed version check ({} not in {})".format(
+#                 req_version,
+#                 self.versions,
+#             ),
+#         ])
 
         raise VersionError(
             req_version,

@@ -70,7 +70,6 @@ class _HTTPTestCase(TestCase):
 
     def test_get_404_request(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self, **kwargs): pass",
             "",
@@ -82,7 +81,6 @@ class _HTTPTestCase(TestCase):
 
     def test_get_response_headers(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
             "        self.response.set_header('FOO_BAR', 'check')",
@@ -96,7 +94,6 @@ class _HTTPTestCase(TestCase):
 
     def test_get_generators(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
             "        for x in range(100):",
@@ -111,7 +108,6 @@ class _HTTPTestCase(TestCase):
 
     def test_post_body_urlencoded(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, **kwargs):",
             "        return kwargs",
@@ -125,7 +121,6 @@ class _HTTPTestCase(TestCase):
 
     def test_post_body_json_dict(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
             "        return {'args': args, 'kwargs': kwargs}",
@@ -139,7 +134,6 @@ class _HTTPTestCase(TestCase):
 
     def test_post_body_json_list(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
             "        return {'args': args, 'kwargs': kwargs}",
@@ -162,7 +156,6 @@ class _HTTPTestCase(TestCase):
             ext="txt"
         )
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, *args, **kwargs):",
             "        return {",

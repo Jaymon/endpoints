@@ -599,7 +599,7 @@ class RouterTest(TestCase):
         info = r.find_controller([])
         self.assertEqual(
             "text/html",
-            info[2]["method_names"]["GET"][0]["response_media_type"]
+            info[2]["http_method_names"]["GET"][0]["response_media_type"]
         )
 
 
