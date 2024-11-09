@@ -93,7 +93,8 @@ class CallStop(CallError):
         """Create the stop object
 
         :param code: int, http status code
-        :param body: Any, the body of the response
+        :param body: Any, the body of the response, this should be treated
+            just like the controller handler method returned this body
         """
         super().__init__(code, msg, body=body, **kwargs)
 

@@ -18,6 +18,10 @@ from .utils import AcceptHeader
 from .exception import (
     CallError,
     VersionError,
+    Redirect,
+    CallStop,
+    AccessDenied,
+    CloseConnection,
 )
 from .config import environ
 
@@ -652,8 +656,6 @@ class Router(object):
                     )
                 )
 
-#         ret['method_name'] = "handle"
-
         ret["module_name"] = controller_class.__module__
         ret['module_path'] = "/".join(value["module_keys"])
 
@@ -665,18 +667,6 @@ class Router(object):
         ))
 
         return ret
-
-
-from .exception import (
-    CallError,
-    Redirect,
-    CallStop,
-    AccessDenied,
-    VersionError,
-    CloseConnection,
-)
-
-
 
 
 class Controller(object):
@@ -871,13 +861,13 @@ class Controller(object):
             (NoneType, kwargs.get("none_media_type", handle_nonetype)),
             (Exception, kwargs.get("exception_media_type", media_type)),
             (io.IOBase, kwargs.get("file_media_type", handle_file)),
+            # this is the catch-all since everything is an object
             (object, kwargs.get("any_media_type", media_type))
         ]
 
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
-#         self.logger = self.create_logger(request, response)
 
     def __init_subclass__(cls):
         """When a child class is loaded into memory it will be saved into
@@ -1063,60 +1053,6 @@ class Controller(object):
                     method_info["response_callback"](response)
 
             response.body = await self.get_response_body(body)
-#             await self.handle_success(body)
-
-#     async def handle_success(self, body, **kwargs):
-#         request = self.request
-#         response = self.response
-# 
-#         response.body = body
-# 
-#         if response.code is None:
-#             # set the http status code to return to the client, by default,
-#             # 200 if a body is present otherwise 204
-#             if body is None:
-#                 response.code = 204
-# 
-#             else:
-#                 response.code = 200
-# 
-#         if response.encoding is None:
-#             if encoding := request.accept_encoding:
-#                 response.encoding = encoding
-# 
-#             else:
-#                 response.encoding = environ.ENCODING
-# 
-#         if response.media_type is None:
-#             method_info = request.controller_info["method_info"]
-#             if "response_media_type" in  method_info:
-#                 response.media_type = method_info["response_media_type"]
-# 
-#             elif "response_callback" in method_info:
-#                 method_info["response_callback"](response)
-# 
-#         if response.media_type and not response.has_header("Content-Type"):
-#             if response.encoding:
-#                 response.set_header(
-#                     "Content-Type",
-#                     "{};charset={}".format(
-#                         response.media_type,
-#                         response.encoding
-#                     )
-#                 )
-# 
-#             else:
-#                 response.set_header("Content-Type", response.media_type)
-
-
-#     async def handle_error(self, e, **kwargs):
-#         """if an exception is raised while trying to handle the request it will
-#         go through this method
-# 
-#         :param e: Exception, the error that was raised
-#         :param **kwargs: dict, any other information that might be handy
-#         """
-#         pass
 
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
@@ -1156,89 +1092,6 @@ class Controller(object):
         """
         return body
 
-#     async def handle_error(self, e, **kwargs):
-#         """if an exception is raised while trying to handle the request it will
-#         go through this method
-# 
-#         This method will set the response body and code
-# 
-#         :param e: Exception, the error that was raised
-#         :param **kwargs:
-#         """
-#         req = self.request
-#         res = self.response
-#         logger = self.logger
-# 
-#         res.body = e
-# 
-#         if isinstance(e, CallStop):
-#             logger.debug(String(e))
-#             res.code = e.code
-#             res.add_headers(e.headers)
-#             res.body = e.body if e.code != 204 else None
-# 
-#         elif isinstance(e, Redirect):
-#             logger.debug(String(e))
-#             res.code = e.code
-#             res.add_headers(e.headers)
-#             res.body = None
-# 
-#         elif isinstance(e, (AccessDenied, CallError)):
-#             self.log_error_warning(e)
-# 
-#             res.code = e.code
-#             res.add_headers(e.headers)
-# 
-#         elif isinstance(e, TypeError):
-#             e_msg = String(e)
-#             controller_info = req.controller_info
-# 
-#             # filter out TypeErrors raised from non handler methods
-#             correct_prefix = controller_info["http_method_name"] in e_msg
-#             if correct_prefix and 'argument' in e_msg:
-#                 if "takes" in e_msg and "given" in e_msg:
-#                     # TypeError: <METHOD>() takes exactly M argument (N
-#                     #   given)
-#                     # TypeError: <METHOD>() takes no arguments (N given)
-#                     # TypeError: <METHOD>() takes M positional arguments
-#                     #   but N were given
-#                     # TypeError: <METHOD>() takes 1 positional argument but
-#                     #   N were given
-#                     res.code = 404
-# 
-#                 elif "unexpected keyword argument" in e_msg:
-#                     # TypeError: <METHOD>() got an unexpected keyword
-#                     # argument '<NAME>'
-#                     res.code = 400
-# 
-#                 elif "multiple values" in e_msg:
-#                     # TypeError: <METHOD>() got multiple values for keyword
-#                     # argument '<NAME>'
-#                     res.code = 400
-# 
-#                 else:
-#                     raise e
-# 
-#             else:
-#                 raise e
-# 
-#         else:
-#             raise e
-
-#     def create_logger(self, request, response):
-#         # we use self.logger and set the name to endpoints.call.module.class so
-#         # you can filter all controllers using endpoints.call, filter all
-#         # controllers in a certain module using endpoints.call.module or just a
-#         # specific controller using endpoints.call.module.class
-#         logger_name = logger.name
-#         module_name = self.__class__.__module__
-#         class_name = self.__class__.__name__
-#         return logging.getLogger("{}.{}.{}".format(
-#             logger_name,
-#             module_name,
-#             class_name,
-#         ))
-
     def log_error_warning(self, e):
         #logger = self.logger
         if logger.isEnabledFor(logging.DEBUG):
@@ -1255,34 +1108,13 @@ class Controller(object):
             logger.warning(e)
 
 
-
 class ErrorController(Controller):
     private = True
     cors = False
 
-#     @classmethod
-#     def get_response_media_types(cls, **kwargs):
-#         """
-#         """
-#         media_type = kwargs.get("media_type", environ.RESPONSE_MEDIA_TYPE)
-#         def handle_exc(response):
-#             response.media_type = media_type
-#             response.body = {
-#                 "errmsg": string(response.body)
-#             }
-# 
-#         def handle_ce(response):
-# 
-# 
-#         return [
-#             (CallError, kwargs.get("callerror_media_type", handle_ce)),
-#             (Exception, kwargs.get("exception_media_type", handle_exc)),
-#         ]
-
     async def handle(self, e):
         request = self.request
         response = self.response
-#         logger = self.logger
 
         response.code = 500
         response.body = e
@@ -1654,10 +1486,6 @@ class Request(Call):
             uri += "?" + String(query)
 
         return uri
-#         return "{}{}".format(
-#             self.path,
-#             f"?{String(self.query)}" if self.query else "",
-#         )
 
     @cachedproperty(cached="_path")
     def path(self):
@@ -1899,9 +1727,6 @@ class Response(Call):
     sent back to the client
     """
     encoding = None
-
-#     error = None
-    """Will contain any raised exception"""
 
     code = None
     """the http status code to return to the client"""
