@@ -434,6 +434,16 @@ class OpenAPITest(TestCase):
         pi = oa.paths["/foo/baz/che"]
         self.assertEqual(2, len(pi["get"]["tags"]))
 
+    def test_str_return_media_type(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def GET(self, param, *args, **kwargs) -> str:
+                    pass
+        """)
+
+        content = oa.paths["/"]["get"]["responses"]["200"]["content"]
+        self.assertTrue("text/html" in content)
+
 
 class SchemaTest(TestCase):
     def test_list_value_types(self):

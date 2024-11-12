@@ -7,11 +7,24 @@ import email
 import time
 import inspect
 import os
+import datetime
 
-from datatypes import String, ReflectModule, ReflectPath, Dirpath
+from datatypes import (
+    String,
+    ReflectModule,
+    ReflectPath,
+    Dirpath,
+    Profiler,
+)
 
 from ..config import environ
-from ..call import Controller, Request, Response, Router
+from ..call import (
+    Controller,
+    ErrorController,
+    Request,
+    Response,
+    Router,
+)
 from ..exception import (
     CallError,
     Redirect,
@@ -121,6 +134,9 @@ class BaseApplication(ApplicationABC):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
+    error_controller_class = ErrorController
+    """All errors will go through this class"""
+
     router_class = Router
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
@@ -158,6 +174,126 @@ class BaseApplication(ApplicationABC):
 
         else:
             logger.warning("Request was not HTTP or WebSocket")
+
+    def log_start(self, request, response):
+        """log all the headers and stuff at the start of the request"""
+        if not logger.isEnabledFor(logging.INFO):
+            return
+
+        try:
+            if uuid := getattr(request, "uuid", ""):
+                uuid += " "
+
+            logger.info("Request {}{} {}".format(
+                uuid,
+                request.method,
+                request.uri,
+            ))
+
+            logger.info("Request {}date: {}".format(
+                uuid,
+                datetime.datetime.utcfromtimestamp(response.start).strftime(
+                    "%Y-%m-%dT%H:%M:%S.%f"
+                ),
+            ))
+
+            ip = request.ip
+            if ip:
+                logger.info("Request {}IP address: {}".format(uuid, ip))
+
+            if 'authorization' in request.headers:
+                logger.info('Request {}auth: {}'.format(
+                    uuid,
+                    request.headers['authorization']
+                ))
+
+            ignore_hs = set([
+                'accept-language',
+                'accept-encoding',
+                'connection',
+                'authorization',
+                'host',
+                'x-forwarded-for'
+            ])
+            for k, v in request.headers.items():
+                if k not in ignore_hs:
+                    logger.info(
+                        "Request {}header - {}: {}".format(uuid, k, v)
+                    )
+
+            self.log_start_body(request, response)
+
+        except Exception as e:
+            logger.warn(e, exc_info=True)
+
+    def log_start_body(self, request, response):
+        """Log the request body
+
+        this is separate from log_start so it can be easily overridden in
+        children
+        """
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
+
+        if uuid := getattr(request, "uuid", ""):
+            uuid += " "
+
+        try:
+            if request.has_body():
+                body_args = request.body_args
+                body_kwargs = request.body_kwargs
+
+                if body_args or body_kwargs:
+                    logger.debug(
+                        "Request {}body args: {}, body kwargs: {}".format(
+                            uuid,
+                            request.body_args,
+                            request.body_kwargs
+                        )
+                    )
+
+                else:
+                    logger.debug(
+                        "Request {}body: {}".format(
+                            uuid,
+                            request.body,
+                        )
+                    )
+
+            elif request.should_have_body():
+                logger.debug(
+                    "Request {}body: <EMPTY>".format(uuid)
+                )
+
+        except Exception as e:
+            logger.debug(
+                "Request {}body raw: {}".format(uuid, request.body)
+            )
+            logger.exception(e)
+
+    def log_stop(self, request, response):
+        """log a summary line on how the request went"""
+        if not logger.isEnabledFor(logging.INFO):
+            return
+
+        if uuid := getattr(request, "uuid", ""):
+            uuid += " "
+
+        for k, v in response.headers.items():
+            logger.info("Response {}header - {}: {}".format(uuid, k, v))
+
+        response.stop = time.time()
+
+        logger.info(
+            "Response {}{} {} in {} for Request {} {}".format(
+                uuid,
+                response.code,
+                response.status,
+                Profiler.get_output(response.start, response.stop),
+                request.method,
+                request.uri,
+            )
+        )
 
     def create_request(self, raw_request, **kwargs):
         """convert the raw interface raw_request to a request that endpoints
@@ -435,203 +571,66 @@ class BaseApplication(ApplicationABC):
         controller.application = self
         return controller
 
+    def create_error_controller(self, request, response, **kwargs):
+        controller = self.error_controller_class(
+            request,
+            response,
+            **kwargs
+        )
+
+        controller.application = self
+        return controller
+
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
-        controller = None
+        response.start = time.time()
+        self.log_start(request, response)
 
         try:
             controller = self.create_controller(request, response)
 
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
-            controller_method = getattr(
-                controller,
-                request.controller_info["method_name"]
-            )
-
-            await controller_method(
-                *controller_args,
-                **controller_kwargs
-            )
+            await controller.handle(*controller_args, **controller_kwargs)
 
         except Exception as e:
-            await self.handle_error(
-                request,
-                response,
-                e,
-                controller,
-                **kwargs
-            )
+            await self.handle_error(request, response, e, **kwargs)
 
-    async def handle_error(self, req, res, e, controller, **kwargs):
-        """if an exception is raised while trying to handle the request it will
-        go through this method
-
-        This method will set the response body and then also calls
-        Controller.handle_error for further customization if the Controller is
-        available
-
-        :param e: Exception, the error that was raised
-        :param **kwargs: dict, any other information that might be handy
-        """
-        res.error = e
-
-        if isinstance(e, CloseConnection):
-            raise
-
-        res.body = e
-        #res.set_body(e)
-
-        def log_error_warning(e):
-            if logger.isEnabledFor(logging.DEBUG):
-                logger.warning(e, exc_info=True)
-
-            elif logger.isEnabledFor(logging.INFO):
-                e_msg = String(e)
-                ce = e
-                while ce := getattr(ce, "__cause__", None):
-                    e_msg += " caused by " + String(ce)
-                logger.warning(e_msg)
-
-            else:
-                logger.warning(e)
-
-        if isinstance(e, CallStop):
-            logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = e.body if e.code != 204 else None
-
-        elif isinstance(e, Redirect):
-            logger.debug(String(e))
-            res.code = e.code
-            res.add_headers(e.headers)
-            res.body = None
-
-        elif isinstance(e, (AccessDenied, CallError)):
-            log_error_warning(e)
-
-            res.code = e.code
-            res.add_headers(e.headers)
-
-        elif isinstance(e, NotImplementedError):
-            log_error_warning(e)
-            res.code = 501
-
-        elif isinstance(e, TypeError):
-            e_msg = String(e)
-            controller_info = req.controller_info
-
-            if controller_info:
-                # filter out TypeErrors raised from non handler methods
-                correct_prefix = controller_info["method_name"] in e_msg
-                if correct_prefix and 'argument' in e_msg:
-                    # there are subtle messaging differences between py2 and
-                    # py3
-                    errs = [
-                        "takes exactly",
-                        "takes no arguments",
-                        "positional argument"
-                    ]
-                    if (
-                        errs[0] in e_msg
-                        or errs[1] in e_msg
-                        or errs[2] in e_msg
-                    ):
-                        # TypeError: <METHOD>() takes exactly M argument (N
-                        #   given)
-                        # TypeError: <METHOD>() takes no arguments (N given)
-                        # TypeError: <METHOD>() takes M positional arguments
-                        #   but N were given
-                        # TypeError: <METHOD>() takes 1 positional argument but
-                        #   N were given
-                        # we shouldn't ever get the "takes no arguments" case
-                        # because of self, but just in case check if there are
-                        # path args, if there are then 404, if not then 405
-                        #logger.debug(e_msg, exc_info=True)
-                        logger.debug(e_msg)
-
-                        if len(controller_info["method_args"]):
-                            res.code = 404
-
-                        else:
-                            res.code = 405
-
-                    elif "unexpected keyword argument" in e_msg:
-                        # TypeError: <METHOD>() got an unexpected keyword
-                        # argument '<NAME>'
-
-                        try:
-                            # if the binding of just the *args works then the
-                            # problem is the **kwargs so a 405 is appropriate,
-                            # otherwise return a 404
-                            inspect.getcallargs(
-                                controller_info["method"],
-                                *controller_info["method_args"]
-                            )
-                            res.code = 405
-
-                            logger.warning("Controller method {}.{}.{}".format(
-                                controller_info['module_name'],
-                                controller_info['class_name'],
-                                e_msg
-                            ))
-
-                        except TypeError:
-                            res.code = 404
-
-                    elif "multiple values" in e_msg:
-                        # TypeError: <METHOD>() got multiple values for keyword
-                        # argument '<NAME>'
-                        try:
-                            inspect.getcallargs(
-                                controller_info["method"],
-                                *controller_info["method_args"]
-                            )
-                            res.code = 409
-
-                            log_error_warning(e)
-
-                        except TypeError:
-                            res.code = 404
-
-                    else:
-                        res.code = 500
-                        logger.exception(e)
+        finally:
+            if response.code is None:
+                # set the http status code to return to the client, by default,
+                # 200 if a body is present otherwise 204
+                if response.body is None:
+                    response.code = 204
 
                 else:
-                    res.code = 500
-                    logger.exception(e)
+                    response.code = 200
 
-            else:
-                res.code = 404
-                log_error_warning(e)
+            if response.encoding is None:
+                if encoding := request.accept_encoding:
+                    response.encoding = encoding
 
-        else:
-            res.code = 500
-            logger.exception(e)
+                else:
+                    response.encoding = environ.ENCODING
 
-        if controller:
-            error_method = getattr(
-                controller,
-                "handle_{}_error".format(res.code),
-                None
-            )
-            if not error_method:
-                error_method = getattr(
-                    controller,
-                    "handle_{}_error".format(req.method),
-                    None
-                )
-                if not error_method:
-                    error_method = getattr(controller, "handle_error")
+            if response.media_type and not response.has_header("Content-Type"):
+                if response.encoding:
+                    response.set_header(
+                        "Content-Type",
+                        "{};charset={}".format(
+                            response.media_type,
+                            response.encoding
+                        )
+                    )
 
-            logger.debug("Handle {} error using method: {}.{}".format(
-                res.code,
-                controller.__class__.__name__,
-                error_method.__name__
-            ))
-            await error_method(e, **kwargs)
+                else:
+                    response.set_header("Content-Type", response.media_type)
+
+        self.log_stop(request, response)
+
+    async def handle_error(self, request, response, e, **kwargs):
+        err_controller = self.create_error_controller(request, response)
+        await err_controller.handle(e)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):

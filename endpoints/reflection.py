@@ -270,6 +270,13 @@ class ReflectMethod(ReflectCallable):
 
         return version
 
+    def get_method_info(self):
+        reflect_class = self.reflect_class()
+        mns = reflect_class.value["http_method_names"]
+        for method_info in mns[self.http_verb]:
+            if method_info["method_name"] == self.name:
+                return method_info
+
 
 class ReflectParam(ReflectObject):
     """Reflects a Param instance
@@ -1291,7 +1298,11 @@ class Response(OpenABC):
         # support Accept header response:
         # https://stackoverflow.com/a/62593737
         # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-        media_type = environ.RESPONSE_MEDIA_TYPE
+        method_info = reflect_method.get_method_info()
+        media_type = method_info.get(
+            "response_media_type",
+            environ.RESPONSE_MEDIA_TYPE
+        )
         if version := reflect_method.get_version():
             media_type += f"; version={version}"
         return [media_type]
@@ -1520,6 +1531,12 @@ class Operation(OpenABC):
                 )
                 append(responses, response)
                 break
+
+        response = self.create_response_instance(
+            "500",
+            description="Unidentified server error"
+        )
+        append(responses, response)
 
         return responses
 
