@@ -445,23 +445,27 @@ class Pathfinder(ClasspathFinder):
             value["http_method_names"] = defaultdict(list)
 
             for rm in rc.reflect_http_methods():
-                method_info = {
-                    "method_name": rm.name
-                }
+                method_info = value["class"].get_http_method_info(rm.http_verb)
+                mtcheck = (
+                    "response_callback" in method_info
+                    or "response_media_type" in method_info
+                )
+                if not mtcheck:
+                    rt = rm.reflect_return_type()
+                    for mtinfo in value["class"].get_response_media_types():
+                        exactcheck = rt is not None and rt.is_type(mtinfo[0])
+                        anycheck = mtinfo[0] is Any or mtinfo[0] is object
+                        if exactcheck or anycheck:
+                            if callable(mtinfo[1]):
+                                method_info["response_callback"] = mtinfo[1]
 
-                rt = rm.reflect_return_type()
-                for mtinfo in value["class"].get_response_media_types():
-                    typecheck = rt is not None and rt.is_type(mtinfo[0])
-                    if typecheck or mtinfo[0] is Any or mtinfo[0] is object:
-                        if callable(mtinfo[1]):
-                            method_info["response_callback"] = mtinfo[1]
+                            else:
+                                method_info["response_media_type"] = mtinfo[1]
 
-                        else:
-                            method_info["response_media_type"] = mtinfo[1]
+                            if exactcheck:
+                                break
 
-                        if typecheck:
-                            break
-
+                method_info.setdefault("method_name", rm.name)
                 value["http_method_names"][rm.http_verb].append(method_info)
 
             logger.debug(
@@ -803,6 +807,21 @@ class Controller(object):
         return name
 
     @classmethod
+    def get_http_method_info(cls, http_verb):
+        """A hook to customize the pathfinder node value's method info for
+        this http verb. It will be called for each method that handles this
+        http_verb request
+
+        :param http_verb: str, the http verb (eg, POST, GET)
+        :returns: dict[str, Any]
+            - response_callback: Callable[[Response], None], this will be
+                called after the controller handler method is done
+            - response_media_type: str, this will be set as the response's
+                media type in the Content-Type header
+        """
+        return {}
+
+    @classmethod
     def get_response_media_types(cls, **kwargs):
         """Get the response media types this controller can support. This
         is used to set media types for the controller's http methods
@@ -883,7 +902,7 @@ class Controller(object):
     def handle_origin(self, origin):
         """Check the origin and decide if it is valid
 
-        :param origin: string, this can be empty or None, so you'll need to
+        :param origin: str, this can be empty or None, so you'll need to
             handle the empty case if you are overriding this
         :returns: bool, True if the origin is acceptable, False otherwise
         """
@@ -1109,15 +1128,28 @@ class Controller(object):
 
 
 class ErrorController(Controller):
+    """Handles responses for error states. All raised exceptions will go
+    through this.
+
+    This is a bit different than a regular controller in that it doesn't call
+    an http verbe method (eg GET, POST) but just calls .handle_error from the
+    .handle method
+
+    Override the .handle_error method to customize what to do for a specific
+    exception, override the .get_response_body to customize just the response
+    body
+    """
     private = True
     cors = False
 
     async def handle(self, e):
+        self.response.code = 500
+        self.response.body = e
+        await self.handle_error(e)
+
+    async def handle_error(self, e):
         request = self.request
         response = self.response
-
-        response.code = 500
-        response.body = e
 
         if isinstance(e, CloseConnection):
             raise
