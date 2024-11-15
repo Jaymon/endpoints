@@ -43,7 +43,6 @@ Repository = "https://github.com/Jaymon/endpoints"
 [project.optional-dependencies]
 tests = [
   "testdata",
-  "requests",
   "daphne"
 ]
 websockets = [

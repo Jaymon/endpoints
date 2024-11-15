@@ -9,11 +9,11 @@ import socket
 import logging
 import uuid
 
-try:
-    import requests
-    from requests.auth import _basic_auth_str
-except ImportError:
-    requests = None
+# try:
+#     import requests
+#     from requests.auth import _basic_auth_str
+# except ImportError:
+#     requests = None
 
 try:
     # https://github.com/websocket-client/websocket-client
@@ -21,7 +21,7 @@ try:
 except ImportError:
     websocket = None
 
-from datatypes import Host
+from datatypes import Host, HTTPClient
 
 from .compat import *
 from .utils import String, ByteString, Base64, Url
@@ -32,7 +32,7 @@ from .call import Headers
 logger = logging.getLogger(__name__)
 
 
-class HTTPClient(object):
+class HTTPClient(HTTPClient):
     """A generic test client that can make endpoints requests
 
     You can add headers to every request with the instance's .headers
@@ -45,169 +45,173 @@ class HTTPClient(object):
 
         self.query["foo_bar"] = "..."
     """
-    timeout = 10
+#     timeout = 10
+# 
+#     def __init__(self, host, *args, **kwargs):
+#         if not requests:
+#             logger.error("You need to install requests to use {}".format(
+#                 type(self).__name__
+#             ))
+#             raise ImportError("requests is not installed")
+# 
+#         self.host = Url(host, hostname=Host(host).client())
+# 
+#         # these are the common headers that usually don't change all that much
+#         self.headers = Headers({
+#             "x-forwarded-for": "127.0.0.1",
+#             "user-agent": "{} client".format(__name__.split(".")[0]),
+#         })
+# 
+#         if kwargs.get("json", False):
+#             self.set_json_request()
+# 
+#         headers = kwargs.get("headers", {})
+#         if headers:
+#             self.headers.update(headers)
+# 
+#         self.timeout = kwargs.get("timeout", self.timeout)
+#         self.query = {}
 
-    def __init__(self, host, *args, **kwargs):
-        if not requests:
-            logger.error("You need to install requests to use {}".format(
-                type(self).__name__
-            ))
-            raise ImportError("requests is not installed")
 
-        self.host = Url(host, hostname=Host(host).client())
+    def get_fetch_user_agent_name(self):
+        return "{} client".format(__name__.split(".")[0])
 
-        # these are the common headers that usually don't change all that much
-        self.headers = Headers({
-            "x-forwarded-for": "127.0.0.1",
-            "user-agent": "{} client".format(__name__.split(".")[0]),
-        })
+#     def set_json_request(self, value="application/json"):
+#         self.headers.set_header("content-type", value)
+# 
+#     def get(self, uri, query=None, **kwargs):
+#         """make a GET request"""
+#         return self.fetch('get', uri, query, **kwargs)
+# 
+#     def post(self, uri, body=None, **kwargs):
+#         """make a POST request"""
+#         return self.fetch('post', uri, kwargs.pop("query", {}), body, **kwargs)
 
-        if kwargs.get("json", False):
-            self.set_json_request()
-
-        headers = kwargs.get("headers", {})
-        if headers:
-            self.headers.update(headers)
-
-        self.timeout = kwargs.get("timeout", self.timeout)
-        self.query = {}
-
-    def set_json_request(self, value="application/json"):
-        self.headers.set_header("content-type", value)
-
-    def get(self, uri, query=None, **kwargs):
-        """make a GET request"""
-        return self.fetch('get', uri, query, **kwargs)
-
-    def post(self, uri, body=None, **kwargs):
-        """make a POST request"""
-        return self.fetch('post', uri, kwargs.pop("query", {}), body, **kwargs)
-
-    def post_file(self, uri, body, files, **kwargs):
-        """POST a file"""
-        # requests doesn't actually need us to open the files but we do anyway because
-        # if we don't then the filename isn't preserved, so we assume each string
-        # value is a filepath
-        for key in files.keys():
-            if isinstance(files[key], basestring):
-                files[key] = open(files[key], 'rb')
-        kwargs["files"] = files
-
-        # we ignore content type for posting files since it requires very specific things
-        ct = self.headers.pop("content-type", None)
-        ret = self.fetch('post', uri, {}, body, **kwargs)
-        if ct:
-            self.headers["content-type"] = ct
-
-        # close all the files
-        for fp in files.values():
-            fp.close()
-        return ret
+#     def post_file(self, uri, body, files, **kwargs):
+#         """POST a file"""
+#         # requests doesn't actually need us to open the files but we do anyway because
+#         # if we don't then the filename isn't preserved, so we assume each string
+#         # value is a filepath
+#         for key in files.keys():
+#             if isinstance(files[key], basestring):
+#                 files[key] = open(files[key], 'rb')
+#         kwargs["files"] = files
+# 
+#         # we ignore content type for posting files since it requires very specific things
+#         ct = self.headers.pop("content-type", None)
+#         ret = self.fetch('post', uri, {}, body, **kwargs)
+#         if ct:
+#             self.headers["content-type"] = ct
+# 
+#         # close all the files
+#         for fp in files.values():
+#             fp.close()
+#         return ret
 
     def delete(self, uri, query=None, **kwargs):
         """make a DELETE request"""
         return self.fetch('delete', uri, query, **kwargs)
 
-    def fetch(self, method, uri, query=None, body=None, **kwargs):
-        """
-        wrapper method that all the top level methods (get, post, etc.) use to actually
-        make the request
-        """
-        if not query:
-            query = {}
+#     def fetch(self, method, uri, query=None, body=None, **kwargs):
+#         """
+#         wrapper method that all the top level methods (get, post, etc.) use to actually
+#         make the request
+#         """
+#         if not query:
+#             query = {}
+# 
+#         fetch_url = self.get_fetch_url(uri, query)
+# 
+#         args = [fetch_url]
+# 
+#         kwargs.setdefault("timeout", self.timeout)
+#         kwargs["headers"] = self.get_fetch_headers(method, kwargs.get("headers", {}))
+# 
+#         if body:
+#             if self.is_json(kwargs["headers"]):
+#                 kwargs['json'] = self.get_fetch_body(body)
+#             else:
+#                 kwargs['data'] = self.get_fetch_body(body)
+# 
+#         res = self.get_fetch_request(method, *args, **kwargs)
+#         #res = requests.request(method, *args, **kwargs)
+#         res = self.get_fetch_response(res)
+#         self.response = res
+#         return res
 
-        fetch_url = self.get_fetch_url(uri, query)
+#     def get_fetch_query(self, query):
+#         ret = getattr(self, "query", {}) or {}
+#         if query:
+#             ret.update(query)
+#         return ret
 
-        args = [fetch_url]
+#     def get_fetch_query_str(self, query_str, query):
+#         all_query = self.get_fetch_query(query)
+#         if all_query:
+#             more_query_str = urlencode(all_query, doseq=True)
+#             if query_str:
+#                 query_str += '&{}'.format(more_query_str)
+#             else:
+#                 query_str = more_query_str
+# 
+#         return query_str
 
-        kwargs.setdefault("timeout", self.timeout)
-        kwargs["headers"] = self.get_fetch_headers(method, kwargs.get("headers", {}))
+#     def get_fetch_host(self):
+#         return self.host.root
 
-        if body:
-            if self.is_json(kwargs["headers"]):
-                kwargs['json'] = self.get_fetch_body(body)
-            else:
-                kwargs['data'] = self.get_fetch_body(body)
+#     def get_fetch_url(self, uri, query=None):
+#         if not isinstance(uri, basestring):
+#             # allow ["foo", "bar"] to be converted to "/foo/bar"
+#             uri = "/".join(uri)
+# 
+#         ret_url = uri
+#         if not re.match(r"^\S+://\S", uri):
+#             base_url = self.get_fetch_host()
+#             base_url = base_url.rstrip('/')
+#             query_str = ''
+#             if '?' in uri:
+#                 i = uri.index('?')
+#                 query_str = uri[i+1:]
+#                 uri = uri[0:i]
+# 
+#             uri = uri.lstrip('/')
+#             query_str = self.get_fetch_query(query_str, query)
+#             if query_str:
+#                 uri = '{}?{}'.format(uri, query_str)
+# 
+#             ret_url = '{}/{}'.format(base_url, uri)
+# 
+#         return ret_url
 
-        res = self.get_fetch_request(method, *args, **kwargs)
-        #res = requests.request(method, *args, **kwargs)
-        res = self.get_fetch_response(res)
-        self.response = res
-        return res
+#     def get_fetch_headers(self, method, headers):
+#         """merge class headers with passed in headers
+# 
+#         :param method: string, (eg, GET or POST), this is passed in so you can customize
+#             headers based on the method that you are calling
+#         :param headers: dict, all the headers passed into the fetch method
+#         :returns: passed in headers merged with global class headers
+#         """
+#         all_headers = self.headers.copy()
+#         if headers:
+#             all_headers.update(headers)
+#         return Headers(all_headers)
 
-    def get_fetch_query(self, query):
-        ret = getattr(self, "query", {}) or {}
-        if query:
-            ret.update(query)
-        return ret
+#     def get_fetch_body(self, body):
+#         return body
 
-    def get_fetch_query_str(self, query_str, query):
-        all_query = self.get_fetch_query(query)
-        if all_query:
-            more_query_str = urlencode(all_query, doseq=True)
-            if query_str:
-                query_str += '&{}'.format(more_query_str)
-            else:
-                query_str = more_query_str
+#     def get_fetch_request(self, method, fetch_url, *args, **kwargs):
+#         """This is handy if you want to modify the request right before passing it
+#         to requests, or you want to do something extra special customized
+# 
+#         :param method: string, the http method (eg, GET, POST)
+#         :param fetch_url: string, the full url with query params
+#         :param *args: any other positional arguments
+#         :param **kwargs: any keyword arguments to pass to requests
+#         :returns: a requests.Response compatible object instance
+#         """
+#         return requests.request(method, fetch_url, *args, **kwargs)
 
-        return query_str
-
-    def get_fetch_host(self):
-        return self.host.root
-
-    def get_fetch_url(self, uri, query=None):
-        if not isinstance(uri, basestring):
-            # allow ["foo", "bar"] to be converted to "/foo/bar"
-            uri = "/".join(uri)
-
-        ret_url = uri
-        if not re.match(r"^\S+://\S", uri):
-            base_url = self.get_fetch_host()
-            base_url = base_url.rstrip('/')
-            query_str = ''
-            if '?' in uri:
-                i = uri.index('?')
-                query_str = uri[i+1:]
-                uri = uri[0:i]
-
-            uri = uri.lstrip('/')
-            query_str = self.get_fetch_query_str(query_str, query)
-            if query_str:
-                uri = '{}?{}'.format(uri, query_str)
-
-            ret_url = '{}/{}'.format(base_url, uri)
-
-        return ret_url
-
-    def get_fetch_headers(self, method, headers):
-        """merge class headers with passed in headers
-
-        :param method: string, (eg, GET or POST), this is passed in so you can customize
-            headers based on the method that you are calling
-        :param headers: dict, all the headers passed into the fetch method
-        :returns: passed in headers merged with global class headers
-        """
-        all_headers = self.headers.copy()
-        if headers:
-            all_headers.update(headers)
-        return Headers(all_headers)
-
-    def get_fetch_body(self, body):
-        return body
-
-    def get_fetch_request(self, method, fetch_url, *args, **kwargs):
-        """This is handy if you want to modify the request right before passing it
-        to requests, or you want to do something extra special customized
-
-        :param method: string, the http method (eg, GET, POST)
-        :param fetch_url: string, the full url with query params
-        :param *args: any other positional arguments
-        :param **kwargs: any keyword arguments to pass to requests
-        :returns: a requests.Response compatible object instance
-        """
-        return requests.request(method, fetch_url, *args, **kwargs)
-
-    def get_fetch_response(self, res):
+    def xget_fetch_response(self, res):
         """the goal of this method is to make the requests object more endpoints like
 
         res -- requests Response -- the native requests response instance, we manipulate
@@ -228,39 +232,40 @@ class HTTPClient(object):
 
         return res
 
-    def is_json(self, headers):
-        """return true if content_type is a json content type"""
-        ret = False
-        ct = headers.get("content-type", "").lower()
-        if ct:
-            ret = ct.lower().rfind("json") >= 0
-        return ret
+#     def is_json(self, headers):
+#         """return true if content_type is a json content type"""
+#         ret = False
+#         ct = headers.get("content-type", "").lower()
+#         if ct:
+#             ret = ct.lower().rfind("json") >= 0
+#         return ret
 
-    def basic_auth(self, username, password):
-        '''
-        add basic auth to this client
+#     def basic_auth(self, username, password):
+#         '''
+#         add basic auth to this client
+# 
+#         link -- http://stackoverflow.com/questions/6068674/
+# 
+#         username -- string
+#         password -- string
+#         '''
+#         self.headers['authorization'] = _basic_auth_str(username, password)
+# #         credentials = HTTPBasicAuth(username, password)
+# #         #credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
+# #         auth_string = 'Basic {}'.format(credentials())
+# #         self.headers['authorization'] = auth_string
 
-        link -- http://stackoverflow.com/questions/6068674/
-
-        username -- string
-        password -- string
-        '''
-        self.headers['authorization'] = _basic_auth_str(username, password)
-#         credentials = HTTPBasicAuth(username, password)
-#         #credentials = base64.b64encode('{}:{}'.format(username, password)).strip()
-#         auth_string = 'Basic {}'.format(credentials())
-#         self.headers['authorization'] = auth_string
-
-    def bearer_auth(self, token):
+    def xbearer_auth(self, token):
         """add bearer TOKEN auth to this client"""
-        self.headers['authorization'] = 'Bearer {}'.format(token)
+        self.token_auth(token)
+        #self.headers['authorization'] = 'Bearer {}'.format(token)
 
-    def clear_auth(self):
-        return self.remove_auth()
-
-    def remove_auth(self):
-        """Clear the authentication header and any authentication parameters"""
-        self.headers.pop("Authorization", None)
+#     def clear_auth(self):
+#         return self.remove_auth()
+# 
+#     def remove_auth(self):
+#         """Clear the authentication header and any authentication parameters"""
+#         self.headers.pop("Authorization", None)
 
     def set_version(self, version):
         self.headers["accept"] = "{};version={}".format(
@@ -272,8 +277,8 @@ class HTTPClient(object):
 class WebSocketClient(HTTPClient):
     """a websocket client
 
-    pretty much every method of this client can accept a timeout argument, if you
-    don't include the timeout then self.timeout will be used instead
+    pretty much every method of this client can accept a timeout argument, if
+    you don't include the timeout then self.timeout will be used instead
     """
     application_class = BaseApplication
 
@@ -282,19 +287,16 @@ class WebSocketClient(HTTPClient):
 
     @property
     def connected(self):
-        ws = getattr(self, 'ws', None)
-        return self.ws.connected if ws else False
+        return self.ws.connected if self.ws else False
 
-    def __init__(self, host, *args, **kwargs):
+    def __init__(self, base_url, **kwargs):
         if not websocket:
-            logger.error("You need to install websocket-client to use {}".format(
-                type(self).__name__
-            ))
+            logger.error(
+                "You need to install websocket-client to use {}".format(
+                    type(self).__name__
+                )
+            )
             raise ImportError("websocket-client is not installed")
-
-        kwargs.setdefault("headers", Headers())
-        kwargs["headers"]['User-Agent'] = "{} Websocket Client".format(__name__.split(".")[0])
-        super().__init__(host, *args, **kwargs)
 
         self.set_trace(kwargs.pop("trace", False))
 
@@ -305,6 +307,9 @@ class WebSocketClient(HTTPClient):
         self.uuid = Base64.encode(uuid.uuid4().bytes)
         self.send_count = 0
         self.attempts = kwargs.pop("attempts", self.attempts)
+        self.ws = None
+
+        super().__init__(base_url, **kwargs)
 
     @contextmanager
     def wstimeout(self, timeout=0, **kwargs):
@@ -315,8 +320,8 @@ class WebSocketClient(HTTPClient):
     @classmethod
     @contextmanager
     def open(cls, *args, **kwargs):
-        """just something to make it easier to quickly open a connection, do something
-        and then close it"""
+        """just something to make it easier to quickly open a connection, do
+        something and then close it"""
         c = cls(*args, **kwargs)
         c.connect()
         try:
@@ -326,24 +331,34 @@ class WebSocketClient(HTTPClient):
             c.close()
 
     def set_trace(self, trace):
-        if trace:
-            websocket.enableTrace(True) # for debugging connection issues
+        websocket.enableTrace(trace) # for debugging connection issues
 
-    def get_fetch_headers(self, method, headers):
-        headers = super().get_fetch_headers(method, headers)
+    def get_fetch_user_agent_name(self):
+        return "{} WebSocket Client".format(__name__.split(".")[0])
+
+    def get_base_url(self, base_url):
+        if base_url[0:4].lower().startswith("http"):
+            index = base_url.index(":")
+            scheme = "ws" if index == 4 else "wss"
+            base_url = scheme + base_url[index:]
+
+        return base_url
+
+    def get_fetch_headers(self, method, headers=None, http_cookies=None):
+        headers = super().get_fetch_headers(method, headers, http_cookies)
         headers.setdefault("Sec-WebSocket-Key", self.uuid)
         return headers
 
-    def get_fetch_host(self):
-        if self.host.scheme.lower().startswith("http"):
-            ws_host = self.host.add(
-                scheme=re.sub(r'^http', 'ws', self.host.scheme.lower())
-            ).root
-
-        else:
-            ws_host = self.host.root
-
-        return ws_host
+#     def get_fetch_host(self):
+#         if self.host.scheme.lower().startswith("http"):
+#             ws_host = self.host.add(
+#                 scheme=re.sub(r'^http', 'ws', self.host.scheme.lower())
+#             ).root
+# 
+#         else:
+#             ws_host = self.host.root
+# 
+#         return ws_host
 
     def get_timeout(self, timeout=0, **kwargs):
         if not timeout:
@@ -351,14 +366,15 @@ class WebSocketClient(HTTPClient):
         return timeout
 
     def connect(self, path="", headers=None, query=None, timeout=0, **kwargs):
-        """
-        make the actual connection to the websocket
+        """Make the actual connection to the websocket
 
-        :param headers: dict, key/val pairs of any headers to add to connection, if
-            you would like to override headers just pass in an empty value
-        :param query: dict, any query string params you want to send up with the connection
-            url
-        :returns: Payload, this will return the CONNECT response from the websocket
+        :param headers: dict, key/val pairs of any headers to add to
+            connection, if you would like to override headers just pass in an
+            empty value
+        :param query: dict, any query string params you want to send up with
+            the connection url
+        :returns: Payload, this will return the CONNECT response from the
+            websocket
         """
         ret = None
         ws_url = self.get_fetch_url(path, query)
@@ -380,7 +396,9 @@ class WebSocketClient(HTTPClient):
                 callback=lambda r: r.uuid == ws_headers["Sec-Websocket-Key"]
             )
             if ret.code >= 400:
-                raise IOError("Failed to connect with code {}".format(ret.code))
+                raise IOError(
+                    "Failed to connect with code {}".format(ret.code)
+                )
 
             logger.debug("{} connected to {}".format(self.uuid, ws_url))
 
@@ -395,22 +413,22 @@ class WebSocketClient(HTTPClient):
             ) from e
 
         except socket.error as e:
-            # this is an IOError, I just wanted to be aware of that, most common
-            # problem is: [Errno 111] Connection refused
+            # this is an IOError, I just wanted to be aware of that, most
+            # common problem is: [Errno 111] Connection refused
             raise
 
         return ret
 
-    def get_fetch_request(self, method, path, body, **kwargs):
-        payload_body = self.get_fetch_query({})
-        payload_body.update(self.get_fetch_body(body))
+    def get_fetch_body(self, body, **kwargs):
+        return {**self.query, **body}
 
+    def get_fetch_request(self, method, path, body, **kwargs):
         kwargs.setdefault("uuid", self.uuid)
 
         p = self.application_class.get_websocket_dumps(
             method=method.upper(),
             path=path,
-            body=payload_body,
+            body=self.get_fetch_body(body),
             **kwargs
         )
 
@@ -495,8 +513,7 @@ class WebSocketClient(HTTPClient):
                     attempt += 1
                     if attempt > max_attempts:
                         raise RuntimeError(
-                            "{} fetch attempts exceeded {} max attempts".format(
-                                attempt,
+                            "Exceeded {} fetch attempts".format(
                                 max_attempts
                             )
                         )
@@ -516,9 +533,9 @@ class WebSocketClient(HTTPClient):
         """payload has been sent, do anything else you need to do (eg, wait for
         response?)
 
-        :param uuid: string, the unique identifier of a websocket request we are
-        waiting for the response to
-        :returns: mixed, the response payload
+        :param uuid: str, the unique identifier of a websocket request we
+            are waiting for the response to
+        :returns: Any, the response payload
         """
         def callback(res_payload):
             ret = res_payload.uuid == uuid
@@ -551,8 +568,8 @@ class WebSocketClient(HTTPClient):
             raise IOError("Pinged server but did not receive correct pong")
 
     def recv_raw(self, timeout, opcodes, **kwargs):
-        """this is very internal, it will return the raw opcode and data if they
-        match the passed in opcodes
+        """this is very internal, it will return the raw opcode and data if
+        they match the passed in opcodes
 
         You can find the opcode values here:
             https://github.com/websocket-client/websocket-client/blob/master/websocket/_abnf.py
@@ -628,9 +645,10 @@ class WebSocketClient(HTTPClient):
         return self.get_fetch_response(data)
 
     def recv_callback(self, callback, **kwargs):
-        """receive messages and validate them with the callback, if the callback 
-        returns True then the message is valid and will be returned, if False
-        then this will try and receive another message until timeout is 0"""
+        """receive messages and validate them with the callback, if the
+        callback returns True then the message is valid and will be returned,
+        if False then this will try and receive another message until timeout
+        is 0"""
         payload = None
         timeout = self.get_timeout(**kwargs)
         full_timeout = timeout

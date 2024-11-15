@@ -16,6 +16,7 @@ from datatypes import (
     Dirpath,
     Profiler,
 )
+from datatypes.http import Multipart
 
 from ..config import environ
 from ..call import (
@@ -345,28 +346,32 @@ class BaseApplication(ApplicationABC):
         :param body: str|bytes
         :returns: dict
         """
-        ret = {}
-        em = email.message_from_bytes(bytes(request.headers) + body)
-        for part in em.walk():
-            if not part.is_multipart():
-                data = part.get_payload(decode=True)
-                params = {}
-                for header_name in part:
-                    for k, v in part.get_params(header=header_name)[1:]:
-                        params[k] = v
+        fields, files = Multipart.decode(request.headers, body)
+        fields.update(files)
+        return fields
 
-                if "name" not in params:
-                    raise IOError("Bad body data")
-
-                if "filename" in params:
-                    fp = io.BytesIO(data)
-                    fp.filename = params["filename"]
-                    ret[params["name"]] = fp
-
-                else:
-                    ret[params["name"]] = String(data)
-
-        return ret
+#         ret = {}
+#         em = email.message_from_bytes(bytes(request.headers) + body)
+#         for part in em.walk():
+#             if not part.is_multipart():
+#                 data = part.get_payload(decode=True)
+#                 params = {}
+#                 for header_name in part:
+#                     for k, v in part.get_params(header=header_name)[1:]:
+#                         params[k] = v
+# 
+#                 if "name" not in params:
+#                     raise IOError("Bad body data")
+# 
+#                 if "filename" in params:
+#                     fp = io.BytesIO(data)
+#                     fp.filename = params["filename"]
+#                     ret[params["name"]] = fp
+# 
+#                 else:
+#                     ret[params["name"]] = String(data)
+# 
+#         return ret
 
     def get_request_plain(self, request, body, **kwargs):
         """Parse a plain encoded body
@@ -643,9 +648,12 @@ class BaseApplication(ApplicationABC):
         This is the sister method to .get_websocket_loads() and should be a
         mirror of that method
 
-        :param request: the call's Request instance, this needs the request
-            because of how websockets are sent back and forth
-        :param response: the call's Response instance
+        :keyword path: Optional[str], the path (eg, `/foo/bar`)
+        :keyword code: Optional[int], the response code
+        :keyword method: Optional[str], the http method (eg, `GET`)
+        :keyword headers: Optional[dict[str, str]], headers to send
+        :keyword body: Any, the body to send
+        :raises: ValueError if both code and method are missing
         :returns: str
         """
         d = {}

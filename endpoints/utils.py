@@ -177,11 +177,12 @@ class AcceptHeader(object):
                 # first item is the media type:
                 media_type = self._split_media_type(a[0])
 
-                # all other items should be in key=val so let's add them to a dict:
+                # all other items should be in key=val so let's add them to a
+                # dict:
                 params = {}
                 q = 1.0 # default according to spec
                 for p in a[1:]:
-                    pk, pv = p.strip().split('=')
+                    pk, pv = p.strip().split('=', 1)
                     if pk == 'q':
                         q = float(pv)
                     else:

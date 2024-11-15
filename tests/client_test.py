@@ -11,7 +11,7 @@ class HTTPClientTestCase(TestCase):
     client_class = HTTPClient
 
     def create_client(self, **kwargs):
-        kwargs.setdefault("host", "endpoints.fake")
+        kwargs.setdefault("base_url", "endpoints.fake")
         client = self.client_class(**kwargs)
         return client
 
@@ -24,10 +24,10 @@ class HTTPClientTestCase(TestCase):
 
         uri = "/foo/bar"
         url = c.get_fetch_url(uri)
-        self.assertEqual("{}{}".format(c.get_fetch_host(), uri), url)
+        self.assertEqual("{}{}".format(c.base_url, uri), url)
 
         url = c.get_fetch_url(["foo", "bar"])
-        self.assertEqual("{}{}".format(c.get_fetch_host(), "/foo/bar"), url)
+        self.assertEqual("{}{}".format(c.base_url, "/foo/bar"), url)
 
     def test_basic_auth(self):
         c = self.create_client()
@@ -51,14 +51,14 @@ class WebSocketClientTestCase(HTTPClientTestCase):
     def test_get_fetch_host(self):
         client_cls = self.client_class
         c = client_cls("http://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("ws"))
+        self.assertTrue(c.base_url.startswith("ws"))
 
         c = client_cls("https://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("wss"))
+        self.assertTrue(c.base_url.startswith("wss"))
 
         c = client_cls("HTTPS://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("wss"))
+        self.assertTrue(c.base_url.startswith("wss"))
 
         c = client_cls("HTTP://localhost")
-        self.assertTrue(c.get_fetch_host().startswith("ws"))
+        self.assertTrue(c.base_url.startswith("ws"))
 

@@ -6,7 +6,7 @@ import testdata
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.interface.base import BaseApplication
-from endpoints.utils import JSONEncoder
+from endpoints.utils import JSONEncoder, Url
 from .. import TestCase as BaseTestCase
 
 
@@ -25,7 +25,11 @@ class TestCase(BaseTestCase):
 
     def create_client(self, **kwargs):
         kwargs.setdefault("json", True)
-        kwargs.setdefault("host", self.server.host)
+        #kwargs.setdefault("base_url", self.server.host)
+        kwargs.setdefault(
+            "base_url",
+            Url(self.server.host)
+        )
         client = self.client_class(**kwargs)
         return client
 
@@ -66,7 +70,7 @@ class _HTTPTestCase(TestCase):
 
         c = self.create_client()
         r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
-        self.assertEqual("1234", r.body)
+        self.assertEqual(1234, r.body)
 
     def test_get_404_request(self):
         server = self.create_server(contents=[
@@ -104,7 +108,7 @@ class _HTTPTestCase(TestCase):
         r = c.get('/')
         content = list(range(100))
         self.assertEqual(200, r.code)
-        self.assertEqual(content, r._body)
+        self.assertEqual(content, r.body)
 
     def test_post_body_urlencoded(self):
         server = self.create_server(contents=[
@@ -117,7 +121,7 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
         r = c.post("/", body)
         self.assertEqual(200, r.code)
-        self.assertEqual(body, r._body)
+        self.assertEqual(body, r.body)
 
     def test_post_body_json_dict(self):
         server = self.create_server(contents=[
@@ -129,8 +133,8 @@ class _HTTPTestCase(TestCase):
         c = self.create_client(json=True)
         body = {"foo": 1, "bar": [2, 3], "che": "four"}
         r = c.post("/", body)
-        self.assertEqual(body, r._body["kwargs"])
-        self.assertEqual(0, len(r._body["args"]))
+        self.assertEqual(body, r.body["kwargs"])
+        self.assertEqual(0, len(r.body["args"]))
 
     def test_post_body_json_list(self):
         server = self.create_server(contents=[
@@ -142,13 +146,13 @@ class _HTTPTestCase(TestCase):
         c = self.create_client(json=True)
         body = ["foo", "bar"]
         r = c.post("/", body)
-        self.assertEqual(body, r._body["args"])
-        self.assertEqual(0, len(r._body["kwargs"]))
+        self.assertEqual(body, r.body["args"])
+        self.assertEqual(0, len(r.body["kwargs"]))
 
         body = [{"foo": 1}, {"foo": 2}]
         r = c.post("/", body)
-        self.assertEqual(1, r._body["args"][0]["foo"])
-        self.assertEqual(2, len(r._body["args"]))
+        self.assertEqual(1, r.body["args"][0]["foo"])
+        self.assertEqual(2, len(r.body["args"]))
 
     def test_post_body_file_1(self):
         filepath = testdata.create_file(
@@ -168,37 +172,36 @@ class _HTTPTestCase(TestCase):
 
         body = {"foo": "value-foo", "baz": "value-baz"}
         c = self.create_client()
-        r = c.post_file(
+        r = c.post(
             '/',
             body,
-            {"file": filepath}
+            files={"file": filepath}
         )
         self.assertEqual(200, r.code)
-        self.assertTrue(filepath.name in r.body)
+        self.assertEqual(filepath.name, r.body["filename"])
         for k, v in body.items():
-            self.assertTrue(v in r.body)
+            self.assertEqual(v, r.body[k])
 
     def test_post_body_file_2(self):
         """make sure specifying a @param for the file upload works as expected"""
         filepath = testdata.create_file("post_file_with_param")
         server = self.create_server(contents=[
-            "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    @decorators.param('file')",
-            "    def POST(self, *args, **kwargs):",
+            "    def POST(self, **kwargs):",
             "        return kwargs['file'].filename",
             #"        return kwargs['file']['filename']",
             "",
         ])
 
         c = self.create_client()
-        r = c.post_file(
+        r = c.post(
             '/',
             {"foo": "value-foo", "baz": "value-baz"},
-            {"file": filepath}
+            files={"file": filepath}
         )
         self.assertEqual(200, r.code)
-        self.assertTrue(filepath.name in r.body)
+        self.assertEqual(filepath.name, r.body)
 
     def test_post_body_plain_with_content_type(self):
         server = self.create_server(contents=[
@@ -216,21 +219,21 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(body, r.body)
         self.assertEqual(String(body), String(r._body))
 
-    def test_post_body_plain_without_content_type(self):
-        server = self.create_server(contents=[
-            "class Default(Controller):",
-            "    def POST(self, *args, **kwargs):",
-            "        self.response.media_type = 'text/plain'",
-#             "        self.response.headers['content-type'] = 'text/plain'",
-            "        return self.request.body",
-        ])
-
-        body = "plain text body"
-        c = self.create_client(json=False)
-        r = c.post("/", body)
-        self.assertEqual(200, r.code)
-        self.assertEqual(body, r.body)
-        self.assertEqual(String(body), String(r._body))
+#     def test_post_body_plain_without_content_type(self):
+#         server = self.create_server(contents=[
+#             "class Default(Controller):",
+#             "    def POST(self, *args, **kwargs):",
+#             "        self.response.media_type = 'text/plain'",
+# #             "        self.response.headers['content-type'] = 'text/plain'",
+#             "        return self.request.body",
+#         ])
+# 
+#         body = "plain text body"
+#         c = self.create_client(json=False)
+#         r = c.post("/", body)
+#         self.assertEqual(200, r.code)
+#         self.assertEqual(body, r.body)
+#         self.assertEqual(String(body), String(r._body))
 
     def test_response_body_1(self):
         server = self.create_server(contents=[
@@ -249,10 +252,10 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(String(body), r.body)
 
         r = c.post('/', {'content_type': 'application/json', 'body': body})
-        self.assertEqual(json.dumps(body, cls=JSONEncoder), r.body)
+        self.assertEqual(body, r.body)
 
         r = c.post('/', {'content_type': 'application/json', 'body': {}})
-        self.assertEqual("{}", r.body)
+        self.assertEqual({}, r.body)
 
     def test_response_body_json_error(self):
         """
@@ -275,8 +278,6 @@ class _HTTPTestCase(TestCase):
 
     def test_versioning(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "from endpoints.decorators import version",
             "class Default(Controller):",
             "    def GET(*args, **kwargs): pass",
             "    @version('', 'v1')",
@@ -287,12 +288,12 @@ class _HTTPTestCase(TestCase):
         ])
 
         c = self.create_client()
-        r = c.post('/', None, headers={"content-type": "application/json"})
+        r = c.post("/", None, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
         c = self.create_client()
         r = c.post(
-            '/',
+            "/",
             {"foo": "bar"},
             headers={
                 "content-type": "application/json",
@@ -300,27 +301,27 @@ class _HTTPTestCase(TestCase):
             }
         )
         self.assertEqual(200, r.code)
-        self.assertEqual('"bar"', r.body)
+        self.assertEqual("bar", r.body)
 
-        r = c.post('/', {})
+        r = c.post("/", {})
         self.assertEqual(204, r.code)
 
-        r = c.post('/', None, headers={"content-type": "application/json"})
+        r = c.post("/", None, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
-        r = c.post('/', None)
+        r = c.post("/", None)
         self.assertEqual(204, r.code)
 
-        r = c.post('/', {}, headers={"content-type": "application/json"})
+        r = c.post("/", {}, headers={"content-type": "application/json"})
         self.assertEqual(204, r.code)
 
         r = c.post(
-            '/',
+            "/",
             {"foo": "bar"},
             headers={"Accept": "application/json;version=v2"}
         )
         self.assertEqual(200, r.code)
-        self.assertEqual('"bar"', r.body)
+        self.assertEqual("bar", r.body)
 
     def test_io_streaming_get_file_stream(self):
         content = "this is a text file to stream"

@@ -116,6 +116,12 @@ class AcceptHeaderTest(TestCase):
 
             self.assertEqual(t[2], count)
 
+    def test_parsing_error(self):
+        s = "\"===============1234==\""
+        ct = f"multipart/form-data;  boundary={s}"
+        ah = AcceptHeader(ct)
+        self.assertEqual(s, ah.media_types[0][2]["boundary"])
+
 
 class JSONEncoderTest(TestCase):
     def test_string(self):
