@@ -350,29 +350,6 @@ class BaseApplication(ApplicationABC):
         fields.update(files)
         return fields
 
-#         ret = {}
-#         em = email.message_from_bytes(bytes(request.headers) + body)
-#         for part in em.walk():
-#             if not part.is_multipart():
-#                 data = part.get_payload(decode=True)
-#                 params = {}
-#                 for header_name in part:
-#                     for k, v in part.get_params(header=header_name)[1:]:
-#                         params[k] = v
-# 
-#                 if "name" not in params:
-#                     raise IOError("Bad body data")
-# 
-#                 if "filename" in params:
-#                     fp = io.BytesIO(data)
-#                     fp.filename = params["filename"]
-#                     ret[params["name"]] = fp
-# 
-#                 else:
-#                     ret[params["name"]] = String(data)
-# 
-#         return ret
-
     def get_request_plain(self, request, body, **kwargs):
         """Parse a plain encoded body
 

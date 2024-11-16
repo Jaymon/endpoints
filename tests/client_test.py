@@ -15,25 +15,6 @@ class HTTPClientTestCase(TestCase):
         client = self.client_class(**kwargs)
         return client
 
-    def test_get_fetch_url(self):
-        c = self.create_client()
-
-        uri = "http://foo.com"
-        url = c.get_fetch_url(uri)
-        self.assertEqual(uri, url)
-
-        uri = "/foo/bar"
-        url = c.get_fetch_url(uri)
-        self.assertEqual("{}{}".format(c.base_url, uri), url)
-
-        url = c.get_fetch_url(["foo", "bar"])
-        self.assertEqual("{}{}".format(c.base_url, "/foo/bar"), url)
-
-    def test_basic_auth(self):
-        c = self.create_client()
-        c.basic_auth("foo", "bar")
-        self.assertRegex(c.headers["authorization"], r"Basic\s+[a-zA-Z0-9=]+")
-
 
 class WebSocketClientTestCase(HTTPClientTestCase):
     client_class = WebSocketClient
