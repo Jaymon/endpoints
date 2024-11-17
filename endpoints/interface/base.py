@@ -142,6 +142,19 @@ class BaseApplication(ApplicationABC):
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
 
+    @classmethod
+    def dump_json(cls, body, **kwargs):
+        """Internal method. Used by .get_response_json and
+        .get_websocket_dumps. This exists so there is one place to customize
+        json dumping
+
+        :param body: Any, it just has to be json encodable
+        :keyword json_encoder: JSONEncoder
+        :returns: str
+        """
+        json_encoder = kwargs.get("json_encoder", JSONEncoder)
+        return json.dumps(body, cls=json_encoder)
+
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             if isinstance(controller_prefixes, str):
@@ -497,7 +510,7 @@ class BaseApplication(ApplicationABC):
             else:
                 # http://stackoverflow.com/questions/15599639/
                 for chunk in iter(body_iterator, ""):
-                    yield ByteString(chunk, response.encoding).raw()
+                    yield bytes(chunk, response.encoding)
 
         finally:
             # close the pointer since we've consumed it
@@ -511,10 +524,8 @@ class BaseApplication(ApplicationABC):
             * json_encoder: JSONEncoder
         :returns: generator[bytes], a generator that yields bytes strings
         """
-        body = response.body
-        json_encoder = kwargs.get("json_encoder", JSONEncoder)
-        body = json.dumps(body, cls=json_encoder)
-        yield ByteString(body, response.encoding).raw()
+        body = self.dump_json(response.body, **kwargs)
+        yield bytes(body, response.encoding)
 
     async def get_response_value(self, response, **kwargs):
         """Internal method called when response body is unknown, it will be
@@ -523,7 +534,7 @@ class BaseApplication(ApplicationABC):
 
         :returns: generator[bytes], a generator that yields bytes strings
         """
-        yield ByteString(response.body, response.encoding).raw()
+        yield bytes(str(response.body), response.encoding)
 
     def create_router(self):
         return self.router_class(
@@ -656,11 +667,7 @@ class BaseApplication(ApplicationABC):
         if body is not None:
             d["body"] = body
 
-        body = json.dumps(
-            d,
-            cls=kwargs.get("json_encoder", JSONEncoder),
-        )
-        return body
+        return cls.dump_json(d, json_encoder=kwargs.get("json_encoder", None))
 
     @classmethod
     def get_websocket_loads(cls, body):

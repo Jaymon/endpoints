@@ -237,7 +237,6 @@ class _HTTPTestCase(TestCase):
 
     def test_response_body_1(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def POST(self, **kwargs):",
             "        self.response.media_type = kwargs['content_type']",
@@ -622,7 +621,6 @@ class _WebSocketTestCase(TestCase):
         """https://github.com/Jaymon/endpoints/issues/103"""
         server = self.create_server(contents=[
             "import os",
-            "from endpoints import Controller, decorators",
             "class Default(Controller):",
             "    def CONNECT(self, **kwargs):",
             "        pass",

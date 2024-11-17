@@ -183,20 +183,20 @@ class WebSocketClient(HTTPClient):
 
         return ret
 
-    def get_fetch_body(self, body, **kwargs):
-        return {**self.query, **body}
-
-    def get_fetch_request(self, method, path, body, **kwargs):
-        kwargs.setdefault("uuid", self.uuid)
-
-        p = self.application_class.get_websocket_dumps(
-            method=method.upper(),
-            path=path,
-            body=self.get_fetch_body(body),
-            **kwargs
-        )
-
-        return p
+#     def get_fetch_body(self, body, **kwargs):
+#         return {**self.query, **body}
+# 
+#     def get_fetch_request(self, method, path, body, **kwargs):
+#         kwargs.setdefault("uuid", self.uuid)
+# 
+#         p = self.application_class.get_websocket_dumps(
+#             method=method.upper(),
+#             path=path,
+#             body=self.get_fetch_body(body),
+#             **kwargs
+#         )
+# 
+#         return p
 
     def send(self, path, body, **kwargs):
         return self.fetch("SOCKET", path, body=body, **kwargs)
@@ -211,21 +211,15 @@ class WebSocketClient(HTTPClient):
         """
         ret = None
 
-        # body takes precedence over query in the payload_body
-        if not query: query = {}
-        if not body: body = {}
-        payload_body = dict(query)
-        payload_body.update(body)
+        payload = self.application_class.get_websocket_dumps(
+            method=method.upper(),
+            path=path,
+            body={**self.query, **(query or {}), **(body or {})},
+            headers=kwargs.get("headers", {}),
+            uuid=self.uuid,
+        )
 
         self.send_count += 1
-        uuid = self.uuid
-        payload = self.get_fetch_request(
-            method,
-            path,
-            payload_body,
-            uuid=uuid,
-            headers=kwargs.get("headers", {})
-        )
         attempt = 1
         max_attempts = kwargs.get("attempts", self.attempts)
         success = False
@@ -242,9 +236,8 @@ class WebSocketClient(HTTPClient):
                         kwargs["attempt"] = attempt
 
                         logger.debug(
-                            '{} send {} attempt {}/{} with timeout {}'.format(
+                            '{} send attempt {}/{} with timeout {}'.format(
                                 self.uuid,
-                                uuid,
                                 attempt,
                                 max_attempts,
                                 timeout
@@ -257,7 +250,7 @@ class WebSocketClient(HTTPClient):
                             sent_bits
                         ))
                         if sent_bits:
-                            ret = self.fetch_response(uuid, **kwargs)
+                            ret = self.get_fetch_response(self.uuid, **kwargs)
                             if ret:
                                 success = True
 
@@ -293,7 +286,7 @@ class WebSocketClient(HTTPClient):
 
         return ret
 
-    def fetch_response(self, uuid, **kwargs):
+    def get_fetch_response(self, uuid, **kwargs):
         """payload has been sent, do anything else you need to do (eg, wait for
         response?)
 
@@ -387,15 +380,19 @@ class WebSocketClient(HTTPClient):
 
         return opcode, data
 
-    def get_fetch_response(self, raw):
+    def get_recv_response(self, data):
         """This just makes the payload instance more HTTPClient like"""
-        class Return(object): pass
+        class Return(object):
+            pass
+
         ret = Return()
-        p = self.application_class.get_websocket_loads(raw)
+        p = self.application_class.get_websocket_loads(data)
 
         for k, v in p.items():
             setattr(ret, k, v)
+
         ret._body = ret.body
+
         return ret
 
     def recv(self, timeout=0, **kwargs):
@@ -406,7 +403,8 @@ class WebSocketClient(HTTPClient):
             [websocket.ABNF.OPCODE_TEXT],
             **kwargs
         )
-        return self.get_fetch_response(data)
+
+        return self.get_recv_response(data)
 
     def recv_callback(self, callback, **kwargs):
         """receive messages and validate them with the callback, if the
