@@ -183,21 +183,6 @@ class WebSocketClient(HTTPClient):
 
         return ret
 
-#     def get_fetch_body(self, body, **kwargs):
-#         return {**self.query, **body}
-# 
-#     def get_fetch_request(self, method, path, body, **kwargs):
-#         kwargs.setdefault("uuid", self.uuid)
-# 
-#         p = self.application_class.get_websocket_dumps(
-#             method=method.upper(),
-#             path=path,
-#             body=self.get_fetch_body(body),
-#             **kwargs
-#         )
-# 
-#         return p
-
     def send(self, path, body, **kwargs):
         return self.fetch("SOCKET", path, body=body, **kwargs)
 

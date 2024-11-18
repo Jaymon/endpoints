@@ -155,6 +155,17 @@ class BaseApplication(ApplicationABC):
         json_encoder = kwargs.get("json_encoder", JSONEncoder)
         return json.dumps(body, cls=json_encoder)
 
+    @classmethod
+    def load_json(cls, body, **kwargs):
+        """Internal method. Used by .get_request_json and
+        .get_websocket_loads. This exists so there is one place to customize
+        json loading
+
+        :param body: Any, it just has to be json encodable
+        :returns: str
+        """
+        return json.loads(body)
+
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             if isinstance(controller_prefixes, str):
@@ -345,7 +356,7 @@ class BaseApplication(ApplicationABC):
         :param body: str|bytes
         :returns: dict|list|Any
         """
-        return json.loads(body)
+        return self.load_json(body)
 
     def get_request_multipart(self, request, body, **kwargs):
         """Parse a multipart form encoded body, this usually means the body
@@ -683,7 +694,7 @@ class BaseApplication(ApplicationABC):
         :param body: str
         :returns: dict
         """
-        d = json.loads(body)
+        d = cls.load_json(body)
 
         if "code" not in d and "method" not in d:
             raise ValueError("A websocket payload needs a method or code")
