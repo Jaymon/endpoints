@@ -183,7 +183,8 @@ class _HTTPTestCase(TestCase):
             self.assertEqual(v, r.body[k])
 
     def test_post_body_file_2(self):
-        """make sure specifying a @param for the file upload works as expected"""
+        """make sure specifying a @param for the file upload works as
+        expected"""
         filepath = testdata.create_file("post_file_with_param")
         server = self.create_server(contents=[
             "class Default(Controller):",
@@ -218,22 +219,6 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual(body, r.body)
         self.assertEqual(String(body), String(r._body))
-
-#     def test_post_body_plain_without_content_type(self):
-#         server = self.create_server(contents=[
-#             "class Default(Controller):",
-#             "    def POST(self, *args, **kwargs):",
-#             "        self.response.media_type = 'text/plain'",
-# #             "        self.response.headers['content-type'] = 'text/plain'",
-#             "        return self.request.body",
-#         ])
-# 
-#         body = "plain text body"
-#         c = self.create_client(json=False)
-#         r = c.post("/", body)
-#         self.assertEqual(200, r.code)
-#         self.assertEqual(body, r.body)
-#         self.assertEqual(String(body), String(r._body))
 
     def test_response_body_1(self):
         server = self.create_server(contents=[
@@ -581,10 +566,11 @@ class _WebSocketTestCase(TestCase):
 
     def test_rapid_requests(self):
         """We were dropping requests when making a whole bunch of websocket
-        requests all at once, a version of this test was able to duplicate it about
-        every 5 or 6 run (dang async programming) which allowed me to figure out
-        that uwsgi batches ws requests and if you don't read them all then it will
-        silently discard the unread ones when another request is received"""
+        requests all at once, a version of this test was able to duplicate it
+        about every 5 or 6 run (dang async programming) which allowed me to
+        figure out that uwsgi batches ws requests and if you don't read them
+        all then it will silently discard the unread ones when another request
+        is received"""
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "class Default(Controller):",
@@ -640,9 +626,10 @@ class _WebSocketTestCase(TestCase):
         self.assertEqual(200, r.code)
 
     def test_path_mixup(self):
-        """Jarid was hitting this problem, we were only able to get it to happen
-        consistently with his environment, the problem stemmed from one request
-        being remembered on the next request, this makes sure that is fixed"""
+        """Jarid was hitting this problem, we were only able to get it to
+        happen consistently with his environment, the problem stemmed from one
+        request being remembered on the next request, this makes sure that is
+        fixed"""
         server = self.create_server(contents=[
             "from endpoints import Controller",
             "from endpoints.decorators import version",

@@ -17,6 +17,19 @@ class Application(BaseApplication):
     WebSocket lifecycle:
         https://asgi.readthedocs.io/en/latest/specs/www.html#websocket-connection-scope
     """
+    @classmethod
+    async def factory(cls, *args, **kwargs):
+        """Convenience method to make it easy to call daphne, because you
+        can just do this:
+
+            $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi:Application.factory
+        """
+        application = getattr(cls, "application", None)
+        if not application:
+            cls.application = application = cls()
+
+        await application(*args, **kwargs)
+
     def normalize_call_kwargs(self, scope, receive, send, **kwargs):
         return {
             "scope": scope,
@@ -173,30 +186,4 @@ class Application(BaseApplication):
 
         request.raw_request = raw_request
         return request
-
-
-class ApplicationFactory(object):
-    """This is convenience wrapper to make it easy to call daphne, because you
-    can just do this:
-
-        $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi:ApplicationFactory
-    """
-    application = None
-    """Will hold a cached instance of .application_class"""
-
-    application_class = Application
-    """The application class that will be created"""
-
-    @classmethod
-    def get_application(cls, **kwargs):
-        if not cls.application:
-            cls.application = cls.application_class(**kwargs)
-        return cls.application
-
-    def __init__(self, scope, **kwargs):
-        self.scope = scope
-
-    async def __call__(self, receive, send):
-        application = self.get_application()
-        await application(self.scope, receive, send)
 

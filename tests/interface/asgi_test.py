@@ -36,7 +36,7 @@ class Server(Command):
             cmd_host = self.host.hostname
             cmd_port = self.host.port
 
-        app_path = "endpoints.interface.asgi:ApplicationFactory"
+        app_path = "endpoints.interface.asgi:Application.factory"
         super().__init__(
             f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
             **kwargs

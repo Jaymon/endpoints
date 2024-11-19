@@ -19,16 +19,6 @@ class HTTPClientTestCase(TestCase):
 class WebSocketClientTestCase(HTTPClientTestCase):
     client_class = WebSocketClient
 
-#     def test_get_fetch_request(self):
-#         c = self.create_client()
-#         c.query = {
-#             "bar": 2
-#         }
-# 
-#         p = c.get_fetch_request("GET", "/foo", {"foo": 1})
-#         self.assertTrue('"foo":1' in p)
-#         self.assertTrue('"bar":2' in p)
-
     def test_get_fetch_host(self):
         client_cls = self.client_class
         c = client_cls("http://localhost")

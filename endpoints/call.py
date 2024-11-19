@@ -896,8 +896,9 @@ class Controller(object):
 
         https://peps.python.org/pep-0487/
         """
-        super().__init_subclass__()
-        cls.controller_classes[f"{cls.__module__}:{cls.__qualname__}"] = cls
+        if not cls.is_private():
+            k = f"{cls.__module__}:{cls.__qualname__}"
+            cls.controller_classes[k] = cls
 
     def handle_origin(self, origin):
         """Check the origin and decide if it is valid
