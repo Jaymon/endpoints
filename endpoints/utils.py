@@ -296,9 +296,6 @@ class JSONEncoder(json.JSONEncoder):
 
         elif isinstance(obj, Exception):
             return String(obj)
-#             return {
-#                 "errmsg": String(obj)
-#             }
 
         elif isinstance(obj, bytes):
             # this seems like a py3 bug, for some reason bytes can get in here

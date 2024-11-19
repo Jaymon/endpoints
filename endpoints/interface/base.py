@@ -129,9 +129,6 @@ class BaseApplication(ApplicationABC):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
-#     error_controller_class = Controller
-    """All errors will go through this class"""
-
     router_class = Router
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
@@ -569,16 +566,6 @@ class BaseApplication(ApplicationABC):
         controller.application = self
         return controller
 
-    def create_error_controller(self, request, response, **kwargs):
-        controller = self.controller_class(
-            request,
-            response,
-            **kwargs
-        )
-
-        controller.application = self
-        return controller
-
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
         response.start = time.time()
@@ -627,8 +614,20 @@ class BaseApplication(ApplicationABC):
         self.log_stop(request, response)
 
     async def handle_error(self, request, response, e, **kwargs):
-        err_controller = self.create_error_controller(request, response)
-        await err_controller.handle_error(e)
+        """Create a controller and handle an error for a request that failed
+        outside of a valid controller path, this is for things like 404 and 500
+        that happen before a valid Controller instance is created
+
+        :param request: Request
+        :param response: Response
+        """
+        controller = kwargs.get("controller_class", self.controller_class)(
+            request,
+            response,
+            **kwargs
+        )
+        controller.application = self
+        await controller.handle_error(e)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):
