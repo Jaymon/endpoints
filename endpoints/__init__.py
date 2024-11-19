@@ -9,7 +9,7 @@ from .exception import (
     CloseConnection,
 )
 from .utils import AcceptHeader, Url
-from .call import Controller, ErrorController, Request, Response
+from .call import Controller, Request, Response
 from . import decorators
 from .decorators import param, version # this is for fluidity/convenience
 

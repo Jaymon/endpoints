@@ -707,7 +707,7 @@ class _WebSocketTestCase(TestCase):
         c = self.create_client()
         r = c.get("/")
         self.assertEqual(500, r.code)
-        self.assertEqual("bah", r._body["errmsg"])
+        self.assertEqual("bah", r._body)
 
         r = c.post("/")
         self.assertEqual(200, r.code)

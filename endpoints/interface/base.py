@@ -21,17 +21,11 @@ from datatypes.http import Multipart
 from ..config import environ
 from ..call import (
     Controller,
-    ErrorController,
     Request,
     Response,
     Router,
 )
 from ..exception import (
-    CallError,
-    Redirect,
-    CallStop,
-    AccessDenied,
-    VersionError,
     CloseConnection,
 )
 
@@ -135,7 +129,7 @@ class BaseApplication(ApplicationABC):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
-    error_controller_class = ErrorController
+#     error_controller_class = Controller
     """All errors will go through this class"""
 
     router_class = Router
@@ -576,7 +570,7 @@ class BaseApplication(ApplicationABC):
         return controller
 
     def create_error_controller(self, request, response, **kwargs):
-        controller = self.error_controller_class(
+        controller = self.controller_class(
             request,
             response,
             **kwargs
@@ -634,7 +628,7 @@ class BaseApplication(ApplicationABC):
 
     async def handle_error(self, request, response, e, **kwargs):
         err_controller = self.create_error_controller(request, response)
-        await err_controller.handle(e)
+        await err_controller.handle_error(e)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):
@@ -678,7 +672,7 @@ class BaseApplication(ApplicationABC):
         if body is not None:
             d["body"] = body
 
-        return cls.dump_json(d, json_encoder=kwargs.get("json_encoder", None))
+        return cls.dump_json(d)
 
     @classmethod
     def get_websocket_loads(cls, body):
@@ -759,8 +753,8 @@ class BaseApplication(ApplicationABC):
             disconnect = True
 
         except Exception as e:
-            # daphne was buring the error and I'm not sure why, so I'm going to
-            # leave this here for right now just in case
+            # daphne was burying the error and I'm not sure why, so I'm going
+            # to leave this here for right now just in case
             logger.exception(e)
             raise
 

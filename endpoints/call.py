@@ -896,9 +896,8 @@ class Controller(object):
 
         https://peps.python.org/pep-0487/
         """
-        if not cls.is_private():
-            k = f"{cls.__module__}:{cls.__qualname__}"
-            cls.controller_classes[k] = cls
+        k = f"{cls.__module__}:{cls.__qualname__}"
+        cls.controller_classes[k] = cls
 
     def handle_origin(self, origin):
         """Check the origin and decide if it is valid
@@ -1074,6 +1073,29 @@ class Controller(object):
 
             response.body = await self.get_response_body(body)
 
+#     async def xhandle_error(self, e, **kwargs):
+#         """if an exception is raised while trying to handle the request it will
+#         go through this method
+# 
+#         This method will set the response body and code
+# 
+#         :param e: Exception, the error that was raised
+#         :param **kwargs:
+#         """
+#         if isinstance(e, CallStop):
+#             # CallStop is a special case exception because it's not actually
+#             # an error, so any body passed into it should be treated like
+#             # a success and should set the values found in the raised instance
+#             logger.debug(String(e))
+#             self.response.code = e.code
+#             self.response.add_headers(e.headers)
+#             #response.body = e.body if e.code != 204 else None
+#             self.response.body = await self.get_response_body(e.body)
+# 
+#         else:
+#             raise e
+
+
     async def handle_error(self, e, **kwargs):
         """if an exception is raised while trying to handle the request it will
         go through this method
@@ -1081,79 +1103,36 @@ class Controller(object):
         This method will set the response body and code
 
         :param e: Exception, the error that was raised
-        :param **kwargs:
         """
-        if isinstance(e, CallStop):
+        """Handles responses for error states. All raised exceptions will go
+        through this.
+
+        This is a bit different than a regular controller in that it doesn't call
+        an http verbe method (eg GET, POST) but just calls .handle_error from the
+        .handle method
+
+        Override the .handle_error method to customize what to do for a specific
+        exception, override the .get_response_body to customize just the response
+        body
+        """
+        request = self.request
+        response = self.response
+
+        response.code = 500
+        response.body = e
+
+        if isinstance(e, CloseConnection):
+            raise
+
+        elif isinstance(e, CallStop):
             # CallStop is a special case exception because it's not actually
             # an error, so any body passed into it should be treated like
             # a success and should set the values found in the raised instance
             logger.debug(String(e))
-            self.response.code = e.code
-            self.response.add_headers(e.headers)
+            response.code = e.code
+            response.add_headers(e.headers)
             #response.body = e.body if e.code != 204 else None
-            self.response.body = await self.get_response_body(e.body)
-
-        else:
-            raise e
-
-    async def get_response_body(self, body):
-        """Called right after the controller's request method (eg GET, POST)
-        returns with the body that it returned
-
-        This is called after all similar decorators methods, it's the last
-        stop before body is sent to the client by the interface
-
-        NOTE -- this is called before Response.body is set, the value returned
-        from this method will be set in Response.body
-
-        :param body: Any, the value returned from the requested method before
-            it is set into Response.body
-        :return: Any
-        """
-        return body
-
-    def log_error_warning(self, e):
-        #logger = self.logger
-        if logger.isEnabledFor(logging.DEBUG):
-            logger.warning(e, exc_info=True)
-
-        elif logger.isEnabledFor(logging.INFO):
-            e_msg = String(e)
-            ce = e
-            while ce := getattr(ce, "__cause__", None):
-                e_msg += " caused by " + String(ce)
-            logger.warning(e_msg)
-
-        else:
-            logger.warning(e)
-
-
-class ErrorController(Controller):
-    """Handles responses for error states. All raised exceptions will go
-    through this.
-
-    This is a bit different than a regular controller in that it doesn't call
-    an http verbe method (eg GET, POST) but just calls .handle_error from the
-    .handle method
-
-    Override the .handle_error method to customize what to do for a specific
-    exception, override the .get_response_body to customize just the response
-    body
-    """
-    private = True
-    cors = False
-
-    async def handle(self, e):
-        self.response.code = 500
-        self.response.body = e
-        await self.handle_error(e)
-
-    async def handle_error(self, e):
-        request = self.request
-        response = self.response
-
-        if isinstance(e, CloseConnection):
-            raise
+            response.body = e.body
 
         elif isinstance(e, Redirect):
             logger.debug(String(e))
@@ -1226,12 +1205,144 @@ class ErrorController(Controller):
                     break
 
     async def get_response_body(self, body):
-        if isinstance(body, Exception):
-            body = {
-                "errmsg": str(body)
-            }
+        """Called right after the controller's request method (eg GET, POST)
+        returns with the body that it returned
 
+        This is called after all similar decorators methods, it's the last
+        stop before body is sent to the client by the interface
+
+        NOTE -- this is called before Response.body is set, the value returned
+        from this method will be set in Response.body
+
+        :param body: Any, the value returned from the requested method before
+            it is set into Response.body
+        :return: Any
+        """
         return body
+
+    def log_error_warning(self, e):
+        #logger = self.logger
+        if logger.isEnabledFor(logging.DEBUG):
+            logger.warning(e, exc_info=True)
+
+        elif logger.isEnabledFor(logging.INFO):
+            e_msg = String(e)
+            ce = e
+            while ce := getattr(ce, "__cause__", None):
+                e_msg += " caused by " + String(ce)
+            logger.warning(e_msg)
+
+        else:
+            logger.warning(e)
+
+
+# class ErrorController(Controller):
+#     """Handles responses for error states. All raised exceptions will go
+#     through this.
+# 
+#     This is a bit different than a regular controller in that it doesn't call
+#     an http verbe method (eg GET, POST) but just calls .handle_error from the
+#     .handle method
+# 
+#     Override the .handle_error method to customize what to do for a specific
+#     exception, override the .get_response_body to customize just the response
+#     body
+#     """
+#     private = True
+#     cors = False
+# 
+#     async def handle(self, e):
+#         self.response.code = 500
+#         self.response.body = e
+#         await self.handle_error(e)
+# 
+#     async def handle_error(self, e):
+#         request = self.request
+#         response = self.response
+# 
+#         response.code = 500
+#         response.body = e
+# 
+#         if isinstance(e, CloseConnection):
+#             raise
+# 
+#         elif isinstance(e, Redirect):
+#             logger.debug(String(e))
+#             response.code = e.code
+#             response.add_headers(e.headers)
+#             response.body = None
+# 
+#         elif isinstance(e, CallError):
+#             self.log_error_warning(e)
+# 
+#             response.code = e.code
+#             response.add_headers(e.headers)
+#             if e.body is not None:
+#                 response.body = e.body
+# 
+#         elif isinstance(e, NotImplementedError):
+#             response.code = 501
+# 
+#         elif isinstance(e, TypeError):
+#             e_msg = String(e)
+#             if controller_info := request.controller_info:
+#                 # filter out TypeErrors raised from non handler methods
+#                 correct_prefix = controller_info["http_method_name"] in e_msg
+#                 if correct_prefix and "argument" in e_msg:
+#                     if "positional" in e_msg:
+#                         # <METHOD>() missing 1 required positional
+#                         # argument: <ARGUMENT> TypeError: <METHOD>() takes
+#                         # exactly M argument (N given) TypeError:
+#                         # <METHOD>() takes no arguments (N given)
+#                         # TypeError: <METHOD>() takes M positional
+#                         # arguments but N were given TypeError: <METHOD>()
+#                         # takes 1 positional argument but N were given
+#                         logger.warning(e)
+#                         response.code = 404
+# 
+#                     elif "keyword" in e_msg or "multiple values" in e_msg:
+#                         # <METHOD>() got an unexpected keyword
+#                         # argument '<NAME>'
+#                         # <METHOD>() missing 1 required keyword-only
+#                         # argument: <ARGUMENT>
+#                         # TypeError: <METHOD>() got multiple values for keyword
+#                         # argument '<NAME>'
+#                         logger.warning(e)
+#                         response.code = 400
+# 
+#                     else:
+#                         logger.exception(e)
+# 
+#                 else:
+#                     logger.exception(e)
+# 
+#             else:
+#                 logger.warning(e)
+#                 response.code = 404
+# 
+#         else:
+#             logger.exception(e)
+# 
+#         response.body = await self.get_response_body(response.body)
+# 
+#         if not response.media_type:
+#             for mtinfo in self.get_response_media_types():
+#                 if isinstance(response.body, mtinfo[0]):
+#                     if callable(mtinfo[1]):
+#                         mtinfo[1](response)
+# 
+#                     else:
+#                         response.media_type = mtinfo[1]
+# 
+#                     break
+# 
+#     async def get_response_body(self, body):
+#         if isinstance(body, Exception):
+#             body = {
+#                 "errmsg": str(body)
+#             }
+# 
+#         return body
 
 
 class Call(object):
