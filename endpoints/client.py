@@ -385,7 +385,7 @@ class WebSocketClient(HTTPClient):
         more of an internal method, it is used in recv_callback and recv_msg"""
         opcode, data = self.recv_raw(
             timeout,
-            [websocket.ABNF.OPCODE_TEXT],
+            [websocket.ABNF.OPCODE_TEXT, websocket.ABNF.OPCODE_BINARY],
             **kwargs
         )
 

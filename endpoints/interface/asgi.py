@@ -128,7 +128,7 @@ class Application(BaseApplication):
     async def send_websocket(self, request, response, **kwargs):
         d = {
             "type": "websocket.send",
-            "text": self.get_websocket_dumps(
+            "bytes": self.get_websocket_dumps(
                 uuid=request.uuid,
                 code=response.code,
                 path=request.path,

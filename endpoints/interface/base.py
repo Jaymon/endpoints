@@ -112,7 +112,6 @@ class BaseApplication(ApplicationABC):
     can understand
 
     webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
-
     """
     controller_prefixes = None
     """the controller prefixes (python module paths) you want to use to find
@@ -140,11 +139,17 @@ class BaseApplication(ApplicationABC):
         json dumping
 
         :param body: Any, it just has to be json encodable
-        :keyword json_encoder: JSONEncoder
-        :returns: str
+        :keyword json_encoder: Optional[JSONEncoder]
+        :keyword encoding: Optional[str], defaults to `environ.ENCODING` 
+            because python's builtin json makes everything ascii by default so
+            the encoding used for encoding text to bytes doesn't really matter
+        :returns: bytes
         """
         json_encoder = kwargs.get("json_encoder", JSONEncoder)
-        return json.dumps(body, cls=json_encoder)
+        return bytes(
+            json.dumps(body, cls=json_encoder),
+            kwargs.get("encoding", environ.ENCODING)
+        )
 
     @classmethod
     def load_json(cls, body, **kwargs):
@@ -152,7 +157,7 @@ class BaseApplication(ApplicationABC):
         .get_websocket_loads. This exists so there is one place to customize
         json loading
 
-        :param body: Any, it just has to be json encodable
+        :param body: str|bytes
         :returns: str
         """
         return json.loads(body)
@@ -180,16 +185,25 @@ class BaseApplication(ApplicationABC):
     async def __call__(self, *args, **kwargs):
         """this is what will be called for each request that the server handles
         """
-        call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
+        try:
+            call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
 
-        if self.is_http_call(**call_kwargs):
-            return await self.handle_http(**call_kwargs)
+            if self.is_http_call(**call_kwargs):
+                return await self.handle_http(**call_kwargs)
 
-        elif self.is_websocket_call(**call_kwargs):
-            return await self.handle_websocket(**call_kwargs)
+            elif self.is_websocket_call(**call_kwargs):
+                return await self.handle_websocket(**call_kwargs)
 
-        else:
-            logger.warning("Request was not HTTP or WebSocket")
+            else:
+                logger.warning("Request was not HTTP or WebSocket")
+
+        except Exception as e:
+            # this should almost never hit, but if it does we want to log the
+            # exception before re-raising it because some servers will bury
+            # uncaught exceptions and this block is only for errors raised
+            # outside of all the error handling logic
+            logger.exception(e)
+            raise e
 
     def log_start(self, request, response):
         """log all the headers and stuff at the start of the request"""
@@ -522,12 +536,9 @@ class BaseApplication(ApplicationABC):
         """Internal method called when response body should be dumped to
         json
 
-        :param **kwargs:
-            * json_encoder: JSONEncoder
         :returns: generator[bytes], a generator that yields bytes strings
         """
-        body = self.dump_json(response.body, **kwargs)
-        yield bytes(body, response.encoding)
+        yield self.dump_json(response.body, **kwargs)
 
     async def get_response_value(self, response, **kwargs):
         """Internal method called when response body is unknown, it will be
@@ -573,7 +584,6 @@ class BaseApplication(ApplicationABC):
 
         try:
             controller = self.create_controller(request, response)
-
             controller_args = request.controller_info["method_args"]
             controller_kwargs = request.controller_info["method_kwargs"]
             await controller.handle(*controller_args, **controller_kwargs)
@@ -646,7 +656,7 @@ class BaseApplication(ApplicationABC):
         :keyword headers: Optional[dict[str, str]], headers to send
         :keyword body: Any, the body to send
         :raises: ValueError if both code and method are missing
-        :returns: str
+        :returns: bytes, json
         """
         d = {}
 
