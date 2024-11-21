@@ -580,7 +580,7 @@ class Router(object):
         pathfinder = self.pathfinder
 
         while not controller_class:
-            value = pathfinder.get(keys, {})
+            value = pathfinder.get(keys, None) or {}
             if "class" in value:
                 controller_class = value["class"]
 
@@ -1136,7 +1136,7 @@ class Controller(object):
                         # TypeError: <METHOD>() takes M positional
                         # arguments but N were given TypeError: <METHOD>()
                         # takes 1 positional argument but N were given
-                        logger.warning(e)
+                        self.log_error_warning(e)
                         response.code = 404
 
                     elif "keyword" in e_msg or "multiple values" in e_msg:
@@ -1146,7 +1146,7 @@ class Controller(object):
                         # argument: <ARGUMENT>
                         # TypeError: <METHOD>() got multiple values for keyword
                         # argument '<NAME>'
-                        logger.warning(e)
+                        self.log_error_warning(e)
                         response.code = 400
 
                     else:
@@ -1156,13 +1156,11 @@ class Controller(object):
                     logger.exception(e)
 
             else:
-                logger.warning(e)
+                self.log_error_warning(e)
                 response.code = 404
 
         else:
             logger.exception(e)
-
-        response.body = await self.get_response_body(response.body)
 
         if not response.media_type:
             for mtinfo in self.get_response_media_types():
@@ -1174,6 +1172,8 @@ class Controller(object):
                         response.media_type = mtinfo[1]
 
                     break
+
+        response.body = await self.get_response_body(response.body)
 
     async def get_response_body(self, body):
         """Called right after the controller's request method (eg GET, POST)
