@@ -188,3 +188,54 @@ class Default(Controller):
 ```
 
 Endpoints first checks module paths, then it checks classes in the found module, then defaults to the `Default` class if no other suitable class is found.
+
+
+## Another Example
+
+Imagine a folder structure like this:
+
+```
+controllers/
+  __init__.py
+  foo.py
+```
+
+With `controllers/__init__.py` having content:
+
+```python
+from endpoints import Controller
+
+class Default(Controller):
+    async def GET(self, *args, **kwargs):
+        pass
+```
+
+And `controllers/foo.py` having content:
+
+```python
+from endpoints import Controller
+
+class Default(Controller):
+    async def GET(self, *args, **kwargs):
+        pass
+
+class Bar(Controller):
+    async def GET(self, *args, **kwargs):
+        pass
+        
+    async def POST(self, *args, **kwargs):
+        pass
+```
+
+
+Below are how the HTTP requests would be interpreted using endpoints using `controllers` as the prefix.
+
+
+|HTTP Request                           | Path Followed                          |
+|---------------------------------------|--------------------------------------- |
+|GET /                                  | controllers.Default.GET()              |
+|GET /foo                               | controllers.foo.Default.GET()          |
+|POST /foo/bar                          | controllers.foo.Bar.POST()             |
+|GET /foo/bar/che                       | controllers.foo.Bar.GET(che)           |
+|GET /foo/bar/che?baz=foo               | controllers.foo.Bar.GET(che, baz=foo)  |
+|POST /foo/bar/che with body: baz=foo   | controllers.foo.Bar.POST(che, baz=foo) |
