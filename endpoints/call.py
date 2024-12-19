@@ -826,6 +826,17 @@ class Controller(object):
         """Get the response media types this controller can support. This
         is used to set media types for the controller's http methods
 
+        Why is this a class method? Because tools might need to use this when
+        they don't have a class instance, for instance, the OpenAPI generator
+        uses this method to decide what media type to use for the given http
+        verb method's return type.
+
+        I thought about having this be a method that takes the body and then
+        does a comparison to decide what to use for the media type but then
+        I couldn't use this in different contexts. Returning a tuple of the
+        type and what to do with it makes it more robust and easier to use
+        in different contexts
+
         :param **kwargs:
         :returns: list[
             tuple[

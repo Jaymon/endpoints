@@ -41,7 +41,7 @@ class TestCase(TestCase):
 
 
 class ReflectControllerTest(TestCase):
-    def test_reflect_url_paths(self):
+    def test_reflect_url_paths_1(self):
         rc = self.create_reflect_controllers("""
             class Foo(Controller):
                 cors = True
@@ -297,6 +297,32 @@ class OpenAPITest(TestCase):
         self.assertFalse("any" in pi)
         for field_name in ["post", "get"]:
             self.assertTrue(field_name in pi)
+
+    def test_operation_operationid(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def GET(self, bar):
+                    pass
+
+                def POST(self):
+                    pass
+
+                def PUT(self):
+                    pass
+        """)
+
+        pi = oa.paths["/foo"]
+        for http_verb in ["post", "get", "put"]:
+            self.assertEqual(f"{http_verb}Foo", pi[http_verb]["operationId"])
+
+        oa = self.create_openapi("""
+            class Foo_ext(Controller):
+                def GET(self, bar):
+                    pass
+        """)
+
+        pi = oa.paths["/foo.ext"]
+        self.assertEqual("getFooExt", pi["get"]["operationId"])
 
     def test_write_json(self):
         oa = self.create_openapi(

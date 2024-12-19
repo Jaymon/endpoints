@@ -1425,6 +1425,33 @@ class Operation(OpenABC):
     def get_tags_value(self, **kwargs):
         return list(self.reflect_method.reflect_class().value["module_keys"])
 
+    def get_operation_id_value(self, **kwargs):
+        """Return the globally unique operation id for this operation
+
+        operationId is an optional unique string used to identify the
+        operation. The operation id must be unique among all operations
+        in the API
+
+        The operation id is in the lower camelcase form:
+
+            <HTTP-VERB><PATH>
+
+        Any extension will also be camelcase, so `GET /foo.bar` would become
+        `getFooBar`
+
+        :returns: str, the globally unique operation id
+        """
+        parts = []
+        rc = self.reflect_method.reflect_class()
+        parts.append(self.reflect_method.http_verb.lower())
+        for k in rc.value["module_keys"]:
+            parts.append(NamingConvention(k).upper_camelcase())
+
+        for k in rc.value["class_keys"]:
+            parts.append(NamingConvention(k).upper_camelcase())
+
+        return "".join(parts)
+
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():
             rb = self.create_instance(
