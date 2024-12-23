@@ -397,7 +397,15 @@ class OpenABC(dict):
             child wants for that key in the instance. The majority of
             customizations will probably be in these methods
 
-    You should always create OpenABC instances using:
+    Fields for the given children class should use the `Field` instance and
+    they should start with an underscore (eg, `_<FIELD-NAME>`). The order the
+    field are defined is important, the order the fields are defined in is the
+    order they will be checked and populated on the instance and this is
+    recursive, so if have `foo` field after `bar` field, and `bar` creates
+    other `OpenABC` instances that want to retrieve the `foo` value from a
+    parent instance then `foo` should be changed to go before `bar`
+
+    You should always create OpenABC instances internally using:
 
         .create_instance(class_key, *args, **kwargs)
 
@@ -1423,7 +1431,14 @@ class Operation(OpenABC):
         self.set_docblock(reflect_method.get_docblock())
 
     def get_tags_value(self, **kwargs):
-        return list(self.reflect_method.reflect_class().value["module_keys"])
+        tags = list(self.reflect_method.reflect_class().value["module_keys"])
+        if not tags and self.root:
+            for tag in self.root.get("tags", []):
+                if tag.reflect_module is None:
+                    tags.append(tag["name"])
+                    break
+
+        return tags
 
     def get_operation_id_value(self, **kwargs):
         """Return the globally unique operation id for this operation
@@ -1755,6 +1770,21 @@ class Components(OpenABC):
 
         return schemes
 
+#     def add_schema(self, name, schema):
+#         """Add schema intp the `schemas` key under `name` and return a schema
+#         with a ref to the added schema. If the schema at `name` already exists
+#         then this will return a ref to that schema"""
+#         schemas = self.get("schemas", {})
+# 
+#         if name not in schemas:
+#             schemas[name] = schema
+# 
+#         self["schemas"] = schemas
+# 
+#         rs = self.create_schema_instance()
+#         rs["$ref"] = f"#/components/{name}"
+#         return rs
+
 
 class Info(OpenABC):
     """Represents an OpenAPI info object
@@ -1807,9 +1837,11 @@ class OpenAPI(OpenABC):
     """
     _openapi = Field(str, default="3.1.0", required=True)
 
+    _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
+
     _info = Field(Info, required=True)
 
-    _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
+    _tags = Field(list[Tag])
 
     _servers = Field(list[Server])
 
@@ -1822,8 +1854,6 @@ class OpenAPI(OpenABC):
     """
 
     _security = Field(list[SecurityRequirement])
-
-    _tags = Field(list[Tag])
 
     _externalDocs = Field(ExternalDocumentation)
 
@@ -2015,6 +2045,15 @@ class OpenAPI(OpenABC):
                     ))
 
                     seen.add(mk)
+
+        # instead of using Swagger's "Default" key for everything that doesn't
+        # have a tag, operations without a tag will go into root
+        tags.append(self.create_instance(
+            "tag_class",
+            None,
+            name=kwargs.get("default_tag_name", "root"),
+            description=""
+        ))
 
         return tags
 

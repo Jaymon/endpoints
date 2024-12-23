@@ -315,14 +315,15 @@ class OpenAPITest(TestCase):
         for http_verb in ["post", "get", "put"]:
             self.assertEqual(f"{http_verb}Foo", pi[http_verb]["operationId"])
 
-        oa = self.create_openapi("""
-            class Foo_ext(Controller):
+        oa = self.create_openapi({
+            "bar": """class Foo_ext(Controller):
                 def GET(self, bar):
                     pass
-        """)
+            """
+        })
 
-        pi = oa.paths["/foo.ext"]
-        self.assertEqual("getFooExt", pi["get"]["operationId"])
+        pi = oa.paths["/bar/foo.ext"]
+        self.assertEqual("getBarFooExt", pi["get"]["operationId"])
 
     def test_write_json(self):
         oa = self.create_openapi(
@@ -427,7 +428,7 @@ class OpenAPITest(TestCase):
         self.assertEqual(1, len(pi["parameters"]))
         self.assertEqual("param", pi["parameters"][0]["name"])
 
-    def test_get_tags_values(self):
+    def test_get_tags_values_1(self):
         oa = self.create_openapi(
             {
                 "": [
@@ -455,10 +456,37 @@ class OpenAPITest(TestCase):
             },
         )
 
-        self.assertEqual(2, len(oa["tags"]))
+        self.assertEqual(3, len(oa["tags"]))
 
         pi = oa.paths["/foo/baz/che"]
         self.assertEqual(2, len(pi["get"]["tags"]))
+
+    def test_get_tags_values_default(self):
+        oa = self.create_openapi(
+            {
+                "": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                    "class Foo(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    ""
+                ],
+                "bar": [
+                    "class Default(Controller):",
+                    "    def GET(*args, **kwargs): pass",
+                    "",
+                ],
+            },
+        )
+
+        self.assertEqual(2, len(oa["tags"]))
+
+        pi = oa.paths["/foo"]
+        self.assertEqual(["root"], pi["get"]["tags"])
+
+        pi = oa.paths["/bar"]
+        self.assertEqual(["bar"], pi["get"]["tags"])
 
     def test_str_return_media_type(self):
         oa = self.create_openapi("""
