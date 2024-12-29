@@ -341,7 +341,7 @@ class Field(dict):
     """
     def __init__(self, field_type, **kwargs):
         self.name = kwargs.pop("name", "")
-        self.owner = OpenABC
+#         self.owner = OpenABC
 
         kwargs.setdefault("required", False)
         kwargs["type"] = field_type
@@ -426,7 +426,10 @@ class OpenABC(dict):
     """
 
     fields = None
-    """Holds all the fields defined for the child instance"""
+    """Holds all the fields defined for the child instance, this is populated
+    on the class in the Field.__init__ method. This is set to `None` instead
+    of `dict` because if it is a class property `dict` then it will inherit
+    all other class's values also"""
 
     parent = None
     """Holds the OpenABC class that created this instance"""
@@ -810,10 +813,15 @@ class Schema(OpenABC):
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#schema-object
 
+    Getting started:
+        https://json-schema.org/learn/getting-started-step-by-step
+
+    All the keywords:
+        https://json-schema.org/understanding-json-schema/keywords
+
     Validation is based off of:
         https://json-schema.org/draft/2020-12/schema
-
-    https://json-schema.org/draft/2020-12/meta/validation
+        https://json-schema.org/draft/2020-12/meta/validation
     """
     # https://json-schema.org/understanding-json-schema/reference/type
     _type = Field(
@@ -872,9 +880,6 @@ class Schema(OpenABC):
     _readOnly = Field(bool)
     _writeOnly = Field(bool)
 
-    # https://json-schema.org/understanding-json-schema/reference/comments
-    _comments = Field(str, name="$comment")
-
     # https://json-schema.org/understanding-json-schema/reference/enum
     _enum = Field(list[str])
 
@@ -894,15 +899,25 @@ class Schema(OpenABC):
     _then = Field(dict)
     _else = Field(dict)
 
+    # https://json-schema.org/understanding-json-schema/reference/comments
+    _comment = Field(str, name="$comment")
+
     # https://json-schema.org/understanding-json-schema/reference/schema
     # this is set in the root OpenAPI document
-    _schema = Field(
-        str,
-        name="$schema",
-        #default="https://json-schema.org/draft/2020-12/schema"
-    )
+    _schema = Field(str, name="$schema")
+
+    # This is currently not used but I'm keeping this in here for the future
+    # https://json-schema.org/understanding-json-schema/basics#declaring-a-unique-identifier
+    # https://json-schema.org/understanding-json-schema/structuring#id
+    _id = Field(str, name="$id")
+
+    # https://json-schema.org/understanding-json-schema/structuring#dollarref
+    # https://json-schema.org/draft/2020-12/json-schema-core#ref
+    _ref = Field(str, name="$ref")
 
     # Swagger warns that the jsonschema spec needs to be the OpenAPI version
+    # the default JSON Schema dialect is:
+    #    https://json-schema.org/draft/2020-12/schema
     DIALECT = "https://spec.openapis.org/oas/3.1/dialect/base"
 
     def is_type(self, typename):
@@ -1770,20 +1785,20 @@ class Components(OpenABC):
 
         return schemes
 
-#     def add_schema(self, name, schema):
-#         """Add schema intp the `schemas` key under `name` and return a schema
-#         with a ref to the added schema. If the schema at `name` already exists
-#         then this will return a ref to that schema"""
-#         schemas = self.get("schemas", {})
-# 
-#         if name not in schemas:
-#             schemas[name] = schema
-# 
-#         self["schemas"] = schemas
-# 
-#         rs = self.create_schema_instance()
-#         rs["$ref"] = f"#/components/{name}"
-#         return rs
+    def add_schema(self, name, schema):
+        """Add schema intp the `schemas` key under `name` and return a schema
+        with a ref to the added schema. If the schema at `name` already exists
+        then this will return a ref to that schema"""
+        schemas = self.get("schemas", {})
+
+        if name not in schemas:
+            schemas[name] = schema
+
+        self["schemas"] = schemas
+
+        rs = self.create_schema_instance()
+        rs["$ref"] = f"#/components/schemas/{name}"
+        return rs
 
 
 class Info(OpenABC):

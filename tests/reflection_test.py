@@ -195,7 +195,7 @@ class OpenABCTest(TestCase):
     def test_set_keys(self):
         c = self.create_server("")
         oa = OpenAPI(c.application)
-        self.assertEqual(4, len(oa))
+        self.assertEqual(5, len(oa))
 
     def test_classfinder(self):
         oa = self.create_openapi()
@@ -268,12 +268,6 @@ class OpenAPITest(TestCase):
             "error message",
             oa.paths["/foo"].post.responses["401"]["description"]
         )
-
-    def test_security_schemes(self):
-        oa = self.create_openapi("")
-        schemes = oa.components.securitySchemes
-        self.assertTrue("auth_basic" in schemes)
-        self.assertTrue("auth_bearer" in schemes)
 
     def test_security_requirement(self):
         oa = self.create_openapi("""
@@ -506,4 +500,27 @@ class SchemaTest(TestCase):
         schema.set_type(rt)
         self.assertTrue(schema.is_array())
         self.assertEqual(2, len(schema["items"]["anyOf"]))
+
+    def test_ref_keyword(self):
+        ref = "foo/bar/che"
+        s = Schema(None, **{"$ref": ref})
+        self.assertEqual(ref, s["$ref"])
+
+
+class ComponentsTest(TestCase):
+    def test_get_security_schemes_value(self):
+        oa = self.create_openapi("")
+        schemes = oa.components.securitySchemes
+        self.assertTrue("auth_basic" in schemes)
+        self.assertTrue("auth_bearer" in schemes)
+
+    def test_add_schema(self):
+        oa = self.create_openapi("")
+        s = Schema(oa)
+
+        s.set_type(ReflectType(list[str]))
+
+        s2 = oa.components.add_schema("foo", s)
+        self.assertTrue("$ref" in s2)
+        self.assertEqual(s, oa.components.schemas["foo"])
 
