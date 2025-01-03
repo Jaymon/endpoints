@@ -913,6 +913,7 @@ class Schema(OpenABC):
 
     # https://json-schema.org/understanding-json-schema/structuring#dollarref
     # https://json-schema.org/draft/2020-12/json-schema-core#ref
+    # https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#reference-object
     _ref = Field(str, name="$ref")
 
     # Swagger warns that the jsonschema spec needs to be the OpenAPI version
@@ -1628,6 +1629,7 @@ class PathItem(OpenABC):
             def set_put_operation(self, operation):
                 # custom stuff
     """
+    # https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#reference-object
     _ref = Field(str, name="$ref")
 
     _summary = Field(str)
@@ -1797,8 +1799,25 @@ class Components(OpenABC):
         self["schemas"] = schemas
 
         rs = self.create_schema_instance()
-        rs["$ref"] = f"#/components/schemas/{name}"
+        rs["$ref"] = self.get_schema_ref(name)
         return rs
+
+    def get_schema(self, name_or_ref):
+        """Returns the full schema matching name
+
+        :param name_or_ref: str, can either be name (eg, "foo") or the ref
+            (eg "#/components/schemas/foo")
+        :returns: Schema|None
+        """
+        schemas = self.get("schemas", {})
+        if name_or_ref.startswith("#"):
+            name_or_ref = name_or_ref.rsplit("/", 1)[-1]
+
+        return schemas[name_or_ref] if name_or_ref in schemas else None
+
+    def get_schema_ref(self, name):
+        """Get the schema ref/path for the given name"""
+        return f"#/components/schemas/{name}"
 
 
 class Info(OpenABC):

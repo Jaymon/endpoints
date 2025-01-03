@@ -524,3 +524,16 @@ class ComponentsTest(TestCase):
         self.assertTrue("$ref" in s2)
         self.assertEqual(s, oa.components.schemas["foo"])
 
+    def test_get_schema(self):
+        oa = self.create_openapi("")
+
+        s = Schema(oa)
+        s.set_type(ReflectType(list[str]))
+
+        s2 = oa.components.add_schema("foo", s)
+        s3 = oa.components.get_schema(s2["$ref"])
+        self.assertEqual(s, s3)
+
+        s4 = oa.components.get_schema("foo")
+        self.assertEqual(s, s4)
+
