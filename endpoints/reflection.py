@@ -923,7 +923,7 @@ class Schema(OpenABC):
 
     def is_type(self, typename):
         """Helper method that returns True if self's type is typename"""
-        return self["type"] == typename
+        return typename and self.get("type", "") == typename
 
     def is_object(self):
         """Helper method that returns True if self is an object schema"""
@@ -932,6 +932,10 @@ class Schema(OpenABC):
     def is_array(self):
         """Helper method that returns True if self is an array schema"""
         return self.is_type("array")
+
+    def is_ref(self):
+        """Returns True if self is a reference to another schema"""
+        return "$ref" in self
 
     def is_empty(self):
         ret = False
@@ -1219,6 +1223,25 @@ class Schema(OpenABC):
 
         jsonschema.validate(instance=data, schema=self)
         return True
+
+    def get_component_schema(self, name_or_ref):
+        """Wrapper around Component.get_schema"""
+        if self.root:
+            if components := self.root.get("components", None):
+                return components.get_schema(name_or_ref)
+
+    def add_component_schema(self, name, schema):
+        """Wrapper around Component.add_schema"""
+        if self.root is None:
+            raise ValueError("Schema does not have a root document reference")
+
+        components = self.root.get("components", None)
+        if components is None:
+            raise ValueError(
+                "Root document does not have a components document"
+            )
+
+        return components.add_schema(name, schema)
 
 
 class MediaType(OpenABC):
