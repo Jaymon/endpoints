@@ -21,6 +21,7 @@ from datatypes import (
     Dirpath,
     NamingConvention,
     ClassFinder,
+    HTTPClient,
 )
 from datatypes.reflection import ReflectObject
 
@@ -33,6 +34,10 @@ except ImportError:
 # For `Schema.validate` support
 try:
     import jsonschema
+    from jsonschema.validators import validator_for
+    from referencing import Registry
+    import referencing.retrieval
+
 except ImportError:
     jsonschema = None
 
@@ -1211,6 +1216,35 @@ class Schema(OpenABC):
 
         return schema
 
+    def get_components(self):
+        """Get the components document from `.root`"""
+        if self.root:
+            return self.root.get("components", None)
+
+    def get_components_schema(self, name_or_ref):
+        """Wrapper around Component.get_schema"""
+        if components := self.get_components():
+            return components.get_schema(name_or_ref)
+
+    def add_components_schema(self, name, schema):
+        """Wrapper around Component.add_schema"""
+        components = self.get_components()
+        if components is None:
+            raise ValueError(
+                "A components document in a root document does not exist"
+            )
+
+        return components.add_schema(name, schema)
+
+    def get_ref_schema(self):
+        """If this schema is a ref then get the referenced schema"""
+        if self.is_ref():
+            if self["$ref"].startswith("#"):
+                return self.get_component_schema(self["$ref"])
+
+            else:
+                raise ValueError("Unsupported $ref: {}".format(self["$ref"]))
+
     def validate(self, data):
         """Validate data against self (this schema)
 
@@ -1221,28 +1255,213 @@ class Schema(OpenABC):
         if not jsonschema:
             raise ValueError("Missing jsonschema dependency")
 
-        jsonschema.validate(instance=data, schema=self)
+        dialect = self.get("$schema", self.DIALECT)
+
+        # https://referencing.readthedocs.io/en/stable/intro/#caching
+        @referencing.retrieval.to_cached_resource()
+        def cached_retrieve(uri):
+            return HTTPClient().get(uri).content
+
+        registry = Registry(retrieve=cached_retrieve)
+        lookup = registry.resolver().lookup(dialect)
+        dialect_schema = lookup.resolver._registry.get(dialect).contents
+
+        components_schemas = {}
+        if components := self.get_components():
+            components_schemas.update({
+                "components": {
+                    "schemas": components.get("schemas", {})
+                }
+            })
+
+        validator_class = validator_for(dialect_schema)
+        validator_class.META_SCHEMA = dialect_schema
+        validator = validator_class({**self, **components_schemas})
+        validator.validate(data)
         return True
 
-    def get_component_schema(self, name_or_ref):
-        """Wrapper around Component.get_schema"""
-        if self.root:
-            if components := self.root.get("components", None):
-                return components.get_schema(name_or_ref)
 
-    def add_component_schema(self, name, schema):
-        """Wrapper around Component.add_schema"""
-        if self.root is None:
-            raise ValueError("Schema does not have a root document reference")
+#         resolver = self.get_dialect_resolver()
+#         jsonschema.validate(instance=data, schema=self, cls=resolver)
+#         return True
 
-        components = self.root.get("components", None)
-        if components is None:
-            raise ValueError(
-                "Root document does not have a components document"
-            )
+#     def xget_dialect_validator(self):
+# 
+#         dialect = self["$schema"] if "$schema" in self else self.DIALECT 
+# 
+#         from jsonschema.validators import validator_for
+#         from referencing import Registry, Resource, Specification
+#         import referencing.retrieval
+# 
+#         from datatypes import HTTPClient
+# 
+#         # https://referencing.readthedocs.io/en/stable/intro/#caching
+#         @referencing.retrieval.to_cached_resource()
+#         def cached_retrieve(uri):
+#             return HTTPClient().get(uri).content
+# 
+#         registry = Registry(retrieve=cached_retrieve)
+#         resolver = registry.resolver()
+#         lookup = resolver.lookup(dialect)
+#         schema = lookup.resolver._registry.get(dialect)
+# 
+#         if self.root and "components" in self.root:
+#             cschemas = {
+#                 "components": {
+#                     "schemas": self.root["components"].get("schemas", {})
+#                 }
+#             }
+# 
+#         validator_class = validator_for(schema.contents)
+#         validator_class.META_SCHEMA = schema.contents
+#         validator = validator_class({**self, **cschemas})
+#         return validator
+# 
+# 
+# 
+#         if self.root and "components" in self.root:
+# 
+#             schema.contents.update({
+#                 "components": {
+#                     "schemas": self.root["components"].get("schemas", {})
+#                 }
+#             })
+#             pout.v(schema.contents)
+# 
+# 
+# #             cschemas = {}
+# #             for k, v in self.root["components"].get("schemas", {}).items():
+# #                 ref = self.root["components"].get_schema_ref(k)
+# #                 v["$id"] = ref
+# #                 v["$schema"] = dialect
+# #                 cschemas[k] = v
+# # 
+# #             res = Specification.detect(schema.contents).create_resource({
+# #                 "components": {
+# #                     "schemas": cschemas
+# #                 }
+# #             })
+# #             registry = registry.with_resource("does.not.matter", res)
+# 
+# 
+# 
+# 
+# #             cschemas = {}
+# #             for k, v in self.root["components"].get("schemas", {}).items():
+# #                 ref = self.root["components"].get_schema_ref(k)
+# #                 v["$id"] = ref
+# #                 v["$schema"] = dialect
+# #                 cschemas[k] = v
+# # 
+# #             res = Specification.detect(schema).create_resource({
+# #                 "components": {
+# #                     "schemas": cschemas
+# #                 }
+# #             })
+# #             registry = registry.with_resource(ref, res)
+# 
+# #             res = Specification.detect(schema.contents).create_resource({
+# #                 "components": {
+# #                     "schemas": self.root["components"].get("schemas", {})
+# #                 }
+# #             })
+# #             registry = registry.with_resource("does.not.matter", res)
+# 
+#         else:
+#             registry = lookup.resolver._registry
+# 
+# 
+# #         if False and self.root and "components" in self.root:
+# #             components = self.root["components"]
+# #             registry = lookup.resolver._registry
+# #             for k, v in components.get("schemas", {}).items():
+# #                 ref = components.get_schema_ref(k)
+# #                 res = Specification.detect(schema).create_resource(v)
+# # #                 res = Resource.from_contents({
+# # #                     "$schema": dialect,
+# # #                     **v
+# # #                 })
+# #                 registry = registry.with_resource(ref, res)
+# # 
+# # #             registry = lookup.resolver._registry.with_resources((
+# # #                 (components.get_schema_ref(k), v) for k, v
+# # #                 in components.get("schemas", {}).items()
+# # #             ))
+# # 
+# #         else:
+# #             registry = lookup.resolver._registry
+# 
+#         #pout.v(registry, object_depth=1)
+# 
+#         #schema = lookup.resolver._registry.get(dialect)
+#         #schema = registry.get(dialect)
+#         #pout.i(schema)
+#         #pout.i(lookup.resolver._registry, object_depth=1)
+#         validator_class = validator_for(schema.contents)
+#         validator_class.META_SCHEMA = schema.contents
+#         validator = validator_class(self, registry=registry)
+#         #validator = validator_class(self)
+#         return validator
 
-        return components.add_schema(name, schema)
-
+#     def get_dialect_resolver(self):
+# 
+# #         import rpds
+# #         import inspect
+# # 
+# #         pout.v(rpds.List)
+# #         return
+# 
+#         dialect = self["$schema"] if "$schema" in self else self.DIALECT 
+# 
+# #         v = jsonschema.validators.validator_for({"$schema": dialect})
+# #         #pout.v(v)
+# #         return
+# 
+# 
+#         from jsonschema.validators import validator_for
+#         from referencing import Registry, Resource
+#         import referencing.retrieval
+# 
+#         from datatypes import HTTPClient
+# 
+# 
+#         # https://referencing.readthedocs.io/en/stable/intro/#caching
+#         @referencing.retrieval.to_cached_resource()
+#         def cached_retrieve(uri):
+#             return HTTPClient().get(uri).content
+# 
+#         registry = Registry(retrieve=cached_retrieve)
+#         resolver = registry.resolver()
+#         pout.i(registry, object_depth=1)
+# 
+# 
+#         #pout.i(resolver, object_depth=1)
+#         lookup = resolver.lookup(dialect)
+# 
+#         #pout.v(registry == lookup.resolver._registry)
+# 
+#         schema = lookup.resolver._registry.get(dialect)
+#         pout.i(schema, object_depth=1)
+# 
+# 
+# 
+#         #pout.v(lookup.resolver._registry)
+# 
+#         validator_class = validator_for(schema.contents)
+#         validator_class.META_SCHEMA = schema.contents
+#         validator = validator_class(self)
+#         return validator
+# 
+#         #validator_class = validator_for({"$schema": dialect})
+#         pout.v(validator_class)
+# 
+# 
+# 
+#         return lookup
+# 
+# #         pout.v(type(lookup))
+# #         pout.v(type(lookup.resolver))
+# #         pout.v(type(lookup.resolver._registry))
 
 class MediaType(OpenABC):
     """

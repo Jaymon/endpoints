@@ -506,19 +506,20 @@ class SchemaTest(TestCase):
         s = Schema(None, **{"$ref": ref})
         self.assertEqual(ref, s["$ref"])
 
-#     def test_validate_refs(self):
-#         oa = self.create_openapi()
-#         schema = Schema(oa)
-# 
-#         comp_schema = Schema(oa)
-#         comp_schema.set_type(ReflectType(dict[str, int]))
-#         ref_schema = schema.add_components_schema("foo", comp_schema)
-#         schema.set_type(ReflectType(list))
-#         schema["items"] = ref_schema
-# 
-#         pout.v(schema)
+    def test_validate_refs(self):
+        oa = self.create_openapi()
+        schema = Schema(oa)
 
+        comp_schema = Schema(oa)
+        comp_schema.set_type(ReflectType(dict[str, int]))
+        ref_schema = schema.add_components_schema("foo", comp_schema)
+        schema.set_type(ReflectType(list))
+        schema["items"] = ref_schema
 
+        schema.validate([{"foo": 1, "bar": 2}])
+
+        with self.assertRaises(Exception):
+            schema.validate([{"foo": "one"}])
 
 
 class ComponentsTest(TestCase):
