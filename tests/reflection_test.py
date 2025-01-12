@@ -521,6 +521,22 @@ class SchemaTest(TestCase):
         with self.assertRaises(Exception):
             schema.validate([{"foo": "one"}])
 
+    def test_get_ref_schema(self):
+        oa = self.create_openapi()
+
+        comp_schema = Schema(oa)
+        comp_schema.set_type(ReflectType(dict[str, int]))
+        ref_schema = comp_schema.add_components_schema("foo", comp_schema)
+
+        self.assertTrue(ref_schema.is_ref())
+
+        rs = ref_schema.get_ref_schema()
+        self.assertEqual(rs, comp_schema)
+
+        ref_schema["$ref"] = "http://bogus.url"
+        with self.assertRaises(ValueError):
+            ref_schema.get_ref_schema()
+
 
 class ComponentsTest(TestCase):
     def test_get_security_schemes_value(self):

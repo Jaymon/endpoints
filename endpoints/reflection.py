@@ -1240,7 +1240,7 @@ class Schema(OpenABC):
         """If this schema is a ref then get the referenced schema"""
         if self.is_ref():
             if self["$ref"].startswith("#"):
-                return self.get_component_schema(self["$ref"])
+                return self.get_components_schema(self["$ref"])
 
             else:
                 raise ValueError("Unsupported $ref: {}".format(self["$ref"]))
