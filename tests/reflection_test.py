@@ -292,7 +292,7 @@ class OpenAPITest(TestCase):
         for field_name in ["post", "get"]:
             self.assertTrue(field_name in pi)
 
-    def test_operation_operationid(self):
+    def test_operation_operationid_1(self):
         oa = self.create_openapi("""
             class Foo(Controller):
                 def GET(self, bar):
@@ -318,6 +318,18 @@ class OpenAPITest(TestCase):
 
         pi = oa.paths["/bar/foo.ext"]
         self.assertEqual("getBarFooExt", pi["get"]["operationId"])
+
+    def test_operation_operationid_any(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def ANY(self, bar):
+                    pass
+        """)
+
+        pi = oa.paths["/foo"]
+
+        for http_verb in ["post", "get"]:
+            self.assertEqual(f"{http_verb}Foo", pi[http_verb]["operationId"])
 
     def test_write_json(self):
         oa = self.create_openapi(

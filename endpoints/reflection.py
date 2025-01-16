@@ -1503,6 +1503,14 @@ class Operation(OpenABC):
     _servers = Field(list[Server])
 
     def init_instance(self, reflect_method, **kwargs):
+        """Sets the required params when creating a new instance of this class
+
+        :param reflect_method: ReflectMethod
+        :keyword http_verb: Optional[str], the http verb (eg GET), this can be
+            different from `reflect_method.http_verb` because of ANY, this is
+            why it can be passed in separately if needed
+        """
+        self.http_verb = kwargs.get("http_verb", reflect_method.http_verb)
         self.reflect_method = reflect_method
         self.set_docblock(reflect_method.get_docblock())
 
@@ -1534,7 +1542,7 @@ class Operation(OpenABC):
         """
         parts = []
         rc = self.reflect_method.reflect_class()
-        parts.append(self.reflect_method.http_verb.lower())
+        parts.append(self.http_verb.lower())
         for k in rc.value["module_keys"]:
             parts.append(NamingConvention(k).upper_camelcase())
 
@@ -1724,7 +1732,7 @@ class PathItem(OpenABC):
 
         :param reflect_method: ReflectMethod
         """
-        m = self.get_set_method(reflect_method)
+        m = self.get_set_http_verb_method(reflect_method)
         m(reflect_method)
         self.add_parameters(reflect_method)
 
@@ -1743,20 +1751,20 @@ class PathItem(OpenABC):
 
         self["parameters"] = parameters
 
-    def get_set_method(self, reflect_method):
+    def get_set_http_verb_method(self, reflect_method):
         """Get the set operation for this method
 
         This will try and find a valid .set_<HTTP_VERB>_method method and
-        fallback to .set_method
+        fallback to .set_http_verb_method
 
         :param reflect_method: ReflectMethod
         :returns: Callable[[ReflectMethod], None]
         """
         name = reflect_method.http_verb
         method_name = f"set_{name.lower()}_method"
-        return getattr(self, method_name, self.set_method)
+        return getattr(self, method_name, self.set_http_verb_method)
 
-    def set_method(self, reflect_method):
+    def set_http_verb_method(self, reflect_method):
         """internal method. Used by .add_method as a fallback if .add_method
         doesn't call a more specific .set_<HTTP_VERB>_method"""
         operation = self.create_operation_instance(reflect_method)
@@ -1794,9 +1802,11 @@ class PathItem(OpenABC):
         """Controllers support an ANY catch-all http verb method, this doesn't
         work for things like OpenAPI so this converts ANY to GET and POST
         """
-        operation = self.create_operation_instance(reflect_method)
-
         for http_verb in ["GET", "POST"]:
+            operation = self.create_operation_instance(
+                reflect_method,
+                http_verb=http_verb
+            )
             self.set_operation(http_verb, operation)
 
     def create_operation_instance(self, reflect_method, **kwargs):
