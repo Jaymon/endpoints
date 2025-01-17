@@ -317,7 +317,7 @@ class Status(String):
             status = cls.get_websocket_status(code)
 
         if not status:
-            status = "UNKNOWN"
+            status = kwargs.get("default", "UNKNOWN")
 
         instance = super().__new__(cls, status)
         instance.code = code

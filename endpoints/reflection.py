@@ -42,7 +42,7 @@ except ImportError:
     jsonschema = None
 
 from .compat import *
-from .utils import Url, JSONEncoder
+from .utils import Url, JSONEncoder, Status
 from .config import environ
 
 
@@ -346,7 +346,6 @@ class Field(dict):
     """
     def __init__(self, field_type, **kwargs):
         self.name = kwargs.pop("name", "")
-#         self.owner = OpenABC
 
         kwargs.setdefault("required", False)
         kwargs["type"] = field_type
@@ -1374,7 +1373,7 @@ class Response(OpenABC):
             self["content"] = content
 
     def get_description_value(self, **kwargs):
-        return f"A {self.code} response"
+        return str(Status(int(self.code), default=f"A {self.code} response"))
 
     def get_content_media_ranges(self, reflect_method):
         """See RequestBody.get_content_media_ranges"""

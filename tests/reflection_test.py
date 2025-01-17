@@ -269,6 +269,11 @@ class OpenAPITest(TestCase):
             oa.paths["/foo"].post.responses["401"]["description"]
         )
 
+        self.assertEqual(
+            "OK",
+            oa.paths["/foo"].post.responses["200"]["description"]
+        )
+
     def test_security_requirement(self):
         oa = self.create_openapi("""
             class Foo(Controller):
