@@ -1549,6 +1549,12 @@ class Operation(OpenABC):
         for k in rc.value["class_keys"]:
             parts.append(NamingConvention(k).upper_camelcase())
 
+        # sometimes the http verb method has a suffix, this adds that suffix
+        # to make sure the op ids are globally unique
+        suffix = self.reflect_method.name.split("_", maxsplit=1)
+        if len(suffix) > 1:
+            parts.append(NamingConvention(suffix[1]).upper_camelcase())
+
         return "".join(parts)
 
     def get_request_body_value(self, **kwargs):

@@ -295,7 +295,7 @@ class OpenAPITest(TestCase):
     def test_operation_operationid_1(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                def GET(self, bar):
+                def GET(self):
                     pass
 
                 def POST(self):
@@ -311,7 +311,7 @@ class OpenAPITest(TestCase):
 
         oa = self.create_openapi({
             "bar": """class Foo_ext(Controller):
-                def GET(self, bar):
+                def GET(self):
                     pass
             """
         })
@@ -322,7 +322,7 @@ class OpenAPITest(TestCase):
     def test_operation_operationid_any(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                def ANY(self, bar):
+                def ANY(self):
                     pass
         """)
 
@@ -330,6 +330,26 @@ class OpenAPITest(TestCase):
 
         for http_verb in ["post", "get"]:
             self.assertEqual(f"{http_verb}Foo", pi[http_verb]["operationId"])
+
+    def test_operation_operationid_multiple_methods_with_args(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                @param(0)
+                def GET_1(self, bar):
+                    pass
+
+                @param(0)
+                def GET_2(self, che):
+                    pass
+        """)
+
+        ti = {
+            "/foo/{bar}": "getFoo1",
+            "/foo/{che}": "getFoo2"
+        }
+        for path, operation_id in ti.items():
+            pi = oa.paths[path]
+            self.assertEqual(operation_id, pi["get"]["operationId"])
 
     def test_write_json(self):
         oa = self.create_openapi(
