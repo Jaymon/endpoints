@@ -5,12 +5,11 @@ import testdata
 
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
-from endpoints.interface.base import BaseApplication
 from endpoints.utils import JSONEncoder, Url
-from .. import TestCase as BaseTestCase
+from .. import TestCase
 
 
-class TestCase(BaseTestCase):
+class TestCase(TestCase):
     client_class = HTTPClient
 
     def setUp(self):
@@ -383,8 +382,8 @@ class _HTTPTestCase(TestCase):
 
 
 class _WebSocketTestCase(TestCase):
-    """Base class for the actual interfaces, this contains common tests for any
-    interface handling WebSocket requests
+    """Base class for the actual interfaces, this contains common tests for
+    any interface handling WebSocket requests
     """
     client_class = WebSocketClient
     server_class = None
@@ -408,9 +407,7 @@ class _WebSocketTestCase(TestCase):
 
     def test_connect_error(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller, CallError",
-            "from endpoints.decorators.auth import client_auth as BaseAuth",
-            "class client_auth(BaseAuth):",
+            "class client_auth(auth_basic):",
             "    def target(self, *args, **kwargs): return False",
             "",
             "class Default(Controller):",

@@ -36,7 +36,8 @@ class Server(Command):
             cmd_host = self.host.hostname
             cmd_port = self.host.port
 
-        app_path = "endpoints.interface.asgi:Application.factory"
+        #app_path = "endpoints.interface.asgi:Application.factory"
+        app_path = f"{self.controller_prefix}:Application.factory"
         super().__init__(
             f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
             **kwargs
@@ -60,6 +61,28 @@ class Server(Command):
 class HTTPTest(_HTTPTestCase):
     server_class = Server
     application_class = Application
+
+    def test_response_body_error(self):
+        s = self.create_server(
+            [
+                "class Application(Application):",
+                "    sentinel = False",
+                "    @classmethod",
+                "    def dump_json(cls, body, **kwargs):",
+                "        if cls.sentinel:",
+                "           return super().dump_json(body, **kwargs)",
+                "        cls.sentinel = True",
+                "        raise ValueError()",
+                "",
+                "class Default(Controller):",
+                "    def GET(self): return 1",
+            ],
+        )
+        c = self.create_client()
+
+        r = c.get("/")
+        self.assertEqual(500, r.code)
+        self.assertEqual("", r.json())
 
 
 class WebSocketTest(_WebSocketTestCase):

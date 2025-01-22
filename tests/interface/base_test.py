@@ -420,7 +420,7 @@ class BaseApplicationTest(TestCase):
                 "from endpoints import Controller",
                 "from .nomod import Nomodbar",
                 "class Default(Controller):",
-                "    def GET(): pass",
+                "    def GET(self): pass",
             ],
         })
 
@@ -433,10 +433,9 @@ class BaseApplicationTest(TestCase):
     def test_import_error(self):
         with self.assertRaises(ImportError):
             c = self.create_server([
-                "from endpoints import Controller",
                 "from does_not_exist import FairyDust",
                 "class Default(Controller):",
-                "    def GET(): pass",
+                "    def GET(self): pass",
             ])
 #         res = c.handle('/')
 #         self.assertEqual(404, res.code)

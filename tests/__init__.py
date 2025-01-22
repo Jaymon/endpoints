@@ -35,7 +35,10 @@ class Server(object):
         return self.application.router
 
     def __init__(self, *args, **kwargs):
-        self.application = BaseApplication(*args, **kwargs)
+        self.application = kwargs.get(
+            "application_class",
+            BaseApplication
+        )(*args, **kwargs)
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
@@ -149,6 +152,10 @@ class TestCase(BaseAsyncTestCase):
             header = [
                 "from endpoints import *",
                 "from endpoints.decorators import *",
+                "from {} import {} as Application".format(
+                    self.application_class.__module__,
+                    self.application_class.__name__
+                ),
             ]
 
         if not kwargs.get("cors", False):

@@ -542,8 +542,6 @@ class AuthDecoratorTest(TestCase):
 
     def test_no_call(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import AuthDecorator",
             "class auth(AuthDecorator):",
             "    async def handle(self, controller, **kwargs):",
             "        return True",
