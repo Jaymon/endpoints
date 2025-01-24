@@ -918,6 +918,10 @@ class Schema(OpenABC):
     # https://json-schema.org/understanding-json-schema/structuring#dollarref
     # https://json-schema.org/draft/2020-12/json-schema-core#ref
     # https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#reference-object
+    #
+    # https://datatracker.ietf.org/doc/html/draft-pbryan-zyp-json-ref-03#section-3
+    #   Any members other than "$ref" in a JSON Reference object SHALL be
+    #   ignored.
     _ref = Field(str, name="$ref")
 
     # Swagger warns that the jsonschema spec needs to be the OpenAPI version
@@ -2011,6 +2015,16 @@ class Components(OpenABC):
         return self.create_ref_schema_instance(name)
 
     def create_ref_schema_instance(self, name_or_ref):
+        """Create a reference schema object
+
+        https://datatracker.ietf.org/doc/html/draft-pbryan-zyp-json-ref-03#section-3
+            Any members other than "$ref" in a JSON Reference object SHALL be
+            ignored.
+
+        :param name_or_ref: str, either the name (eg, "foo") or the full 
+            reference path (eg, "#/components/schema/foo")
+        :returns: Schema, a reference schema
+        """
         rs = self.create_schema_instance()
         rs["$ref"] = self.get_schema_ref(name_or_ref)
         return rs
