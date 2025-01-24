@@ -274,6 +274,19 @@ class OpenAPITest(TestCase):
             oa.paths["/foo"].post.responses["200"]["description"]
         )
 
+    def test_response_merge(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def POST(self) -> dict:
+                    raise CallError(401, "call error message 1")
+                    raise CallError(401, "call error message 2")
+        """)
+
+        for errmsg in ["call error message 1", "call error message 2"]:
+            self.assertTrue(
+                errmsg in oa.paths["/foo"].post.responses["401"]["description"]
+            )
+
     def test_security_requirement(self):
         oa = self.create_openapi("""
             class Foo(Controller):

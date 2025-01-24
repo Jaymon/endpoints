@@ -1389,6 +1389,16 @@ class Response(OpenABC):
         class CustomResponse(Response):
             def set_404_code(self):
                 # custom stuff
+
+    The merging behavior is similar to the status code behavior. You can add
+    a .merge_<FIELD-NAME>_key method to customize the merging, it falls back
+    to .merge_key
+
+    .. Example:
+        # customize merging the content key
+        class CustomResponse(Response):
+            def merge_content_key(self, key, content):
+                # custom stuff
     """
     _description = Field(str, required=True)
 
@@ -1490,33 +1500,43 @@ class Response(OpenABC):
 
         :param other: Response
         """
+        for key in self.fields.keys():
+            if other_value := other.get(key, None):
+                m = self.get_merge_key_method(key)
+                m(key, other_value)
+
+    def get_merge_key_method(self, key):
+        """Internal method. Returns the method that will be used to merge
+        the key's value into self
+
+        :returns: Callable[[str, Any], None]
+        """
+        method_name = f"merge_{key}_key"
+        return getattr(self, f"merge_{key}_key", self.merge_key)
+
+    def merge_description_key(self, key, description):
         descs = []
         if d := self.get("description", ""):
             descs.append(d)
 
-        if d := other.get("description", ""):
-            descs.append(d)
+        descs.append(description)
+        self["description"] = "\n".join(descs)
 
-        if descs:
-            self["description"] = "\n".join(descs)
-
+    def merge_content_key(self, key, content):
         # the first content key wins, all others are ignored. This is because
         # my current implementation basically produces the same error schema
         # for everything so there is no need to really distinguish
-        if "content" in other and "content" not in self:
-            self["content"] = other["content"]
+        if key not in self:
+            self[key] = content
 
-        # TODO -- flesh out merging other keys if they are ever needed
-        for k in ["headers", "links"]:
-            if k in self:
-                raise NotImplementedError(f"Unsupported merge key: {k}")
+    def merge_key(self, key, value):
+        """Internal method. The fallback/default method for
+        .get_merge_key_method"""
+        if key not in self:
+            self[key] = value
 
-#     def merge_key(self, key, other):
-#         if key in other and key not in self:
-#             self[key] = other[key]
-# 
-#         else:
-#             raise ValueError(f"Not sure how to merge key: {k}")
+        else:
+            raise ValueError(f"Not sure how to merge key: {k}")
 
 
 class Parameter(OpenABC):
