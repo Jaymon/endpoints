@@ -968,9 +968,8 @@ class Schema(OpenABC):
         """This is called from RequestBody and is the main hook into
         customizing and extending the request schema for child projects"""
         self.reflect_method = reflect_method
-        self.set_object_keys()
-
         for reflect_param in reflect_method.reflect_body_params():
+            self.set_object_keys()
             self.add_param(reflect_param)
 
     def set_response_method(self, reflect_method):
@@ -979,6 +978,9 @@ class Schema(OpenABC):
         self.reflect_method = reflect_method
         if rt := self.reflect_method.reflect_return_type():
             self.set_type(rt)
+
+    def set_error_method(self, reflect_method):
+        self.reflect_method = reflect_method
 
     def set_type(self, reflect_type):
         """Set this schema as this type"""
@@ -1296,13 +1298,27 @@ class MediaType(OpenABC):
 
     def set_request_method(self, reflect_method):
         """Called from RequestBody"""
-        self["schema"] = self.create_schema_instance()
-        self["schema"].set_request_method(reflect_method)
+        self.reflect_method = reflect_method
+        schema = self.create_schema_instance()
+        schema.set_request_method(reflect_method)
+        if schema:
+            self["schema"] = schema
 
     def set_response_method(self, reflect_method):
         """Called from Response"""
-        self["schema"] = self.create_schema_instance()
-        self["schema"].set_response_method(reflect_method)
+        self.reflect_method = reflect_method
+        schema = self.create_schema_instance()
+        schema.set_response_method(reflect_method)
+        if schema:
+            self["schema"] = schema
+
+    def set_error_method(self, reflect_method):
+        """Called from Response"""
+        self.reflect_method = reflect_method
+        schema = self.create_schema_instance()
+        schema.set_error_method(reflect_method)
+        if schema:
+            self["schema"] = schema
 
 
 class RequestBody(OpenABC):
@@ -1348,6 +1364,31 @@ class RequestBody(OpenABC):
 class Response(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#response-object
+
+    This has a similar lifecycle to PathItem, it will try and call
+    `.set_<CODE>_code`, if that method doesn't exist then it will just call
+    `.set_<CODE-TYPE>_code`. This allows child classes to customize the output
+    on a per code or code type basis
+
+    Code types:
+        * information - 1xx informational response – the request was received,
+            continuing process
+        * success - 2xx successful – the request was successfully received,
+            understood, and accepted
+        * redirect - 3xx redirection – further action needs to be taken in
+            order to complete the request
+        * error - 4xx client error – the request contains bad syntax or cannot
+            be fulfilled
+        * error - 5xx server error – the server failed to fulfil an apparently
+            valid request
+
+    https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
+
+    .. Example:
+        # customize 401
+        class CustomResponse(Response):
+            def set_404_code(self):
+                # custom stuff
     """
     _description = Field(str, required=True)
 
@@ -1357,35 +1398,89 @@ class Response(OpenABC):
 
     _links = Field(dict[str, Link|Reference])
 
-    def init_instance(self, code, **kwargs):
+    def init_instance(self, code, reflect_method, **kwargs):
         self.code = str(code)
-
-    def set_method(self, reflect_method):
         self.reflect_method = reflect_method
 
-        content = {}
-
-        for media_range in self.get_content_media_ranges(reflect_method):
-            content[media_range] = self.create_instance("media_type_class")
-            content[media_range].set_response_method(reflect_method)
+    def get_content_value(self, **kwargs):
+        m = self.get_set_code_method()
+        content = m()
 
         if content:
             self["content"] = content
 
+    def set_information_code(self):
+        pass
+
+    def set_redirect_code(self):
+        pass
+
+    def set_success_code(self):
+        pass
+
+    def set_200_code(self):
+        content = {}
+
+        for media_range in self.get_content_media_ranges():
+            media_type = self.create_instance("media_type_class")
+            media_type.set_response_method(self.reflect_method)
+            if media_type:
+                content[media_range] = media_type
+
+        return content
+
+    def set_error_code(self):
+        content = {}
+
+        for media_range in self.get_content_media_ranges():
+            media_type = self.create_instance("media_type_class")
+            media_type.set_error_method(self.reflect_method)
+            if media_type:
+                content[media_range] = media_type
+
+        return content
+
+    def get_set_code_method(self):
+        """Get the set operation for this method
+
+        This will try and find a valid .set_<HTTP_VERB>_method method and
+        fallback to .set_http_verb_method
+
+        :param reflect_method: ReflectMethod
+        :returns: Callable[[ReflectMethod], None]
+        """
+        method_name = f"set_{self.code}_code"
+
+        if self.code.startswith("1"):
+            default_method = self.set_information_code
+
+        elif self.code.startswith("2"):
+            default_method = self.set_success_code
+
+        elif self.code.startswith("3"):
+            default_method = self.set_redirect_code
+
+        else:
+            default_method = self.set_error_code
+
+        return getattr(self, method_name, default_method)
+
     def get_description_value(self, **kwargs):
         return str(Status(int(self.code), default=f"A {self.code} response"))
 
-    def get_content_media_ranges(self, reflect_method):
+    def get_content_media_ranges(self):
         """See RequestBody.get_content_media_ranges"""
-        #rc = self.reflect_method.reflect_class()
-        # support Accept header response:
-        # https://stackoverflow.com/a/62593737
-        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+        reflect_method = self.reflect_method
+
         method_info = reflect_method.get_method_info()
         media_type = method_info.get(
             "response_media_type",
             environ.RESPONSE_MEDIA_TYPE
         )
+
+        # support Accept header response:
+        # https://stackoverflow.com/a/62593737
+        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
         if version := reflect_method.get_version():
             media_type += f"; version={version}"
         return [media_type]
@@ -1405,10 +1500,23 @@ class Response(OpenABC):
         if descs:
             self["description"] = "\n".join(descs)
 
+        # the first content key wins, all others are ignored. This is because
+        # my current implementation basically produces the same error schema
+        # for everything so there is no need to really distinguish
+        if "content" in other and "content" not in self:
+            self["content"] = other["content"]
+
         # TODO -- flesh out merging other keys if they are ever needed
-        for k in ["headers", "content", "links"]:
+        for k in ["headers", "links"]:
             if k in self:
-                raise NotImplementedError()
+                raise NotImplementedError(f"Unsupported merge key: {k}")
+
+#     def merge_key(self, key, other):
+#         if key in other and key not in self:
+#             self[key] = other[key]
+# 
+#         else:
+#             raise ValueError(f"Not sure how to merge key: {k}")
 
 
 class Parameter(OpenABC):
@@ -1578,29 +1686,35 @@ class Operation(OpenABC):
         return sreqs
 
     def get_responses_success_value(self):
+        """Generates a dict of success status codes and response objects
+
+        This is where all the success responses are populated so custom
+        implementations should override this method
+
+        :returns: dict[str, Response]
+        """
         responses = {}
+        code = "200"
 
         if rt := self.reflect_method.reflect_return_type():
             if rt.is_none():
-                response = self.create_response_instance("204")
+                code = "204"
 
-            else:
-                response = self.create_response_instance("200")
-                response.set_method(self.reflect_method)
+        elif not list(self.reflect_method.reflect_ast_returns()):
+            code = "204"
 
-            responses[response.code] = response
-
-        elif returns := list(self.reflect_method.reflect_ast_returns()):
-            response = self.create_response_instance("200")
-            responses[response.code] = response
-
-        else:
-            response = self.create_response_instance("204")
-            responses[response.code] = response
-
+        response = self.create_response_instance(code)
+        responses[response.code] = self.create_response_instance(code)
         return responses
 
     def get_responses_error_value(self):
+        """Generates a dict of error status codes and response objects
+
+        This is where all the error responses are populated so custom
+        implementations should override this method for error handling
+
+        :returns: dict[str, Response]
+        """
         responses = {}
 
         def append(responses, response):
@@ -1680,6 +1794,7 @@ class Operation(OpenABC):
         return self.create_instance(
             "response_class",
             code,
+            self.reflect_method,
             **kwargs
         )
 
@@ -1695,15 +1810,16 @@ class PathItem(OpenABC):
     doesn't exist then it will just call `.set_operation`. This allows child
     classes to customize the output on a per operation basis
 
-    :Example:
-
+    .. Example:
         # customize put
         class CustomPathItem(PathItem):
             def set_put_operation(self, operation):
                 # custom stuff
     """
-    # https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#reference-object
     _ref = Field(str, name="$ref")
+    """
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#reference-object
+    """
 
     _summary = Field(str)
 
@@ -1759,17 +1875,16 @@ class PathItem(OpenABC):
     def get_set_http_verb_method(self, reflect_method):
         """Get the set operation for this method
 
-        This will try and find a valid .set_<HTTP_VERB>_method method and
-        fallback to .set_http_verb_method
+        This will try and find a valid .set_<HTTP_VERB>_operation method and
+        fallback to .set_http_verb_operation
 
         :param reflect_method: ReflectMethod
         :returns: Callable[[ReflectMethod], None]
         """
-        name = reflect_method.http_verb
-        method_name = f"set_{name.lower()}_method"
-        return getattr(self, method_name, self.set_http_verb_method)
+        method_name = f"set_{reflect_method.http_verb.lower()}_operation"
+        return getattr(self, method_name, self.set_http_verb_operation)
 
-    def set_http_verb_method(self, reflect_method):
+    def set_http_verb_operation(self, reflect_method):
         """internal method. Used by .add_method as a fallback if .add_method
         doesn't call a more specific .set_<HTTP_VERB>_method"""
         operation = self.create_operation_instance(reflect_method)
@@ -1783,16 +1898,16 @@ class PathItem(OpenABC):
         :param http_verb: str, the http verb for operation
         :param operation: Operation
         """
-        op_name = http_verb.lower()
-        if op_name in self:
+        http_verb = http_verb.lower()
+        if http_verb in self:
             raise ValueError(
-                f"PathItem has multiple {op_name} operations"
+                f"PathItem has multiple {http_verb} operations"
             )
 
         else:
-            self[op_name] = operation
+            self[http_verb] = operation
 
-    def set_options_method(self, reflect_method):
+    def set_options_operation(self, reflect_method):
         """Customize options to get rid of the 405 error if CORS support is
         enabled"""
         operation = self.create_operation_instance(reflect_method)
@@ -1803,7 +1918,7 @@ class PathItem(OpenABC):
             operation["responses"].pop("405", None)
             self.set_operation(reflect_method.http_verb, operation)
 
-    def set_any_method(self, reflect_method):
+    def set_any_operation(self, reflect_method):
         """Controllers support an ANY catch-all http verb method, this doesn't
         work for things like OpenAPI so this converts ANY to GET and POST
         """
@@ -1873,8 +1988,11 @@ class Components(OpenABC):
 
         self["schemas"] = schemas
 
+        return self.create_ref_schema_instance(name)
+
+    def create_ref_schema_instance(self, name_or_ref):
         rs = self.create_schema_instance()
-        rs["$ref"] = self.get_schema_ref(name)
+        rs["$ref"] = self.get_schema_ref(name_or_ref)
         return rs
 
     def get_schema(self, name_or_ref):
@@ -1885,14 +2003,22 @@ class Components(OpenABC):
         :returns: Schema|None
         """
         schemas = self.get("schemas", {})
+        name_or_ref = self.get_schema_name(name_or_ref)
+        return schemas[name_or_ref] if name_or_ref in schemas else None
+
+    def get_schema_ref(self, name_or_ref):
+        """Get the schema ref/path for the given name"""
+        if not name_or_ref.startswith("#"):
+            name_or_ref = f"#/components/schemas/{name_or_ref}"
+
+        return name_or_ref
+
+    def get_schema_name(self, name_or_ref):
+        """Get the schema name for the given ref"""
         if name_or_ref.startswith("#"):
             name_or_ref = name_or_ref.rsplit("/", 1)[-1]
 
-        return schemas[name_or_ref] if name_or_ref in schemas else None
-
-    def get_schema_ref(self, name):
-        """Get the schema ref/path for the given name"""
-        return f"#/components/schemas/{name}"
+        return name_or_ref
 
 
 class Info(OpenABC):
