@@ -677,6 +677,14 @@ class OpenABC(dict):
 
         return v
 
+    def todict_items(self):
+        """Similar to `.todict_value` this allows child classes to customize
+        the .todict output
+
+        :returns: generator[tuple[str, Any]]
+        """
+        yield from self.items()
+
     def todict(self):
         """Normalize self and all children as builtin python values (eg dict,
         list)
@@ -688,7 +696,7 @@ class OpenABC(dict):
         :returns: dict
         """
         d = {}
-        for k, v in self.items():
+        for k, v in self.todict_items():
             v = self.todict_value(k, v)
             if v is not None:
                 d[k] = v
@@ -1313,12 +1321,6 @@ class Schema(OpenABC):
         validator = validator_class({**self, **components_schemas})
         validator.validate(data)
         return True
-
-#     def todict_value(self, v):
-#         """Returns None for any empty values so they are ignored since empty
-#         values are just visual clutter in the yaml file since they have
-#         no functionality"""
-#         return super().todict_value(v) if v else None
 
 
 class MediaType(OpenABC):
@@ -2150,7 +2152,8 @@ class OpenAPI(OpenABC):
     _servers = Field(list[Server])
 
     _components = Field(Components)
-
+    """This needs to come before paths because paths can depend on this
+    existing if a path is setting/getting common schemas, etc"""
 
     _paths = Field(dict[str, PathItem])
     """
@@ -2160,7 +2163,6 @@ class OpenAPI(OpenABC):
     _security = Field(list[SecurityRequirement])
 
     _externalDocs = Field(ExternalDocumentation)
-
 
     def __init__(self, application, **kwargs):
         """
