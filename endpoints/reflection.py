@@ -340,13 +340,21 @@ class Field(dict):
     """Represents a field on an OpenABC instance
 
     By default, fields should be defined on OpenABC children prefixed with
-    an underscore, this is because many fields would conflict with python
+    an underscore, this is because many field names would conflict with python
     keywords (like `in`), this underscore will be stripped for the
     OpenABC.fields dict that maps field names to their Field instances
     """
     def __init__(self, field_type, **kwargs):
+        """
+        :param field_type: Any, the type information for this field
+        :keyword name: Optional[str], the name of the field, this is usually
+            passed in if the field needs to be different than the field's
+            name with prefixed underscores stripped (eg, "$foo")
+        :keyword required: Optional[bool], defaults to False
+        :keyword todict_empty_value: Optional[Any], this value will be
+            returned in `OpenABC.todict_value` if the field's value is empty
+        """
         self.name = kwargs.pop("name", "")
-
         kwargs.setdefault("required", False)
         kwargs["type"] = field_type
         super().__init__(**kwargs)
@@ -643,28 +651,49 @@ class OpenABC(dict):
                             f"Class {self.path_str} missing {k} key"
                         )
 
+    def todict_value(self, k, v):
+        """Internal method. Called from `.todict` to generate the dict value
+        for `v`
+
+        By default, this will check the field found at k's empty_todict value
+        and if it is False it will return None if v is considered empty
+
+        :param v: Any
+        :returns: Optional[dict]
+        """
+        fields = self.fields or {}
+
+        if not v and "todict_empty_value" in fields.get(k, {}):
+            v = self.fields[k]["todict_empty_value"]
+
+        elif m := getattr(v, "todict", None):
+            v = m()
+
+        elif isinstance(v, dict):
+            v = {vk: self.todict_value(vk, vv) for vk, vv in v.items()}
+
+        elif isinstance(v, list):
+            v = [self.todict_value(None, vv) for vv in v]
+
+        return v
+
     def todict(self):
         """Normalize self and all children as builtin python values (eg dict,
         list)
 
+        This internally calls `.todict_value` and will ignore any None values
+        returned from that method, this way child classes can customize their
+        output by overriding `.todict_value`
+
         :returns: dict
         """
-        def tovalue(v):
-            if m := getattr(v, "todict", None):
-                tv = m()
+        d = {}
+        for k, v in self.items():
+            v = self.todict_value(k, v)
+            if v is not None:
+                d[k] = v
 
-            elif isinstance(v, dict):
-                tv = {vk: tovalue(vv) for vk, vv in v.items()}
-
-            elif isinstance(v, list):
-                tv = [tovalue(vv) for vv in v]
-
-            else:
-                tv = v
-
-            return tv
-
-        return {k: tovalue(v) for k, v in self.items()}
+        return d
 
 
 class Contact(OpenABC):
@@ -855,11 +884,11 @@ class Schema(OpenABC):
     _exclusiveMaximum = Field(int)
 
     # https://json-schema.org/understanding-json-schema/reference/object
-    _properties = Field(dict[str, dict])
+    _properties = Field(dict[str, dict], todict_empty_value=None)
     _patternProperties = Field(dict[str, dict])
     _additionalProperties = Field(bool|dict)
     _unevaluatedProperties = Field(bool)
-    _required = Field(list[str])
+    _required = Field(list[str], todict_empty_value=None)
     _propertyNames = Field(dict)
     _minProperties = Field(int)
     _maxProperties = Field(int)
@@ -1284,6 +1313,12 @@ class Schema(OpenABC):
         validator = validator_class({**self, **components_schemas})
         validator.validate(data)
         return True
+
+#     def todict_value(self, v):
+#         """Returns None for any empty values so they are ignored since empty
+#         values are just visual clutter in the yaml file since they have
+#         no functionality"""
+#         return super().todict_value(v) if v else None
 
 
 class MediaType(OpenABC):
@@ -1867,7 +1902,7 @@ class PathItem(OpenABC):
 
     _servers = Field(list[Server])
 
-    _parameters = Field(list[Parameter|Reference])
+    _parameters = Field(list[Parameter|Reference], todict_empty_value=None)
 
     def add_method(self, reflect_method, **kwargs):
         """Add the method to this path
@@ -2139,12 +2174,42 @@ class OpenAPI(OpenABC):
         self.application = application
         super().__init__(None, **kwargs)
 
+    def get_yaml_kwargs(self, **kwargs):
+        """Internal method. This returns the arguments to be passed to the
+        yaml dumper, the reason this is a separate method is in order to get
+        lists indented a custom Dumper class needs to be used. I have no
+        idea why the default is the way it is (the yaml spec says the dash
+        should be considered as part of the indentation?), see:
+
+            * https://web.archive.org/web/20170903201521/https://pyyaml.org/ticket/64#comment:5
+            * https://stackoverflow.com/a/39681672
+            * The spec: https://yaml.org/spec/1.2-old/spec.html#id2777534
+            * https://github.com/yaml/pyyaml/issues/234#issuecomment-498026245
+
+        """
+        if not yaml:
+            raise ValueError("Missing yaml dependency")
+
+        class IndentListDumper(yaml.Dumper):
+            def increase_indent(self, flow=False, indentless=False):
+                return super().increase_indent(flow, False)
+
+        # The documentation isn't very useful but here it is
+        # https://pyyaml.org/wiki/PyYAMLDocumentation
+        return {
+            **dict(
+                Dumper=IndentListDumper,
+                sort_keys=False,
+                default_flow_style=False,
+            ),
+            **kwargs
+        }
+
     def get_yaml(self):
         """Return this OpenAPI document as a yaml string"""
-        return yaml.safe_dump(
+        return yaml.dump(
             self.todict(),
-            sort_keys=False,
-            default_flow_style=False,
+            **self.get_yaml_kwargs(),
         )
 
     def write_yaml(self, directory):
@@ -2157,18 +2222,15 @@ class OpenAPI(OpenABC):
         :param directory: str, the directory path
         :returns: str, the path to the openapi.json file
         """
-        if not yaml:
-            raise ValueError("Missing yaml dependency")
-
+        kwargs = self.get_yaml_kwargs()
         dp = Dirpath(directory)
         fp = dp.get_file("openapi.yaml")
 
         with fp.open("w+") as stream:
-            data = yaml.safe_dump(
+            data = yaml.dump(
                 self.todict(),
                 stream,
-                sort_keys=False,
-                default_flow_style=False,
+                **kwargs
             )
             logger.debug(f"YAML written to: {fp}")
 
@@ -2212,7 +2274,18 @@ class OpenAPI(OpenABC):
         HTML comes from here:
             https://swagger.io/docs/open-source-tools/swagger-ui/usage/installation/#unpkg
 
-        :param **kwargs: these are passed to Template.substitute
+        :keyword cdn_base_url: Optional[str], should probably never be messed
+            with
+        :keyword swagger_version: Optional[str]
+        :keyword title: Optional[str], the api title, defaults to
+            OpenAPI.info.title
+        :keyword description: Optional[str], the api description, defaults to
+            OpenAPI.info.title
+        :keyword url: Optional[str], if this is passed in then it will be
+            used to fetch the openapi.yaml or openapi.json file and spec will
+            be ignored
+        :keyword spec: Optional[str], this defaults to `.get_json` and
+            should almost never be messed with
         :returns: str, the html to render Swagger UI docs
         """
         # I got the CSS to get rid of OPTIONS here:
@@ -2223,6 +2296,22 @@ class OpenAPI(OpenABC):
 
         # This is just a simple template
         # https://docs.python.org/3/library/string.html#string.Template
+
+        kwargs.setdefault("cdn_base_url", "https://unpkg.com/swagger-ui-dist")
+
+        # https://github.com/swagger-api/swagger-ui/releases/latest
+        kwargs.setdefault("swagger_version", "5.17.14")
+
+        kwargs.setdefault("title", self["info"]["title"])
+        kwargs.setdefault("description", self["info"]["description"])
+
+        if "url" in kwargs:
+            kwargs["spec"] = "{}"
+
+        else:
+            kwargs.setdefault("url", "")
+            if "spec" not in kwargs:
+                kwargs["spec"] = self.get_json()
 
         return Template("""
             <!DOCTYPE html>
@@ -2245,21 +2334,31 @@ class OpenAPI(OpenABC):
                 <script src="$cdn_base_url@$swagger_version/swagger-ui-bundle.js" crossorigin></script>
                 <script>
                     window.onload = function() {
-                        window.ui = SwaggerUIBundle({
+                        configuration = {
+                            dom_id: "#swagger-ui",
+                            docExpansion: "list",
+                        }
+
+                        url = "$url"
+                        if (url) {
+                            configuration["url"] = url
+
+                        } else {
+                            configuration["spec"] = $spec
+                        }
+                        window.ui = SwaggerUIBundle(configuration)
+
+                        /* window.ui = SwaggerUIBundle({
+                            url: "$url",
                             spec: $spec,
-                            dom_id: '#swagger-ui',
-                            docExpansion: "list"
-                        })
+                            dom_id: "#swagger-ui",
+                            docExpansion: "list",
+                        }) */
                     }
                 </script>
             </body>
             </html>
         """).substitute(
-            cdn_base_url="https://unpkg.com/swagger-ui-dist",
-            swagger_version="5.17.14", # https://github.com/swagger-api/swagger-ui/releases/latest
-            title=self["info"]["title"],
-            description=self["info"]["description"],
-            spec=self.get_json(),
             **kwargs
         )
 

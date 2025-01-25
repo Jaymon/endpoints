@@ -587,6 +587,14 @@ class SchemaTest(TestCase):
         with self.assertRaises(ValueError):
             ref_schema.get_ref_schema()
 
+    def test_todict(self):
+        s = Schema(None)
+        s.set_object_keys()
+        d = s.todict()
+        self.assertFalse("properties" in d)
+        self.assertFalse("required" in d)
+        self.assertTrue("type" in d)
+
 
 class ComponentsTest(TestCase):
     def test_get_security_schemes_value(self):
