@@ -80,7 +80,6 @@ class ReflectController(ReflectClass):
             There can be multiple of each http method name, so this can
             yield N GET methods, etc.
         """
-#         method_names = self.value["method_names"]
         method_names = self.get_http_method_names()
         if http_verb:
             items = []
@@ -185,6 +184,11 @@ class ReflectMethod(ReflectCallable):
 
     these are methods on the controller like GET and POST
     """
+    @classmethod
+    def has_body(self, http_verb):
+        """Returns True if http_verb accepts a body in the request"""
+        return http_verb in set(["PUT", "POST", "PATCH"])
+
     def __init__(self, target, http_verb, reflect_controller, **kwargs):
         """
         :param target: callable, the controller method
@@ -202,10 +206,6 @@ class ReflectMethod(ReflectCallable):
     def reflect_class(self):
         return self._reflect_controller
 
-    def has_body(self):
-        """Returns True if this method accepts a body in the request"""
-        return self.name in set(["PUT", "POST", "PATCH"])
-
     def reflect_params(self):
         """This will reflect all params defined with the @param decorator"""
         unwrapped = self.get_unwrapped()
@@ -216,7 +216,7 @@ class ReflectMethod(ReflectCallable):
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
         the body on a POST request"""
-        if self.has_body():
+        if self.has_body(self.http_verb):
             for rp in self.reflect_params():
                 if rp.target.is_kwarg:
                     yield rp
@@ -225,7 +225,14 @@ class ReflectMethod(ReflectCallable):
         """This will reflect params that need to be in the url path or the
         query part of the url"""
         for rp in self.reflect_params():
-            if not rp.target.is_kwarg or not self.has_body():
+            if not rp.target.is_kwarg or not self.has_body(self.http_verb):
+                yield rp
+
+    def reflect_query_params(self):
+        """This will reflect params that need to be in the query part of the
+        url"""
+        for rp in self.reflect_params():
+            if rp.target.is_kwarg and not self.has_body(self.http_verb):
                 yield rp
 
     def reflect_path_params(self):
@@ -1009,7 +1016,12 @@ class Schema(OpenABC):
         """This is called from RequestBody and is the main hook into
         customizing and extending the request schema for child projects"""
         self.reflect_method = reflect_method
+
         for reflect_param in reflect_method.reflect_body_params():
+            self.set_object_keys()
+            self.add_param(reflect_param)
+
+        for reflect_param in reflect_method.reflect_url_params():
             self.set_object_keys()
             self.add_param(reflect_param)
 
@@ -1653,7 +1665,7 @@ class Operation(OpenABC):
 
     _operationId = Field(str)
 
-    _parameters = Field(list[Parameter|Reference])
+    _parameters = Field(list[Parameter|Reference], todict_empty_value=None)
 
     _requestBody = Field(RequestBody|Reference)
 
@@ -1681,6 +1693,21 @@ class Operation(OpenABC):
         self.http_verb = kwargs.get("http_verb", reflect_method.http_verb)
         self.reflect_method = reflect_method
         self.set_docblock(reflect_method.get_docblock())
+
+    def get_parameters_value(self, **kwargs):
+        # if this operation has a body then we put the url params in the body
+        # instead
+        if not self.reflect_method.has_body(self.http_verb):
+            parameters = []
+
+            # this is a positional argument (part of path) or query param
+            # (after the ? in the url)
+            for reflect_param in self.reflect_method.reflect_query_params():
+                parameter = self.create_instance("parameter_class")
+                parameter.set_param(reflect_param)
+                parameters.append(parameter)
+
+            return parameters
 
     def get_tags_value(self, **kwargs):
         tags = list(self.reflect_method.reflect_class().value["module_keys"])
@@ -1726,7 +1753,7 @@ class Operation(OpenABC):
         return "".join(parts)
 
     def get_request_body_value(self, **kwargs):
-        if self.reflect_method.has_body():
+        if self.reflect_method.has_body(self.http_verb):
             rb = self.create_instance(
                 "request_body_class",
                 **kwargs
@@ -1886,6 +1913,8 @@ class PathItem(OpenABC):
 
     _description = Field(str)
 
+    _parameters = Field(list[Parameter|Reference], todict_empty_value=None)
+
     _get = Field(Operation)
 
     _put = Field(Operation)
@@ -1903,8 +1932,6 @@ class PathItem(OpenABC):
     _trace = Field(Operation)
 
     _servers = Field(list[Server])
-
-    _parameters = Field(list[Parameter|Reference], todict_empty_value=None)
 
     def add_method(self, reflect_method, **kwargs):
         """Add the method to this path
@@ -1926,7 +1953,7 @@ class PathItem(OpenABC):
 
         # this is a positional argument (part of path) or query param
         # (after the ? in the url)
-        for reflect_param in reflect_method.reflect_url_params():
+        for reflect_param in reflect_method.reflect_path_params():
             parameter = self.create_instance("parameter_class")
             parameter.set_param(reflect_param)
             parameters.append(parameter)

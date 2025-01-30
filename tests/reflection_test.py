@@ -100,7 +100,7 @@ class ReflectControllerTest(TestCase):
 
 
 class ReflectMethodTest(TestCase):
-    def test_reflect_params(self):
+    def test_reflect_params_post(self):
         rc = self.create_reflect_controllers("""
             class Foo(Controller):
                 @param(0)
@@ -114,6 +114,23 @@ class ReflectMethodTest(TestCase):
         self.assertEqual(3, len(list(rm.reflect_params())))
         self.assertEqual(2, len(list(rm.reflect_body_params())))
         self.assertEqual(1, len(list(rm.reflect_url_params())))
+        self.assertEqual(0, len(list(rm.reflect_query_params())))
+
+    def test_reflect_params_get(self):
+        rc = self.create_reflect_controllers("""
+            class Foo(Controller):
+                @param(0)
+                @param("bar", type=int, help="bar variable")
+                @param("che", type=str, required=False, help="che variable")
+                def GET(self, *args, **kwargs):
+                    pass
+        """)[0]
+
+        rm = list(rc.reflect_http_methods("GET"))[0]
+        self.assertEqual(2, len(list(rm.reflect_query_params())))
+        self.assertEqual(3, len(list(rm.reflect_params())))
+        self.assertEqual(3, len(list(rm.reflect_url_params())))
+        self.assertEqual(1, len(list(rm.reflect_path_params())))
 
     def test_get_url_path_1(self):
         rm = self.create_reflect_methods("""
@@ -214,33 +231,6 @@ class OpenAPITest(TestCase):
 
         self.assertTrue("/" in oa.paths)
         self.assertTrue("get" in oa.paths["/"])
-
-    def test_params_positional_named(self):
-        oa = self.create_openapi("""
-            class Foo(Controller):
-                @param(0)
-                def GET(self, zero, *args, **kwargs):
-                    pass
-        """)
-
-        self.assertTrue("/foo/{zero}" in oa.paths)
-
-        parameter = oa.paths["/foo/{zero}"].parameters[0]
-        self.assertEqual("zero", parameter["name"])
-        self.assertEqual("path", parameter["in"])
-
-    def test_params_query(self):
-        oa = self.create_openapi("""
-            class Foo(Controller):
-                @param("zero")
-                def GET(self, zero, *args, **kwargs):
-                    pass
-        """)
-
-        pi = oa.paths["/foo"]
-
-        self.assertEqual("query", pi.parameters[0]["in"])
-        self.assertEqual(1, len(pi.parameters))
 
     def test_params_body(self):
         oa = self.create_openapi("""
@@ -443,23 +433,6 @@ class OpenAPITest(TestCase):
         fp = oa.write_yaml(dp)
         self.assertTrue(fp.isfile())
 
-    def test_multiple_path_with_options(self):
-        oa = self.create_openapi("""
-            class Foo(Controller):
-                cors = True
-                @param(0)
-                @param(1)
-                def GET(self, bar, che):
-                    pass
-        """)
-
-        pi = oa.paths["/foo/{bar}/{che}"]
-        self.assertEqual(3, len(pi))
-        self.assertTrue("options" in pi)
-        self.assertFalse("405" in pi["options"]["responses"])
-        self.assertTrue("get" in pi)
-        self.assertFalse("/foo" in oa.paths)
-
     def test_url_path(self):
         oa = self.create_openapi("""
             class Default(Controller):
@@ -541,6 +514,70 @@ class OpenAPITest(TestCase):
 
         content = oa.paths["/"]["get"]["responses"]["200"]["content"]
         self.assertTrue("text/html" in content)
+
+
+class PathItemTest(TestCase):
+    def test_multiple_path_with_options(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                cors = True
+                @param(0)
+                @param(1)
+                def GET(self, bar, che):
+                    pass
+        """)
+
+        pi = oa.paths["/foo/{bar}/{che}"]
+        for http_verb in ["get", "options"]:
+            self.assertTrue(http_verb in pi)
+
+        self.assertFalse("405" in pi["options"]["responses"])
+        self.assertFalse("/foo" in oa.paths)
+
+    def test_params_positional_named(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                @param(0)
+                def GET(self, zero, *args, **kwargs):
+                    pass
+        """)
+
+        self.assertTrue("/foo/{zero}" in oa.paths)
+
+        parameter = oa.paths["/foo/{zero}"].parameters[0]
+        self.assertEqual("zero", parameter["name"])
+        self.assertEqual("path", parameter["in"])
+
+
+class OperationTest(TestCase):
+    def test_any_parameters(self):
+        """Makes sure ANY sets a get operation with parameters and sets a post
+        with a requestBody with a foo property"""
+        oa = self.create_openapi("""
+            class Default(Controller):
+                @param("foo", type=int, default=1)
+                def ANY(self, foo) -> None:
+                    pass
+        """)
+
+        pi = oa.paths["/"]
+
+        self.assertEqual("foo", pi["get"]["parameters"][0]["name"])
+        self.assertFalse("Paremeters"in pi["post"])
+        schema = pi["post"]["requestBody"]["content"]["*/*"]["schema"]
+        self.assertTrue("foo" in schema["properties"])
+
+    def test_params_query(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                @param("zero")
+                def GET(self, zero, *args, **kwargs):
+                    pass
+        """)
+
+        pi = oa.paths["/foo"]
+        self.assertEqual(0, len(pi.parameters))
+        self.assertEqual("query", pi["get"]["parameters"][0]["in"])
 
 
 class SchemaTest(TestCase):
