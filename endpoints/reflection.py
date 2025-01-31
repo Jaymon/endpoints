@@ -89,23 +89,38 @@ class ReflectController(ReflectClass):
         else:
             items = method_names.items()
 
-        for method_prefix, method_names in items:
+        for method_http_verb, method_names in items:
             for method_name in method_names:
                 yield self.create_reflect_http_method_instance(
-                    method_prefix,
-                    name=method_name
+                    method_http_verb,
+                    method_name
                 )
 
-    def create_reflect_http_method_instance(self, http_verb, **kwargs):
+    def create_reflect_http_method_instance(
+        self,
+        http_verb,
+        method_name,
+        **kwargs
+    ):
         """Creates ReflectMethod instances which are exclusively for
-        a Controller's METHOD_* methods that handle requests"""
+        a Controller's <HTTP-VERB>_* methods that handle requests
+
+        :param http_verb: str, the http verb/method (eg "GET") that this method
+            is handling, this is separate from the method name because of
+            verbs like "ANY" and suffixes on method names like GET_1
+        :param method_name: str, the Controller's method name that will handle
+            the http_verb
+        :keyword reflect_http_method_class: Optional[ReflectMethod], an
+            instance of this class will be created and returned
+        :returns: ReflectMethod
+        """
         target = self.get_target()
         return kwargs.get("reflect_http_method_class", ReflectMethod)(
-            getattr(target, kwargs["name"]),
+            getattr(target, method_name),
             http_verb,
             self,
             target_class=target,
-            name=kwargs["name"]
+            name=method_name
         )
 
     def get_url_path(self):
@@ -185,7 +200,7 @@ class ReflectMethod(ReflectCallable):
     these are methods on the controller like GET and POST
     """
     @classmethod
-    def has_body(self, http_verb):
+    def http_verb_has_body(self, http_verb):
         """Returns True if http_verb accepts a body in the request"""
         return http_verb in set(["PUT", "POST", "PATCH"])
 
@@ -216,7 +231,7 @@ class ReflectMethod(ReflectCallable):
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
         the body on a POST request"""
-        if self.has_body(self.http_verb):
+        if self.has_body():
             for rp in self.reflect_params():
                 if rp.target.is_kwarg:
                     yield rp
@@ -225,14 +240,14 @@ class ReflectMethod(ReflectCallable):
         """This will reflect params that need to be in the url path or the
         query part of the url"""
         for rp in self.reflect_params():
-            if not rp.target.is_kwarg or not self.has_body(self.http_verb):
+            if not rp.target.is_kwarg or not self.has_body():
                 yield rp
 
     def reflect_query_params(self):
         """This will reflect params that need to be in the query part of the
         url"""
         for rp in self.reflect_params():
-            if rp.target.is_kwarg and not self.has_body(self.http_verb):
+            if rp.target.is_kwarg and not self.has_body():
                 yield rp
 
     def reflect_path_params(self):
@@ -285,9 +300,28 @@ class ReflectMethod(ReflectCallable):
     def get_method_info(self):
         reflect_class = self.reflect_class()
         mns = reflect_class.value["http_method_names"]
-        for method_info in mns[self.http_verb]:
+        for method_info in mns.get(self.http_verb, mns.get("ANY", {})):
             if method_info["method_name"] == self.name:
                 return method_info
+
+    def create_reflect_http_method_instance(self, http_verb, **kwargs):
+        """Basically clone this instance but for the specific http_verb
+
+        This is mainly for things like ANY
+
+        :param http_verb: str, the http verb (eg, GET or POST)
+        :returns: ReflectMethod, it will have the same target as
+            self.get_target() but, most likely, a different http_verb
+        """
+        return self.reflect_class().create_reflect_http_method_instance(
+            http_verb,
+            self.name,
+            **kwargs
+        )
+
+    def has_body(self):
+        """Returns True if http_verb accepts a body in the request"""
+        return self.http_verb_has_body(self.http_verb)
 
 
 class ReflectParam(ReflectObject):
@@ -1685,19 +1719,17 @@ class Operation(OpenABC):
     def init_instance(self, reflect_method, **kwargs):
         """Sets the required params when creating a new instance of this class
 
-        :param reflect_method: ReflectMethod
-        :keyword http_verb: Optional[str], the http verb (eg GET), this can be
-            different from `reflect_method.http_verb` because of ANY, this is
-            why it can be passed in separately if needed
+        :param reflect_method: ReflectMethod, this instance should have a
+            PathItem supported http_verb which means instances for ANY or
+            things like that should already have been handled
         """
-        self.http_verb = kwargs.get("http_verb", reflect_method.http_verb)
         self.reflect_method = reflect_method
         self.set_docblock(reflect_method.get_docblock())
 
     def get_parameters_value(self, **kwargs):
         # if this operation has a body then we put the url params in the body
         # instead
-        if not self.reflect_method.has_body(self.http_verb):
+        if not self.reflect_method.has_body():
             parameters = []
 
             # this is a positional argument (part of path) or query param
@@ -1737,7 +1769,7 @@ class Operation(OpenABC):
         """
         parts = []
         rc = self.reflect_method.reflect_class()
-        parts.append(self.http_verb.lower())
+        parts.append(self.reflect_method.http_verb.lower())
         for k in rc.value["module_keys"]:
             parts.append(NamingConvention(k).upper_camelcase())
 
@@ -1753,7 +1785,7 @@ class Operation(OpenABC):
         return "".join(parts)
 
     def get_request_body_value(self, **kwargs):
-        if self.reflect_method.has_body(self.http_verb):
+        if self.reflect_method.has_body():
             rb = self.create_instance(
                 "request_body_class",
                 **kwargs
@@ -2006,14 +2038,19 @@ class PathItem(OpenABC):
             operation["responses"].pop("405", None)
             self.set_operation(reflect_method.http_verb, operation)
 
-    def set_any_operation(self, reflect_method):
+    def set_any_operation(self, reflect_method, **kwargs):
         """Controllers support an ANY catch-all http verb method, this doesn't
         work for things like OpenAPI so this converts ANY to GET and POST
         """
-        for http_verb in ["GET", "POST"]:
+        http_verbs = kwargs.get("http_verbs", ["GET", "POST"])
+
+        for http_verb in http_verbs:
+            verb_rmethod = reflect_method.create_reflect_http_method_instance(
+                http_verb
+            )
+
             operation = self.create_operation_instance(
-                reflect_method,
-                http_verb=http_verb
+                verb_rmethod,
             )
             self.set_operation(http_verb, operation)
 
