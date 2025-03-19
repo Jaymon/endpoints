@@ -579,6 +579,35 @@ class OperationTest(TestCase):
         self.assertEqual(0, len(pi.parameters))
         self.assertEqual("query", pi["get"]["parameters"][0]["in"])
 
+    def test_security(self):
+        oa = self.create_openapi("")
+
+        # add some more security schemes
+        components = oa.components
+        schemes = oa.components.securitySchemes
+        schemes["auth_basic_q"] = components.create_security_scheme_instance(
+            type="apiKey",
+            name="basic_key",
+            _in="query"
+        )
+        schemes["auth_basic_h"] = components.create_security_scheme_instance(
+            type="apiKey",
+            name="X-Basic-Key",
+            _in="header"
+        )
+
+        # create a method we will use to create a path item to check to make
+        # sure the security key was populated correctly
+        rm = self.create_reflect_methods("""
+            class Foo(Controller):
+                @auth_basic
+                def POST(self):
+                    pass
+        """)[0]
+        pi = oa.create_instance("path_item_class")
+        pi.add_method(rm)
+        self.assertEqual(3, len(pi["post"]["security"]))
+
 
 class SchemaTest(TestCase):
     def test_list_value_types(self):
@@ -639,6 +668,22 @@ class ComponentsTest(TestCase):
         schemes = oa.components.securitySchemes
         self.assertTrue("auth_basic" in schemes)
         self.assertTrue("auth_bearer" in schemes)
+
+    def test_security_scheme_in_keyword(self):
+        """This just makes sure that passing in kwarg _in=... works as
+        expected"""
+        oa = self.create_openapi("")
+
+        # add some more security schemes
+        components = oa.components
+        schemes = oa.components.securitySchemes
+
+        schemes["foo"] = components.create_security_scheme_instance(
+            type="apiKey",
+            name="basic_key",
+            _in="query"
+        )
+        self.assertTrue("in" in schemes["foo"])
 
     def test_add_schema(self):
         oa = self.create_openapi("")

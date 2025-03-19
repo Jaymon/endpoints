@@ -580,6 +580,11 @@ class OpenABC(dict):
                     if kwargs[k]:
                         self[k] = kwargs[k]
 
+                elif field.owner_name in kwargs:
+                    # allow things like _in=... to work
+                    if kwargs[field.owner_name]:
+                        self[k] = kwargs[field.owner_name]
+
                 else:
                     if m := self.get_value_method(k, field):
                         logger.debug(
@@ -855,19 +860,14 @@ class SecurityRequirement(OpenABC):
     """
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#security-requirement-object
     """
-    def init_instance(self, reflect_method, **kwargs):
-        self.reflect_method = reflect_method
+    def set_security_scheme(self, scheme_name, scheme):
+        """Set the security scheme for this requirement
 
-    def set_fields(self, **kwargs):
-        super().set_fields(**kwargs)
-
-        for rd in self.reflect_method.reflect_ast_decorators():
-            name = rd.name
-            if name.startswith("auth_"):
-                security_schemes = self.root.components.securitySchemes
-                for scheme_name in security_schemes.keys():
-                    if scheme_name.startswith(name):
-                        self[name] = []
+        :param scheme_name: str, the name of the SecurityScheme instance found
+            in `components["security_schemes"]`
+        :param scheme: SecurityScheme
+        """
+        self[scheme_name] = []
 
 
 class Tag(OpenABC):
@@ -1795,13 +1795,23 @@ class Operation(OpenABC):
 
     def get_security_value(self, **kwargs):
         sreqs = []
-        sr = self.create_instance(
-            "security_requirement_class",
-            self.reflect_method,
-            **kwargs
-        )
-        if sr:
-            sreqs = [sr]
+        if security_schemes := self.root.components.securitySchemes:
+            for rd in self.reflect_method.reflect_ast_decorators():
+                name = rd.name
+                if name.startswith("auth_"):
+                    for scheme_name, scheme in security_schemes.items():
+                        if scheme_name.startswith(name):
+                            sr = self.create_instance(
+                                "security_requirement_class",
+                                **kwargs
+                            )
+                            sr.set_security_scheme(
+                                scheme_name,
+                                scheme
+                            )
+
+                            if sr:
+                                sreqs.append(sr)
 
         return sreqs
 
@@ -2129,6 +2139,21 @@ class Components(OpenABC):
         rs = self.create_schema_instance()
         rs["$ref"] = self.get_schema_ref(name_or_ref)
         return rs
+
+    def create_security_scheme_instance(self, **kwargs):
+        """Create a security scheme instance
+
+        This is a helper for child classes who will almost always need to
+        override `.get_security_schemes_value` to return SecurityScheme
+        instances that correlate to that specific API
+
+        :param **kwargs: passed through to SecurityScheme.__init__
+        :returns: SecurityScheme
+        """
+        return self.create_instance(
+            "security_scheme_class",
+            **kwargs
+        )
 
     def get_schema(self, name_or_ref):
         """Returns the full schema matching name
