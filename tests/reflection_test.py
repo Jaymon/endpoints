@@ -505,16 +505,6 @@ class OpenAPITest(TestCase):
         pi = oa.paths["/bar"]
         self.assertEqual(["bar"], pi["get"]["tags"])
 
-    def test_str_return_media_type(self):
-        oa = self.create_openapi("""
-            class Default(Controller):
-                def GET(self, param, *args, **kwargs) -> str:
-                    pass
-        """)
-
-        content = oa.paths["/"]["get"]["responses"]["200"]["content"]
-        self.assertTrue("text/html" in content)
-
 
 class PathItemTest(TestCase):
     def test_multiple_path_with_options(self):
@@ -661,6 +651,17 @@ class SchemaTest(TestCase):
         self.assertFalse("required" in d)
         self.assertTrue("type" in d)
 
+    def test_set_schema(self):
+        schema = Schema(None)
+        schema.set_type(ReflectType(str))
+
+        schema2 = Schema(None)
+        schema2.set_type(ReflectType(dict[str, int]))
+        self.assertNotEqual(schema, schema2)
+
+        schema.set_schema(schema2)
+        self.assertEqual(schema, schema2)
+
 
 class ComponentsTest(TestCase):
     def test_get_security_schemes_value(self):
@@ -707,4 +708,31 @@ class ComponentsTest(TestCase):
 
         s4 = oa.components.get_schema("foo")
         self.assertEqual(s, s4)
+
+
+class ResponseTest(TestCase):
+    def test_infer_or_type(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def ANY(self) -> dict[str, int]|list[int]|None:
+                    return None
+        """)
+
+        responses = oa.paths["/"]["post"].responses
+
+        self.assertTrue("204" in responses)
+
+        schema = responses["200"]["content"]["application/json"]["schema"]
+        self.assertTrue("oneOf" in schema)
+        self.assertEqual(2, len(schema["oneOf"]))
+
+    def test_str_return_media_type(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def GET(self, param, *args, **kwargs) -> str:
+                    pass
+        """)
+
+        content = oa.paths["/"]["get"]["responses"]["200"]["content"]
+        self.assertTrue("text/html" in content)
 

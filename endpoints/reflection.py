@@ -1064,10 +1064,28 @@ class Schema(OpenABC):
         extending the response schema for child projects"""
         self.reflect_method = reflect_method
         if rt := self.reflect_method.reflect_return_type():
-            self.set_type(rt)
+            schemas = []
+            for srt in rt.reflect_actionable_types(depth=1):
+                if not srt.is_none():
+                    schema = self.create_schema_instance()
+                    schema.set_type(srt)
+                    schemas.append(schema)
+
+            if schemas:
+                if len(schemas) == 1:
+                    self.set_schema(schemas[0])
+
+                else:
+                    self.clear()
+                    self["oneOf"] = schemas
 
     def set_error_method(self, reflect_method):
         self.reflect_method = reflect_method
+
+    def set_schema(self, schema):
+        """When you want self to look exactly like schema"""
+        self.clear()
+        self.update(schema)
 
     def set_type(self, reflect_type):
         """Set this schema as this type"""
@@ -1246,7 +1264,7 @@ class Schema(OpenABC):
             ret["type"] = "null"
 
         else:
-            raise ValueError(f"Not sure how to handle type {t}")
+            raise ValueError(f"Not sure how to handle type {rt}")
 
         return ret
 
@@ -1824,17 +1842,21 @@ class Operation(OpenABC):
         :returns: dict[str, Response]
         """
         responses = {}
-        code = "200"
 
         if rt := self.reflect_method.reflect_return_type():
-            if rt.is_none():
-                code = "204"
+            for srt in rt.reflect_types():
+                if srt.is_none():
+                    code = "204"
+                    responses[code] = self.create_response_instance(code)
+
+                else:
+                    code = "200"
+                    responses[code] = self.create_response_instance(code)
 
         elif not list(self.reflect_method.reflect_ast_returns()):
             code = "204"
+            responses[code] = self.create_response_instance(code)
 
-        response = self.create_response_instance(code)
-        responses[response.code] = self.create_response_instance(code)
         return responses
 
     def get_responses_error_value(self):
