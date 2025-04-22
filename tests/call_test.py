@@ -171,17 +171,38 @@ class ControllerTest(TestCase):
         self.assertEqual(1, res.body)
 
     def test_error_response_code_already_set(self):
+        """If the controller body sets a response.code and then an error is
+        raised the code should be overridden"""
         """If the controller body sets the response.code don't override it
         even in the error handler"""
         c = self.create_server("""
             class Default(Controller):
                 async def ANY(self):
                     self.response.code = 330
-                    raise ValueError("code should not change")
+                    self.response.body = "this should be overridden"
+                    raise ValueError("this should be the body")
         """)
 
         res = c.handle("/")
-        self.assertEqual(330, res.code)
+        self.assertEqual(500, res.code)
+        self.assertTrue(isinstance(res.body, ValueError))
+
+    def test_callerror_body_from(self):
+        """If a CallError doesn't set a body but does use
+        `rase CallError(...) from e` then use e as the body"""
+        c = self.create_server("""
+            class Default(Controller):
+                async def ANY(self):
+                    try:
+                        raise ValueError("foo bar")
+
+                    except ValueError as e:
+                        raise CallError(430) from e
+        """)
+
+        res = c.handle("/")
+        self.assertEqual(430, res.code)
+        self.assertTrue(isinstance(res.body, ValueError))
 
 
 class RouterTest(TestCase):

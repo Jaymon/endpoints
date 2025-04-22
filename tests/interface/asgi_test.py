@@ -63,21 +63,19 @@ class HTTPTest(_HTTPTestCase):
     application_class = Application
 
     def test_response_body_error(self):
-        s = self.create_server(
-            [
-                "class Application(Application):",
-                "    sentinel = False",
-                "    @classmethod",
-                "    def dump_json(cls, body, **kwargs):",
-                "        if cls.sentinel:",
-                "           return super().dump_json(body, **kwargs)",
-                "        cls.sentinel = True",
-                "        raise ValueError()",
-                "",
-                "class Default(Controller):",
-                "    def GET(self): return 1",
-            ],
-        )
+        s = self.create_server("""
+            class Application(Application):
+                sentinel = False
+                @classmethod
+                def dump_json(cls, body, **kwargs):
+                    if cls.sentinel:
+                       return super().dump_json(body, **kwargs)
+                    cls.sentinel = True
+                    raise ValueError()
+
+            class Default(Controller):
+                def GET(self): return 1
+        """)
         c = self.create_client()
 
         r = c.get("/")

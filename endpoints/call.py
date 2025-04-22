@@ -1093,12 +1093,22 @@ class Controller(object):
         instance using `Application.create_error_controller` and use that
         instance to call this method
 
-        This method will set the response body and code.
+        This method will set the response body and code and can infer certain
+        codes depending on the error, if you don't want things to be
+        inferred you should absolutely use `CallError(code, body)` to make
+        sure the code and you body you want is used
 
         :param e: Exception, the error that was raised
         """
         request = self.request
         response = self.response
+
+        # we override any previously set body and code because the error
+        # could've happened after a success body was set and it wouldn't
+        # make much sense to send down a success body with an error code
+        # or a success code with an error body
+        response.body = e
+        response.code = 500
 
         if isinstance(e, CloseConnection):
             raise
@@ -1110,7 +1120,6 @@ class Controller(object):
             logger.debug(String(e))
             response.code = e.code
             response.add_headers(e.headers)
-            #response.body = e.body if e.code != 204 else None
             response.body = e.body
 
         elif isinstance(e, Redirect):
@@ -1124,66 +1133,57 @@ class Controller(object):
 
             response.code = e.code
             response.add_headers(e.headers)
-            if e.body is not None:
-                response.body = e.body
+            body = e.body or e.__cause__
+            if body is not None:
+                response.body = body
 
-        else:
-            if response.body is None:
-                response.body = e
+        elif isinstance(e, NotImplementedError):
+            response.code = 501
 
-            if response.code is None:
-                response.code = 500
-
-                if isinstance(e, NotImplementedError):
-                    response.code = 501
-
-                elif isinstance(e, TypeError):
-                    e_msg = String(e)
-                    if controller_info := request.controller_info:
-                        # filter out TypeErrors raised from non handler methods
-                        if (
-                            controller_info["http_method_name"] in e_msg
-                            and "argument" in e_msg
-                        ):
-                            if "positional" in e_msg:
-                                # <METHOD>() missing 1 required positional
-                                # argument: <ARGUMENT> TypeError: <METHOD>()
-                                #   takes
-                                # exactly M argument (N given) TypeError:
-                                # <METHOD>() takes no arguments (N given)
-                                # TypeError: <METHOD>() takes M positional
-                                # arguments but N were given TypeError:
-                                #   <METHOD>()
-                                # takes 1 positional argument but N were given
-                                self.log_error_warning(e)
-                                response.code = 404
-
-                            elif (
-                                "keyword" in e_msg
-                                or "multiple values" in e_msg
-                            ):
-                                # <METHOD>() got an unexpected keyword
-                                # argument '<NAME>'
-                                # <METHOD>() missing 1 required keyword-only
-                                # argument: <ARGUMENT>
-                                # TypeError: <METHOD>() got multiple values for
-                                #   keyword
-                                # argument '<NAME>'
-                                self.log_error_warning(e)
-                                response.code = 400
-
-                            else:
-                                logger.exception(e)
-
-                        else:
-                            logger.exception(e)
-
-                    else:
+        elif isinstance(e, TypeError):
+            e_msg = String(e)
+            if controller_info := request.controller_info:
+                # filter out TypeErrors raised from non handler methods
+                if (
+                    controller_info["http_method_name"] in e_msg
+                    and "argument" in e_msg
+                ):
+                    if "positional" in e_msg:
+                        # <METHOD>() missing 1 required positional
+                        # argument: <ARGUMENT> TypeError: <METHOD>()
+                        #   takes
+                        # exactly M argument (N given) TypeError:
+                        # <METHOD>() takes no arguments (N given)
+                        # TypeError: <METHOD>() takes M positional
+                        # arguments but N were given TypeError:
+                        #   <METHOD>()
+                        # takes 1 positional argument but N were given
                         self.log_error_warning(e)
                         response.code = 404
 
+                    elif "keyword" in e_msg or "multiple values" in e_msg:
+                        # <METHOD>() got an unexpected keyword
+                        # argument '<NAME>'
+                        # <METHOD>() missing 1 required keyword-only
+                        # argument: <ARGUMENT>
+                        # TypeError: <METHOD>() got multiple values for
+                        #   keyword
+                        # argument '<NAME>'
+                        self.log_error_warning(e)
+                        response.code = 400
+
+                    else:
+                        logger.exception(e)
+
                 else:
                     logger.exception(e)
+
+            else:
+                self.log_error_warning(e)
+                response.code = 404
+
+        else:
+            logger.exception(e)
 
         if not response.media_type:
             for mtinfo in self.get_response_media_types():
@@ -1204,9 +1204,6 @@ class Controller(object):
 
         This is called after all similar decorators methods, it's the last
         stop before body is sent to the client by the interface
-
-        NOTE -- this is called before Response.body is set, the value returned
-        from this method will be set in Response.body
 
         :param body: Any, the value returned from the requested method before
             it is set into Response.body
