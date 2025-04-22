@@ -1,8 +1,6 @@
 # -*- coding: utf-8 -*-
 import asyncio
 
-from requests.auth import _basic_auth_str
-
 from endpoints.compat import *
 from endpoints.utils import ByteString
 from endpoints.call import (
@@ -171,6 +169,19 @@ class ControllerTest(TestCase):
         res = c.handle('/foo')
         self.assertEqual(200, res.code)
         self.assertEqual(1, res.body)
+
+    def test_error_response_code_already_set(self):
+        """If the controller body sets the response.code don't override it
+        even in the error handler"""
+        c = self.create_server("""
+            class Default(Controller):
+                async def ANY(self):
+                    self.response.code = 330
+                    raise ValueError("code should not change")
+        """)
+
+        res = c.handle("/")
+        self.assertEqual(330, res.code)
 
 
 class RouterTest(TestCase):
@@ -576,7 +587,8 @@ class RequestTest(TestCase):
         self.assertEqual("", r.get_auth_scheme())
         self.assertFalse(r.is_auth("basic"))
 
-        r.set_headers({"Authorization": _basic_auth_str("foo", "bar")})
+        # r.basic_auth("foo", "bar")
+        r.set_headers({"Authorization": "Basic foobar"})
         self.assertTrue(r.is_auth("basic"))
         self.assertTrue(r.is_auth("client"))
         self.assertFalse(r.is_auth("token"))

@@ -1100,9 +1100,6 @@ class Controller(object):
         request = self.request
         response = self.response
 
-        response.code = 500
-        response.body = e
-
         if isinstance(e, CloseConnection):
             raise
 
@@ -1130,48 +1127,63 @@ class Controller(object):
             if e.body is not None:
                 response.body = e.body
 
-        elif isinstance(e, NotImplementedError):
-            response.code = 501
+        else:
+            if response.body is None:
+                response.body = e
 
-        elif isinstance(e, TypeError):
-            e_msg = String(e)
-            if controller_info := request.controller_info:
-                # filter out TypeErrors raised from non handler methods
-                correct_prefix = controller_info["http_method_name"] in e_msg
-                if correct_prefix and "argument" in e_msg:
-                    if "positional" in e_msg:
-                        # <METHOD>() missing 1 required positional
-                        # argument: <ARGUMENT> TypeError: <METHOD>() takes
-                        # exactly M argument (N given) TypeError:
-                        # <METHOD>() takes no arguments (N given)
-                        # TypeError: <METHOD>() takes M positional
-                        # arguments but N were given TypeError: <METHOD>()
-                        # takes 1 positional argument but N were given
+            if response.code is None:
+                response.code = 500
+
+                if isinstance(e, NotImplementedError):
+                    response.code = 501
+
+                elif isinstance(e, TypeError):
+                    e_msg = String(e)
+                    if controller_info := request.controller_info:
+                        # filter out TypeErrors raised from non handler methods
+                        if (
+                            controller_info["http_method_name"] in e_msg
+                            and "argument" in e_msg
+                        ):
+                            if "positional" in e_msg:
+                                # <METHOD>() missing 1 required positional
+                                # argument: <ARGUMENT> TypeError: <METHOD>()
+                                #   takes
+                                # exactly M argument (N given) TypeError:
+                                # <METHOD>() takes no arguments (N given)
+                                # TypeError: <METHOD>() takes M positional
+                                # arguments but N were given TypeError:
+                                #   <METHOD>()
+                                # takes 1 positional argument but N were given
+                                self.log_error_warning(e)
+                                response.code = 404
+
+                            elif (
+                                "keyword" in e_msg
+                                or "multiple values" in e_msg
+                            ):
+                                # <METHOD>() got an unexpected keyword
+                                # argument '<NAME>'
+                                # <METHOD>() missing 1 required keyword-only
+                                # argument: <ARGUMENT>
+                                # TypeError: <METHOD>() got multiple values for
+                                #   keyword
+                                # argument '<NAME>'
+                                self.log_error_warning(e)
+                                response.code = 400
+
+                            else:
+                                logger.exception(e)
+
+                        else:
+                            logger.exception(e)
+
+                    else:
                         self.log_error_warning(e)
                         response.code = 404
 
-                    elif "keyword" in e_msg or "multiple values" in e_msg:
-                        # <METHOD>() got an unexpected keyword
-                        # argument '<NAME>'
-                        # <METHOD>() missing 1 required keyword-only
-                        # argument: <ARGUMENT>
-                        # TypeError: <METHOD>() got multiple values for keyword
-                        # argument '<NAME>'
-                        self.log_error_warning(e)
-                        response.code = 400
-
-                    else:
-                        logger.exception(e)
-
                 else:
                     logger.exception(e)
-
-            else:
-                self.log_error_warning(e)
-                response.code = 404
-
-        else:
-            logger.exception(e)
 
         if not response.media_type:
             for mtinfo in self.get_response_media_types():
