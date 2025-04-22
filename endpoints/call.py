@@ -1133,9 +1133,8 @@ class Controller(object):
 
             response.code = e.code
             response.add_headers(e.headers)
-            body = e.body or e.__cause__
-            if body is not None:
-                response.body = body
+            if e.body is not None:
+                response.body = e.body
 
         elif isinstance(e, NotImplementedError):
             response.code = 501
