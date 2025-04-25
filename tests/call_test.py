@@ -187,23 +187,6 @@ class ControllerTest(TestCase):
         self.assertEqual(500, res.code)
         self.assertTrue(isinstance(res.body, ValueError))
 
-#     def test_callerror_body_from(self):
-#         """If a CallError doesn't set a body but does use
-#         `rase CallError(...) from e` then use e as the body"""
-#         c = self.create_server("""
-#             class Default(Controller):
-#                 async def ANY(self):
-#                     try:
-#                         raise ValueError("foo bar")
-# 
-#                     except ValueError as e:
-#                         raise CallError(430) from e
-#         """)
-# 
-#         res = c.handle("/")
-#         self.assertEqual(430, res.code)
-#         self.assertTrue(isinstance(res.body, ValueError))
-
 
 class RouterTest(TestCase):
     def test_paths_depth_1(self):

@@ -20,7 +20,7 @@ from datatypes import (
     cachedproperty,
     Dirpath,
     NamingConvention,
-    ClassFinder,
+    ClassKeyFinder,
     HTTPClient,
 )
 from datatypes.reflection import ReflectObject
@@ -415,25 +415,6 @@ class Field(dict):
         owner.fields[self.name] = self
 
 
-class OpenFinder(ClassFinder):
-    """Used by OpenABC to keep track of all children"""
-    def _is_valid_subclass(self, klass):
-        return issubclass(klass, OpenABC) and klass is not OpenABC
-
-    def add_node(self, key, node, value):
-        super().add_node(key, node, value)
-
-        # this is the root node
-        if not self.parent and len(self) == 1:
-            self.class_keys = {}
-
-        class_key = f"{NamingConvention(key.__name__).varname()}_class"
-        self.root.class_keys[class_key] = key
-
-    def find_class(self, class_key):
-        return self.root.class_keys[class_key]
-
-
 class OpenABC(dict):
     """The base type for all the OpenAPI objects
 
@@ -491,7 +472,7 @@ class OpenABC(dict):
     """Holds the absolute root of the OpenApi document, this will
     be an OpenAPI instance"""
 
-    classfinder = OpenFinder()
+    classfinder = ClassKeyFinder()
     """This is used for children to easily get the absolute child class and
     is used in .create_instance"""
 
@@ -527,8 +508,7 @@ class OpenABC(dict):
 
         https://peps.python.org/pep-0487/
         """
-        cls.classfinder.add_class(cls)
-        super().__init_subclass__()
+        cls.classfinder.add_class(cls, OpenABC)
 
     def __getattr__(self, key):
         try:
