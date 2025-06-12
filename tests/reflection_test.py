@@ -103,10 +103,7 @@ class ReflectMethodTest(TestCase):
     def test_reflect_params_post(self):
         rc = self.create_reflect_controllers("""
             class Foo(Controller):
-                @param(0)
-                @param("bar", type=int, help="bar variable")
-                @param("che", type=str, required=False, help="che variable")
-                def POST(self, *args, **kwargs):
+                def POST(self, foo, /, *, bar: int, che: str = None):
                     pass
         """)[0]
 
@@ -119,10 +116,7 @@ class ReflectMethodTest(TestCase):
     def test_reflect_params_get(self):
         rc = self.create_reflect_controllers("""
             class Foo(Controller):
-                @param(0)
-                @param("bar", type=int, help="bar variable")
-                @param("che", type=str, required=False, help="che variable")
-                def GET(self, *args, **kwargs):
+                def GET(self, foo, /, bar: int, che: str = ""):
                     pass
         """)[0]
 
@@ -135,9 +129,7 @@ class ReflectMethodTest(TestCase):
     def test_get_url_path_1(self):
         rm = self.create_reflect_methods("""
             class Foo(Controller):
-                @param(0)
-                @param(1)
-                def POST(self, bar, che):
+                def POST(self, bar, che, /):
                     pass
         """)[0]
         self.assertEqual("/foo/{bar}/{che}", rm.get_url_path())
@@ -147,8 +139,7 @@ class ReflectMethodTest(TestCase):
         """
         rm = self.create_reflect_methods("""
             class Default(Controller):
-                @param(0)
-                def POST(self, bar):
+                def POST(self, bar, /):
                     pass
         """)[0]
         self.assertEqual("/{bar}", rm.get_url_path())
@@ -161,21 +152,21 @@ class ReflectMethodTest(TestCase):
         self.assertEqual("/", rm.get_url_path())
 
     def test_get_http_method_names_1(self):
-        rcs = self.create_reflect_controllers([
-            "class _ParentController(Controller):",
-            "    def GET(self):",
-            "        pass",
-            "",
-            "class Foo(_ParentController):",
-            "    def GET_one(self):",
-            "        pass",
-            "    def GET_two(self):",
-            "        pass",
-            "    def POST_one(self):",
-            "        pass",
-            "    def ANY(self):",
-            "        pass",
-        ])
+        rcs = self.create_reflect_controllers("""
+            class _ParentController(Controller):
+                def GET(self):
+                    pass
+
+            class Foo(_ParentController):
+                def GET_one(self):
+                    pass
+                def GET_two(self):
+                    pass
+                def POST_one(self):
+                    pass
+                def ANY(self):
+                    pass
+        """)
 
         for rc in rcs:
             controller_method_names = rc.get_http_method_names()
@@ -190,15 +181,26 @@ class ReflectMethodTest(TestCase):
             self.assertEqual(["ANY"], method_names)
 
     def test_get_http_method_names_no_options(self):
-        rcs = self.create_reflect_controllers([
-            "class Foo(Controller):",
-            "    cors = False",
-            "    def GET(self):",
-            "        pass",
-        ])
+        rcs = self.create_reflect_controllers("""
+            class Foo(Controller):
+                cors = False
+                def GET(self):
+                    pass
+        """)
 
         controller_method_names = rcs[0].get_method_names()
         self.assertFalse("OPTIONS" in controller_method_names)
+
+    def test_get_method_info(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET_foo(self, foo, bar, /, *, che, **kwargs):
+                    pass
+        """)[0]
+
+        method_info = rm.get_method_info()
+        self.assertEqual("GET_foo", method_info["method_name"])
+        self.assertEqual(3, len(method_info["params"]))
 
 
 class OpenABCTest(TestCase):
