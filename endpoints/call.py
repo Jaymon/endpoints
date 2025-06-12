@@ -446,24 +446,6 @@ class Pathfinder(ClasspathFinder):
 
             for rm in rc.reflect_http_methods():
                 method_info = rm.get_method_info()
-
-
-#                 method_info = {}
-#                 rt = rm.reflect_return_type()
-#                 for mtinfo in value["class"].get_response_media_types():
-#                     exactcheck = rt is not None and rt.is_type(mtinfo[0])
-#                     anycheck = mtinfo[0] is Any or mtinfo[0] is object
-#                     if exactcheck or anycheck:
-#                         if callable(mtinfo[1]):
-#                             method_info["response_callback"] = mtinfo[1]
-# 
-#                         else:
-#                             method_info["response_media_type"] = mtinfo[1]
-# 
-#                         if exactcheck:
-#                             break
-# 
-#                 method_info.setdefault("method_name", rm.name)
                 value["http_method_names"][rm.http_verb].append(method_info)
 
             logger.debug(

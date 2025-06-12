@@ -227,13 +227,6 @@ class ReflectMethod(ReflectCallable):
         for name in signature_info["names"]:
             yield self.create_reflect_param_instance(name, signature_info)
 
-#     def reflect_params(self):
-#         """This will reflect all params defined with the @param decorator"""
-#         unwrapped = self.get_unwrapped()
-#         if params := getattr(unwrapped, "params", []):
-#             for param in (p.param for p in params):
-#                 yield self.create_reflect_param_instance(param)
-
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
         the body on a POST request"""
@@ -242,27 +235,12 @@ class ReflectMethod(ReflectCallable):
                 if rp.is_keyword():
                     yield rp
 
-#     def reflect_body_params(self):
-#         """This will reflect all the params that are usually passed up using
-#         the body on a POST request"""
-#         if self.has_body():
-#             for rp in self.reflect_params():
-#                 if rp.target.is_kwarg:
-#                     yield rp
-
     def reflect_url_params(self):
         """This will reflect params that need to be in the url path or the
         query part of the url"""
         for rp in self.reflect_params():
             if rp.is_positional() or not self.has_body():
                 yield rp
-
-#     def reflect_url_params(self):
-#         """This will reflect params that need to be in the url path or the
-#         query part of the url"""
-#         for rp in self.reflect_params():
-#             if not rp.target.is_kwarg or not self.has_body():
-#                 yield rp
 
     def reflect_query_params(self):
         """This will reflect params that need to be in the query part of the
@@ -271,35 +249,11 @@ class ReflectMethod(ReflectCallable):
             if rp.is_keyword() and not self.has_body():
                 yield rp
 
-#     def reflect_query_params(self):
-#         """This will reflect params that need to be in the query part of the
-#         url"""
-#         for rp in self.reflect_params():
-#             if rp.target.is_kwarg and not self.has_body():
-#                 yield rp
-
     def reflect_path_params(self):
         """This will reflect params that need to be in the url path"""
         for rp in self.reflect_params():
             if rp.is_positional():
                 yield rp
-
-#     def reflect_path_params(self):
-#         """This will reflect params that need to be in the url path"""
-#         rps = []
-#         for rp in self.reflect_params():
-#             if not rp.target.is_kwarg:
-#                 rps.append(rp)
-# 
-#         # now they need to be sorted to make sure they are in order: 0 -> N
-#         return sorted(rps, key=lambda rp: rp.get_target().index)
-
-#     def create_reflect_param_instance(self, param, **kwargs):
-#         kwargs["reflect_method"] = self
-#         return kwargs.pop("reflect_param_class", ReflectParam)(
-#             param,
-#             **kwargs
-#         )
 
     def create_reflect_param_instance(self, name, signature_info, **kwargs):
         kwargs["reflect_method"] = self
@@ -460,60 +414,6 @@ class ReflectParam(ReflectObject):
 
     def is_positional(self):
         return self.flags["is_positional"]
-
-
-
-# class ReflectParam(ReflectObject):
-#     """Reflects a Param instance
-# 
-#     Reflected params only apply to http methods on controllers
-#     """
-#     def __init__(self, target, reflect_method, **kwargs):
-#         self._reflect_method = reflect_method
-#         super().__init__(target)
-# 
-#         if "name" in kwargs:
-#             self.name = kwargs["name"]
-# 
-#         else:
-#             if target.is_kwarg:
-#                 self.name = target.name
-# 
-#             else:
-#                 si = reflect_method.get_signature_info()
-#                 if len(si["names"]) > target.index:
-#                     self.name = si["names"][target.index]
-# 
-#                 else:
-#                     self.name = target.index
-# 
-#     def reflect_class(self):
-#         return self.reflect_method().reflect_class()
-# 
-#     def reflect_method(self):
-#         return self._reflect_method
-# 
-#     def is_required(self):
-#         return self.target.flags.get("required", False)
-# 
-#     def reflect_type(self):
-#         """Reflect the param's type argument if present"""
-#         flags = self.get_target().flags
-#         list_actions = set([
-#             "store_list",
-#             "append",
-#             "append_list",
-#             "extend",
-#         ])
-#         if flags["action"] in list_actions:
-#             t = list
-# 
-#         else:
-#             t = flags.get("type", str)
-#             if t is None:
-#                 t = str
-# 
-#         return self.create_reflect_type(t)
 
 
 class Field(dict):
