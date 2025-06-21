@@ -22,7 +22,7 @@ class TestCase(TestCase):
         server = self.create_server(*args, **kwargs)
         pf = server.application.router.pathfinder
         for keys, value in pf.get_class_items():
-            rcs.append(ReflectController(keys, value))
+            rcs.append(value["reflect_class"])
         return rcs
 
     def create_reflect_methods(self, *args, **kwargs):
@@ -97,6 +97,26 @@ class ReflectControllerTest(TestCase):
         self.assertEqual("foo_bar", rms[0].module_basename)
         self.assertEqual("baz", rms[1].module_key)
         self.assertEqual("baz", rms[1].module_basename)
+
+    def test_get_url_path(self):
+        rcs = self.create_reflect_controllers("""
+            class Bar(object):
+                class Foo(Controller):
+                    def GET(self):
+                        pass
+
+            class Che(Controller):
+                def GET(self):
+                    pass
+
+            class Default(Controller):
+                def GET(self):
+                    pass
+        """)
+
+        self.assertEqual("/", rcs[0].get_url_path())
+        self.assertEqual("/che", rcs[1].get_url_path())
+        self.assertEqual("/bar/foo", rcs[2].get_url_path())
 
 
 class ReflectMethodTest(TestCase):
@@ -201,6 +221,29 @@ class ReflectMethodTest(TestCase):
         method_info = rm.get_method_info()
         self.assertEqual("GET_foo", method_info["method_name"])
         self.assertEqual(3, len(method_info["params"]))
+
+
+class ReflectParamTest(TestCase):
+    def test_type_string_casting(self):
+        """I made a change in v4.0.0 that would encode a value to String when
+        the param type was a str descendent, but my change was bad because it
+        would just cast it to a String, not to the type, this makes sure
+        that's fixed"""
+        c = self.create_server("""
+            from endpoints.compat import String
+            from endpoints import Controller, param
+
+            class Che(String):
+                def __new__(cls, *args, **kwargs):
+                    return super().__new__(cls, *args, **kwargs)
+
+            class Default(Controller):
+                def POST_bar(self, che: Che):
+                    return che.__class__.__name__
+        """)
+
+        r = c.post("/", {"che": "1234"})
+        self.assertEqual("Che", r._body)
 
 
 class OpenABCTest(TestCase):

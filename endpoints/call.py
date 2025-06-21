@@ -413,10 +413,13 @@ class Pathfinder(ClasspathFinder):
         key = NamingConvention(key).kebabcase()
         return super()._get_node_module_info(key, **kwargs)
 
-    def create_reflect_controller_instance(self, keys, value, **kwargs):
+    def create_reflect_controller_instance(self, target, **kwargs):
+        module_keys = kwargs.get("module_keys", [])
+        class_keys = kwargs.get("class_keys", [])
+        base_keys = module_keys + class_keys
         return kwargs.get("reflect_controller_class", ReflectController)(
-            keys,
-            value
+            target,
+            base_keys=base_keys,
         )
 
     def _get_node_class_info(self, key, **kwargs):
@@ -425,41 +428,55 @@ class Pathfinder(ClasspathFinder):
         key. If it's a waypoint key then it will normalize to kebab case
         """
         if "class" in kwargs:
-            if key in self.kwargs["ignore_class_keys"]:
-                key = None
-                keys = kwargs["keys"]
-
-            else:
-                key = kwargs["class"].get_name()
-                keys = kwargs["keys"] + [key]
+            # The actual controller `Che` in: Foo.Bar.Che
+            key = kwargs["class"].get_name()
+            rc = self.create_reflect_controller_instance(
+                kwargs["class"],
+                **kwargs
+            )
 
         else:
+            # can be `Foo` or `Bar` in: Foo.Bar.Che
             key = NamingConvention(key).kebabcase()
+            rc = None
+
 
         key, value = super()._get_node_class_info(key, **kwargs)
 
-        value["modules"] = kwargs.get("modules", [])
-
-        if "class" in value:
-            rc = self.create_reflect_controller_instance(keys, value)
-            value["http_method_names"] = defaultdict(list)
-
-            for rm in rc.reflect_http_methods():
-                method_info = rm.get_method_info()
-                value["http_method_names"][rm.http_verb].append(method_info)
+        if rc:
+            value["reflect_class"] = rc
 
             logger.debug(
                 (
                     "Registering verbs: {}"
-                    " to path: /{}"
-                    " and controller: {}:{}"
+                    " to path: {}"
+                    " and controller: {}"
                 ).format(
-                    ", ".join(value["http_method_names"].keys()),
-                    "/".join(keys),
-                    value["class"].__module__,
-                    value["class"].__qualname__
+                    ", ".join(rc.get_http_method_names().keys()),
+                    rc.get_url_path(),
+                    rc.classpath,
                 )
             )
+
+#             rc = self.create_reflect_controller_instance(keys, value)
+#             value["http_method_names"] = defaultdict(list)
+# 
+#             for rm in rc.reflect_http_methods():
+#                 method_info = rm.get_method_info()
+#                 value["http_method_names"][rm.http_verb].append(method_info)
+# 
+#             logger.debug(
+#                 (
+#                     "Registering verbs: {}"
+#                     " to path: /{}"
+#                     " and controller: {}:{}"
+#                 ).format(
+#                     ", ".join(value["http_method_names"].keys()),
+#                     "/".join(keys),
+#                     value["class"].__module__,
+#                     value["class"].__qualname__
+#                 )
+#             )
 
         return key, value
 
@@ -524,16 +541,12 @@ class Router(object):
         """Internal method. Create the tree that will be used to resolve a
         requested path to a found controller
 
-        The class fallback is the name of the default controller class, it
-        defaults to `Default` and should probably never be changed
-
         :returns: DictTree, basically a dictionary of dictionaries where each
             key represents a part of a path, the final key will contain the
             controller class that can answer a request
         """
         pathfinder = self.pathfinder_class(
             list(self.controller_modules.keys()),
-            ignore_class_keys=set(["Default"])
         )
 
         controller_classes = self.controller_class.controller_classes
@@ -605,7 +618,7 @@ class Router(object):
 
         ret["method_args"] = controller_args
 
-        # we merge the leftover path args with the body kwargs
+        # we merge the leftover path args with the body args
         ret['method_args'].extend(request.body_args)
 
         ret['method_kwargs'] = request.kwargs
@@ -754,7 +767,7 @@ class Controller(object):
         If you would like your request to have an extension, you can do that
         by using an underscore:
 
-        :Example:
+        :example:
             class FooBar_txt(Controller):
                 # This controller will satisfy foo-bar.txt requests
                 pass
@@ -762,27 +775,34 @@ class Controller(object):
             class Robots_txt(Controller): pass
             print(Robots.get_name()) # "robots.txt"
 
-        :returns: str, the basename in kebab case, with a ".ext" if
-            applicable
+        :returns: str|None, the basename in kebab case, with a ".ext" if
+            applicable, or None if this is a default controller
         """
         name = cls.__name__
 
         if not name.startswith("_"):
-            parts = cls.__name__.split("_", 1)
+            parts = name.split("_", 1)
+            count = len(parts)
+            ignore_names = set(["Default"])
 
-            if len(parts) == 1:
-                name = NamingConvention(parts[0]).kebabcase()
-
-            elif len(parts) == 2:
-                name = NamingConvention(parts[0]).kebabcase()
-                if parts[1]:
-                    name = f"{name}.{parts[1].lower()}"
-
-            else:
+            if count > 2:
                 raise ValueError(
                     "Controller class names can only have one underscore,"
                     f" {name} has {len(parts)} underscores"
                 )
+
+            if count >= 1:
+                if parts[0] in ignore_names:
+                    name = None
+
+                else:
+                    name = NamingConvention(parts[0]).kebabcase()
+
+            if count >= 2 and parts[1]:
+                if not name:
+                    name = "index"
+
+                name = f"{name}.{parts[1].lower()}"
 
         return name
 
@@ -803,17 +823,20 @@ class Controller(object):
         in different contexts
 
         :param **kwargs:
-        :returns: list[
-            tuple[
-                type|tuple[type, ...],
-                str|Callable[[Response], None]
-            ]
-        ], index 0 are the types that will be compared against the method's
+        :returns:
+            list[
+                tuple[
+                    type|tuple[type, ...],
+                    str|Callable[[Response], None]
+                ]
+            ],
+            index 0 are the types that will be compared against the method's
             defined (eg, the value after -> in the method definition) return
             type. Index 1 can be the actual media type or a callable that
             takes the response and sets things like Response.media_type
             manually. If no matching type is found or the method doesn't have
-            one defined then the tuple of (object, "<MEDIA-TYPE>") will be used
+            one defined then the tuple of (object, "<MEDIA-TYPE>") will
+            be used
         """
         def handle_nonetype(response):
             response.media_type = None
@@ -977,6 +1000,7 @@ class Controller(object):
         exceptions = defaultdict(list)
 
         http_method_names = request.controller_info["http_method_names"]
+        pout.v(http_method_names)
 
         controller_args, controller_kwargs = await self.get_controller_params(
             *controller_args,

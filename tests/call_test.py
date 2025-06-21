@@ -139,7 +139,7 @@ class ControllerTest(TestCase):
         res = c.handle('/')
         self.assertEqual(500, res.code)
 
-    def test_ext(self):
+    def test_get_name_ext(self):
         class _FooBar(Controller): pass
         self.assertEqual("_FooBar", _FooBar.get_name())
 
@@ -154,6 +154,13 @@ class ControllerTest(TestCase):
 
         class Foobar(Controller): pass
         self.assertEqual("foobar", Foobar.get_name())
+
+    def test_get_name_default(self):
+        class Default(Controller): pass
+        self.assertEqual(None, Default.get_name())
+
+        class Default_html(Controller): pass
+        self.assertEqual("index.html", Default_html.get_name())
 
     def test_coroutine_unwind(self):
         """Make sure multiple coroutine unwinds work as expected"""

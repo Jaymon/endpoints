@@ -11,6 +11,7 @@ import json
 import datetime
 import logging
 from string import Template
+import functools
 
 from datatypes import (
     ReflectClass,
@@ -28,6 +29,7 @@ from datatypes.reflection import ReflectObject
 # for `OpenAPI.write_yaml` support
 try:
     import yaml
+
 except ImportError:
     yaml = None
 
@@ -50,14 +52,23 @@ logger = logging.getLogger(__name__)
 
 
 class ReflectController(ReflectClass):
-    def __init__(self, keys, value):
+
+    def __init__(self, target, base_keys=None):
         """
         :param keys: list[str], the Controller path keys used in Pathfinder
         :param value: dict[str, Any], the Controller information in Pathfinder
         """
-        super().__init__(value["class"])
-        self.keys = keys
-        self.value = value
+        super().__init__(target)
+        self.base_keys = base_keys or []
+
+#     def __init__(self, keys, value):
+#         """
+#         :param keys: list[str], the Controller path keys used in Pathfinder
+#         :param value: dict[str, Any], the Controller information in Pathfinder
+#         """
+#         super().__init__(value["class"])
+#         self.keys = keys
+#         self.value = value
 
     def reflect_url_modules(self):
         """Reflect the controller modules for this controller
@@ -73,6 +84,7 @@ class ReflectController(ReflectClass):
                 rm.module_key = mk
                 yield rm
 
+    @functools.cache
     def reflect_http_methods(self, http_verb=""):
         """Reflect the controller http methods
 
@@ -130,7 +142,22 @@ class ReflectController(ReflectClass):
         url path params you want to call this same method on ReflectMethod
         instances to get the full url path for a given http verb
         """
-        return "/" + "/".join(self.keys)
+        path = ""
+
+        if base_path := "/".join(self.base_keys):
+            path += "/" + base_path
+
+        if name := self.get_url_name():
+            path += "/" + name
+
+        if not path:
+            path = "/"
+
+        return path
+
+    def get_url_name(self):
+        # TODO -- move Controller.get_name into here
+        return self.get_class().get_name()
 
     def reflect_url_paths(self):
         """Returns all the url paths of this controller
@@ -158,6 +185,7 @@ class ReflectController(ReflectClass):
 
         return url_paths
 
+    @functools.cache
     def get_http_method_names(self):
         """An HTTP method (eg GET or POST) needs to be handled by a controller
         class. So a controller can have a method named GET and that will be
@@ -293,12 +321,12 @@ class ReflectMethod(ReflectCallable):
 
         return version
 
-    def get_method_info(self):
-        reflect_class = self.reflect_class()
-        mns = reflect_class.value["http_method_names"]
-        for method_info in mns.get(self.http_verb, mns.get("ANY", {})):
-            if method_info["method_name"] == self.name:
-                return method_info
+#     def get_method_info(self):
+#         reflect_class = self.reflect_class()
+#         mns = reflect_class.value["http_method_names"]
+#         for method_info in mns.get(self.http_verb, mns.get("ANY", {})):
+#             if method_info["method_name"] == self.name:
+#                 return method_info
 
     def create_reflect_http_method_instance(self, http_verb, **kwargs):
         """Basically clone this instance but for the specific http_verb
