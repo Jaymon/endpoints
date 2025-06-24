@@ -53,22 +53,23 @@ logger = logging.getLogger(__name__)
 
 class ReflectController(ReflectClass):
 
-    def __init__(self, target, base_keys=None):
+    def __init__(self, target, **kwargs):
         """
-        :param keys: list[str], the Controller path keys used in Pathfinder
-        :param value: dict[str, Any], the Controller information in Pathfinder
+        :param target: type, the controller class
+        :keyword module_keys: list[str], the module path keys
+        :keyword class_keys: list[str], the Controller path keys used in
+            Pathfinder 
+        :keyword modules: list[ModuleType], the modules corresponding to
+            the module keys
         """
         super().__init__(target)
-        self.base_keys = base_keys or []
 
-#     def __init__(self, keys, value):
-#         """
-#         :param keys: list[str], the Controller path keys used in Pathfinder
-#         :param value: dict[str, Any], the Controller information in Pathfinder
-#         """
-#         super().__init__(value["class"])
-#         self.keys = keys
-#         self.value = value
+        self.module_keys = list(kwargs.get("module_keys", []))
+        self.modules = kwargs.get("modules", [])
+
+        self.class_keys = list(kwargs.get("class_keys", []))
+        if class_key := self.get_url_name():
+            self.class_keys.append(class_key)
 
     def reflect_url_modules(self):
         """Reflect the controller modules for this controller
@@ -78,13 +79,12 @@ class ReflectController(ReflectClass):
         :returns: generator[ReflectModule], this returns the reflected module
             for each iteration
         """
-        if mks := self.value.get("module_keys", []):
+        if mks := self.module_keys:
             for i, mk in enumerate(mks):
-                rm = self.create_reflect_module(self.value["modules"][i])
+                rm = self.create_reflect_module(self.modules[i])
                 rm.module_key = mk
                 yield rm
 
-    @functools.cache
     def reflect_http_methods(self, http_verb=""):
         """Reflect the controller http methods
 
@@ -107,6 +107,30 @@ class ReflectController(ReflectClass):
                     method_http_verb,
                     method_name
                 )
+
+    @functools.cache
+    def reflect_http_handler_methods(self, http_verb):
+        http_methods = list(self.reflect_http_methods(http_verb))
+        if not http_methods:
+            http_methods = list(self.reflect_http_methods("ANY"))
+
+        return http_methods
+
+    def has_http_handler_method(self, http_verb) -> bool:
+        """Return True if `http_verb` has a handler method that can answer
+        requests for the given verb. This will always return True if the
+        `ANY` handler method is defined on the class
+
+        :param http_verb: str, something like `GET` or `POST`
+        :returns: bool, True if there are handler http methods for verb
+        """
+        http_methods = self.get_http_method_names()
+        for verb in [http_verb.upper(), "ANY"]:
+            if http_methods.get(verb, None):
+                return True
+
+        return False
+
 
     def create_reflect_http_method_instance(
         self,
@@ -144,11 +168,14 @@ class ReflectController(ReflectClass):
         """
         path = ""
 
-        if base_path := "/".join(self.base_keys):
-            path += "/" + base_path
+        if module_path := "/".join(self.module_keys):
+            path += "/" + module_path
 
-        if name := self.get_url_name():
-            path += "/" + name
+        if class_path := "/".join(self.class_keys):
+            path += "/" + class_path
+
+#         if name := self.get_url_name():
+#             path += "/" + name
 
         if not path:
             path = "/"
@@ -198,10 +225,10 @@ class ReflectController(ReflectClass):
 
             http://en.wikipedia.org/wiki/Hypertext_Transfer_Protocol#Request_methods
 
-        :returns: dict[str, list[str]], the keys are the HTTP method and the
-            values are all the method names that satisfy that HTTP method.
-            these method names will be in alphabetical order to make it so they
-            can always be checked in the same order
+        :returns: dict[str, list[str]], the keys are the HTTP verb and the
+            values are all the method names that satisfy that HTTP verb.
+            these method names will be in alphabetical order to make it so
+            they can always be checked in the same order
         """
         method_names = defaultdict(set)
 
@@ -245,6 +272,18 @@ class ReflectMethod(ReflectCallable):
         super().__init__(target, **kwargs)
         self.http_verb = http_verb
         self._reflect_controller = reflect_controller
+
+#     def __call__(
+#         self,
+#         controller_instance,
+#         *controller_args,
+#         **controller_kwargs
+#     ):
+#         method = getattr(controller_instance, self.name)
+#         method_info = self.get_method_info()
+# #         pout.v(method, method_info)
+# 
+#         return method(*controller_args, **controller_kwargs)
 
     def reflect_class(self):
         return self._reflect_controller
@@ -328,25 +367,7 @@ class ReflectMethod(ReflectCallable):
 #             if method_info["method_name"] == self.name:
 #                 return method_info
 
-    def create_reflect_http_method_instance(self, http_verb, **kwargs):
-        """Basically clone this instance but for the specific http_verb
-
-        This is mainly for things like ANY
-
-        :param http_verb: str, the http verb (eg, GET or POST)
-        :returns: ReflectMethod, it will have the same target as
-            self.get_target() but, most likely, a different http_verb
-        """
-        return self.reflect_class().create_reflect_http_method_instance(
-            http_verb,
-            self.name,
-            **kwargs
-        )
-
-    def has_body(self):
-        """Returns True if http_verb accepts a body in the request"""
-        return self.http_verb_has_body(self.http_verb)
-
+    @functools.cache
     def get_method_info(self):
         method_info = {}
         media_types = self.get_class().get_response_media_types()
@@ -367,11 +388,69 @@ class ReflectMethod(ReflectCallable):
 
         method_info.setdefault("method_name", self.name)
 
-        method_info["params"] = []
+
+#         method_info["positional_params"] = []
+#         method_info["keyword_params"] = []
+#         for rp in self.reflect_params():
+#             if rp.is_positional():
+#                 method_info["positional_params"].append(rp)
+# 
+#             else:
+#                 method_info["keyword_params"].append(rp)
+
+#         method_info["params"] = []
+#         for rp in self.reflect_params():
+#             method_info["params"].append(rp)
+
+        method_info["params"] = {}
         for rp in self.reflect_params():
-            method_info["params"].append(rp)
+            method_info["params"][rp.name] = rp
 
         return method_info
+
+    def create_reflect_http_method_instance(self, http_verb, **kwargs):
+        """Basically clone this instance but for the specific http_verb
+
+        This is mainly for things like ANY
+
+        :param http_verb: str, the http verb (eg, GET or POST)
+        :returns: ReflectMethod, it will have the same target as
+            self.get_target() but, most likely, a different http_verb
+        """
+        return self.reflect_class().create_reflect_http_method_instance(
+            http_verb,
+            self.name,
+            **kwargs
+        )
+
+    def has_body(self):
+        """Returns True if http_verb accepts a body in the request"""
+        return self.http_verb_has_body(self.http_verb)
+
+    def get_bind_info(self, *args, **kwargs):
+        bind_info = super().get_bind_info(*args, **kwargs)
+        method_info = self.get_method_info()
+        params = method_info["params"]
+
+        # normalize positional arguments
+        for index, value in enumerate(bind_info["args"]):
+            name = bind_info["signature_info"]["names"][index]
+            if name in method_info["params"]:
+                rp = method_info["params"][name]
+                bind_info["args"][index] = rp.normalize_value(value)
+
+        # normalize keyword arguments
+        for name, value in bind_info["kwargs"].items():
+            if name in method_info["params"]:
+                rp = method_info["params"][name]
+                bind_info["kwargs"][name] = rp.normalize_value(value)
+
+#         for param_index, param_name in enumerate(bind_info["names"]):
+# 
+#         for rp in method_info["params"]:
+#             pass
+
+        return bind_info
 
 
 class ReflectParam(ReflectObject):
@@ -442,6 +521,107 @@ class ReflectParam(ReflectObject):
 
     def is_positional(self):
         return self.flags["is_positional"]
+
+    def normalize_value(self, val):
+        """This will take the value and make sure it meets expectations
+
+        :param val: the raw value pulled from kwargs or args
+        :returns: val that has met all param checks
+        :raises: ValueError if val fails any checks
+        """
+        flags = self.flags
+        rt = self.reflect_type()
+
+#         paction = flags["action"]
+        pchoices = set(flags.get("choices", []))
+        allow_empty = flags.get("allow_empty", False)
+        min_size = flags.get("min_size", None)
+        max_size = flags.get("max_size", None)
+
+        if rt.is_listish():
+            if not isinstance(val, list):
+                val = [val]
+
+            vs = []
+            for v in val:
+                if isinstance(v, basestring):
+                    vs.extend(String(v).split(','))
+
+                else:
+                    vs.append(v)
+
+            val = vs
+
+        if regex := flags.get("regex", None):
+            failed = False
+            if isinstance(regex, basestring):
+                if not re.search(regex, val):
+                    failed = True
+
+            else:
+                if not regex.search(val):
+                    failed = True
+
+            if failed:
+                raise ValueError("param failed regex check")
+
+        if rt.is_listish():
+            if value_types := list(rt.get_value_types()):
+                val = rt.get_origin_type()(map(value_types[0], val))
+
+            if pchoices:
+                for v in val:
+                    if v not in pchoices:
+                        raise ValueError(
+                            "param value {} not in choices {}".format(
+                                v,
+                                pchoices
+                            )
+                        )
+
+        else:
+            val = rt.cast(val)
+
+            if pchoices:
+                if val not in pchoices:
+                    raise ValueError(
+                        "param value {} not in choices {}".format(
+                            val,
+                            pchoices
+                        )
+                    )
+
+        if not allow_empty and val is not False and not val:
+            if "default" not in flags:
+                raise ValueError("param was empty")
+
+        if min_size is not None:
+            failed = False
+            if rt.is_numberish():
+                if val < min_size:
+                    failed = True
+
+            else:
+                if len(val) < min_size:
+                    failed = True
+
+            if failed:
+                raise ValueError("param was smaller than {}".format(min_size))
+
+        if max_size is not None:
+            failed = False
+            if rt.is_numberish():
+                if val > max_size:
+                    failed = True
+
+            else:
+                if len(val) > max_size:
+                    failed = True
+
+            if failed:
+                raise ValueError("param was bigger than {}".format(max_size))
+
+        return val
 
 
 class Field(dict):

@@ -222,23 +222,132 @@ class ReflectMethodTest(TestCase):
         self.assertEqual("GET_foo", method_info["method_name"])
         self.assertEqual(3, len(method_info["params"]))
 
+    def test_auto_mediatype(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET() -> str: pass
+        """)[0]
+
+        method_info = rm.get_method_info()
+        self.assertEqual("text/html", method_info["response_media_type"])
+
+    def test_bind_signature_info(self):
+        rm = self.create_reflect_methods("""
+            class Foo(Controller):
+                def POST(self, foo, /, *, bar: int, che: str = None):
+                    pass
+        """)[0]
+
+        pout.v(rm.get_bind_info(*[1], **{"bar": 2}))
+
+        raise TODO()
+
+
 
 class ReflectParamTest(TestCase):
+    """Test the ReflectParam class
+
+    This inherited all of the original tests from call.Param and
+    decorators.param which is why a lot of the test names are strange
+    """
+    def test_param_query(self):
+        """This was moved from decorators_test.ParamTest when a param_query
+        decorator existed, that's why it has the strange name
+        """
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(self, foo: int, bar: float):
+                    pass
+        """)
+        self.assertEqual(1, rps[0].normalize_value("1"))
+        self.assertEqual(1.5, rps[1].normalize_value("1.5"))
+
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(self, foo: list[int]):
+                    pass
+        """)
+        self.assertEqual(
+            [1, 2, 3, 4, 5],
+            rps[0].normalize_value(["1,2,3,4", "5"])
+        )
+
+        return
+
+
+#         p = Param('foo', type=int, choices=set([1, 2, 3]))
+#         with self.assertRaises(ValueError):
+#             r = p.handle([], {'foo': '8'})
+# 
+#         p = Param('foo', type=int, choices=set([1, 2, 3]))
+#         r = p.handle([], {'foo': '1'})
+#         self.assertEqual(1, r[1]["foo"])
+
+#         p1 = Param('foo', type=int)
+#         p2 = Param('bar', type=float)
+#         r = p1.handle(*p2.handle([], {'foo': '1', 'bar': '1.5'}))
+#         self.assertEqual(1, r[1]["foo"])
+#         self.assertEqual(1.5, r[1]["bar"])
+
+#         p = Param('foo', type=int, action='blah')
+#         with self.assertRaises(RuntimeError):
+#             p.handle([], {'foo': '1'})
+
+#         p = Param('foo', type=int, action='store_list')
+#         with self.assertRaises(ValueError):
+#             p.handle([], {'foo': ['1,2,3,4', '5']})
+# 
+#         p = Param('foo', type=int, action='append_list')
+#         r = p.handle([], {'foo': ['1,2,3,4', '5']})
+#         self.assertEqual(list(range(1, 6)), r[1]["foo"])
+# 
+#         p = Param('foo', type=int, action='store_list')
+#         r = p.handle([], {'foo': '1,2,3,4'})
+#         self.assertEqual(list(range(1, 5)), r[1]["foo"])
+
+#         p = Param('foo', type=int, default=1, required=False)
+#         r = p.handle([], {})
+#         self.assertEqual(1, r[1]["foo"])
+# 
+#         p = Param('foo', type=int, default=1, required=True)
+#         r = p.handle([], {})
+#         self.assertEqual(1, r[1]["foo"])
+# 
+#         p = Param('foo', type=int, default=1)
+#         r = p.handle([], {})
+#         self.assertEqual(1, r[1]["foo"])
+
+#         p = Param('foo', type=int)
+#         with self.assertRaises(ValueError):
+#             p.handle([], {})
+# 
+#         p = Param('foo', type=int)
+#         r = p.handle([], {'foo': '1'})
+#         self.assertEqual(1, r[1]["foo"])
+
+    def test_param_body(self):
+        """This was moved from decorators_test.ParamTest when a param_body
+        decorator existed, that's why it has the strange name"""
+        rp = self.create_reflect_params("""
+            class Default(Controller):
+                def POST(self, foo: Annotated[int, dict(choices=[1, 2, 3])]):
+                    pass
+        """)[0]
+        with self.assertRaises(ValueError):
+            rp.normalize_value("8")
+        self.assertEqual(1, rp.normalize_value("1"))
+
     def test_type_string_casting(self):
         """I made a change in v4.0.0 that would encode a value to String when
         the param type was a str descendent, but my change was bad because it
         would just cast it to a String, not to the type, this makes sure
         that's fixed"""
         c = self.create_server("""
-            from endpoints.compat import String
-            from endpoints import Controller, param
-
             class Che(String):
-                def __new__(cls, *args, **kwargs):
-                    return super().__new__(cls, *args, **kwargs)
+                pass
 
             class Default(Controller):
-                def POST_bar(self, che: Che):
+                def POST(self, che: Che):
                     return che.__class__.__name__
         """)
 

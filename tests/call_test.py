@@ -438,7 +438,7 @@ class RouterTest(TestCase):
         r = cs.find_controller(["foo.txt"])
         self.assertEqual("Foo_txt", r[0].__name__)
 
-    def test_get_controller_info_default(self):
+    def test_find_controller_info_default(self):
         """I introduced a bug on 1-12-14 that caused default controllers to fail
         to be found, this makes sure that bug is squashed"""
         c = self.create_server([
@@ -451,7 +451,7 @@ class RouterTest(TestCase):
         self.assertEqual('Default', info['class_name'])
         self.assertTrue(issubclass(info['class'], Controller))
 
-    def test_get_controller_info_advanced(self):
+    def test_find_controller_info_advanced(self):
         c = self.create_server({
             "": [
                 "from endpoints import Controller",
@@ -501,7 +501,6 @@ class RouterTest(TestCase):
                     'module_name': f"{c.controller_prefix}.default",
                     'class_name': 'Default',
                     'method_args': [],
-#                     "method_names": ["ANY_1", "ANY_2"],
                 }
             },
             {
@@ -568,18 +567,6 @@ class RouterTest(TestCase):
 
             for key, val in t["out"].items():
                 self.assertEqual(val, d[key], t["in"]["path"])
-
-    def test_auto_mediatype(self):
-        r = self.create_server([
-            "class Default(Controller):",
-            "    def GET() -> str: pass",
-        ]).router
-
-        info = r.find_controller([])
-        self.assertEqual(
-            "text/html",
-            info[2]["http_method_names"]["GET"][0]["response_media_type"]
-        )
 
 
 class RequestTest(TestCase):

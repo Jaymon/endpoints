@@ -414,12 +414,9 @@ class Pathfinder(ClasspathFinder):
         return super()._get_node_module_info(key, **kwargs)
 
     def create_reflect_controller_instance(self, target, **kwargs):
-        module_keys = kwargs.get("module_keys", [])
-        class_keys = kwargs.get("class_keys", [])
-        base_keys = module_keys + class_keys
         return kwargs.get("reflect_controller_class", ReflectController)(
             target,
-            base_keys=base_keys,
+            **kwargs
         )
 
     def _get_node_class_info(self, key, **kwargs):
@@ -429,16 +426,16 @@ class Pathfinder(ClasspathFinder):
         """
         if "class" in kwargs:
             # The actual controller `Che` in: Foo.Bar.Che
-            key = kwargs["class"].get_name()
             rc = self.create_reflect_controller_instance(
                 kwargs["class"],
                 **kwargs
             )
+            key = rc.get_url_name()
 
         else:
             # can be `Foo` or `Bar` in: Foo.Bar.Che
-            key = NamingConvention(key).kebabcase()
             rc = None
+            key = NamingConvention(key).kebabcase()
 
 
         key, value = super()._get_node_class_info(key, **kwargs)
@@ -457,26 +454,6 @@ class Pathfinder(ClasspathFinder):
                     rc.classpath,
                 )
             )
-
-#             rc = self.create_reflect_controller_instance(keys, value)
-#             value["http_method_names"] = defaultdict(list)
-# 
-#             for rm in rc.reflect_http_methods():
-#                 method_info = rm.get_method_info()
-#                 value["http_method_names"][rm.http_verb].append(method_info)
-# 
-#             logger.debug(
-#                 (
-#                     "Registering verbs: {}"
-#                     " to path: /{}"
-#                     " and controller: {}:{}"
-#                 ).format(
-#                     ", ".join(value["http_method_names"].keys()),
-#                     "/".join(keys),
-#                     value["class"].__module__,
-#                     value["class"].__qualname__
-#                 )
-#             )
 
         return key, value
 
@@ -615,6 +592,7 @@ class Router(object):
         controller_class, controller_args, value = self.find_controller(
             request.path_args
         )
+        rc = value["reflect_class"]
 
         ret["method_args"] = controller_args
 
@@ -623,45 +601,73 @@ class Router(object):
 
         ret['method_kwargs'] = request.kwargs
 
-        http_verb = request.method.upper()
-        if method_names := value["http_method_names"].get(http_verb):
-            ret['http_method_names'] = method_names
+#         if not rc.has_http_method(request.method):
+#             if len(ret["method_args"]) > 0:
+#                 # if we have method args and we don't have a method to even
+#                 # answer the request it should be a 404 since the path is
+#                 # invalid
+#                 raise TypeError(
+#                     "Could not find a {} method for path {}".format(
+#                         request.method,
+#                         request.path,
+#                     )
+#                 )
+# 
+#             else:
+#                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                 # and 501 (Not Implemented) if the method is unrecognized or
+#                 # not implemented by the origin server
+#                 raise NotImplementedError(
+#                     "{} {} not implemented".format(
+#                         request.method,
+#                         request.path
+#                     )
+#                 )
 
-        elif method_names := value["http_method_names"].get("ANY"):
-            ret['http_method_names'] = method_names
 
-        else:
-            if len(ret["method_args"]) > 0:
-                # if we have method args and we don't have a method to even
-                # answer the request it should be a 404 since the path is
-                # invalid
-                raise TypeError(
-                    "Could not find a {} method for path {}".format(
-                        request.method,
-                        request.path,
-                    )
-                )
 
-            else:
-                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                # and 501 (Not Implemented) if the method is unrecognized or
-                # not implemented by the origin server
-                raise NotImplementedError(
-                    "{} {} not implemented".format(
-                        request.method,
-                        request.path
-                    )
-                )
+
+
+
+#         http_method_names = rc.get_http_method_names()
+#         http_verb = request.method.upper()
+# 
+#         if method_names := http_method_names.get(http_verb):
+#             ret['http_method_names'] = method_names
+# 
+#         elif method_names := http_method_names.get("ANY"):
+#             ret['http_method_names'] = method_names
+# 
+#         else:
+#             if len(ret["method_args"]) > 0:
+#                 # if we have method args and we don't have a method to even
+#                 # answer the request it should be a 404 since the path is
+#                 # invalid
+#                 raise TypeError(
+#                     "Could not find a {} method for path {}".format(
+#                         request.method,
+#                         request.path,
+#                     )
+#                 )
+# 
+#             else:
+#                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                 # and 501 (Not Implemented) if the method is unrecognized or
+#                 # not implemented by the origin server
+#                 raise NotImplementedError(
+#                     "{} {} not implemented".format(
+#                         request.method,
+#                         request.path
+#                     )
+#                 )
 
         ret["module_name"] = controller_class.__module__
         ret['module_path'] = "/".join(value["module_keys"])
 
         ret["class"] = controller_class
-        ret['class_name'] = ret["class"].__name__
-        ret['class_path'] = "/".join(itertools.chain(
-            value["module_keys"],
-            value["class_keys"]
-        ))
+        ret["reflect_class"] = rc
+        ret['class_name'] = controller_class.__name__
+        ret['class_path'] = rc.get_url_path()
 
         return ret
 
@@ -977,6 +983,8 @@ class Controller(object):
         """
         return controller_args, controller_kwargs
 
+#     async def normalize_controller_params(self, 
+
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
 
@@ -999,20 +1007,48 @@ class Controller(object):
         request = self.request
         exceptions = defaultdict(list)
 
-        http_method_names = request.controller_info["http_method_names"]
-        pout.v(http_method_names)
+#         http_method_names = request.controller_info["http_method_names"]
+#         pout.v(http_method_names)
 
         controller_args, controller_kwargs = await self.get_controller_params(
             *controller_args,
             **controller_kwargs
         )
 
-        for http_method_info in http_method_names:
-            http_method_name = http_method_info["method_name"]
+        rc = request.controller_info["reflect_class"]
+
+        reflect_methods = rc.reflect_http_handler_methods(request.method)
+        if not reflect_methods:
+            if len(request.controller_info["method_args"]) > 0:
+                # if we have method args and we don't have a method to even
+                # answer the request it should be a 404 since the path is
+                # invalid
+                raise TypeError(
+                    "Could not find a {} method for path {}".format(
+                        request.method,
+                        request.path,
+                    )
+                )
+
+            else:
+                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+                # and 501 (Not Implemented) if the method is unrecognized or
+                # not implemented by the origin server
+                raise NotImplementedError(
+                    "{} {} not implemented".format(
+                        request.method,
+                        request.path
+                    )
+                )
+
+        for rm in reflect_methods:
+            http_method_name = rm.name
+            http_method_info = rm.get_method_info()
             http_method = getattr(self, http_method_name)
 
             # we update the controller info so other handlers know what
             # method succeeded/failed
+            request.controller_info["reflect_http_method"] = rm
             request.controller_info["http_method_info"] = http_method_info
             request.controller_info["http_method_name"] = http_method_name
             request.controller_info["http_method"] = http_method
@@ -1026,9 +1062,14 @@ class Controller(object):
                     )
                 )
 
-                body = http_method(
+                bind_info = rm.get_bind_info(
                     *controller_args,
                     **controller_kwargs
+                )
+
+                body = http_method(
+                    *bind_info["args"],
+                    **bind_info["kwargs"]
                 )
 
                 while inspect.iscoroutine(body):
@@ -1039,6 +1080,41 @@ class Controller(object):
 
             except Exception as e:
                 exceptions[e.__class__.__name__].append(e)
+
+
+
+#         for http_method_info in http_method_names:
+#             http_method_name = http_method_info["method_name"]
+#             http_method = getattr(self, http_method_name)
+# 
+#             # we update the controller info so other handlers know what
+#             # method succeeded/failed
+#             request.controller_info["http_method_info"] = http_method_info
+#             request.controller_info["http_method_name"] = http_method_name
+#             request.controller_info["http_method"] = http_method
+# 
+#             try:
+#                 logger.debug(
+#                     "Request Controller method: {}:{}.{}".format(
+#                         request.controller_info['module_name'],
+#                         request.controller_info['class_name'],
+#                         http_method_name
+#                     )
+#                 )
+# 
+#                 body = http_method(
+#                     *controller_args,
+#                     **controller_kwargs
+#                 )
+# 
+#                 while inspect.iscoroutine(body):
+#                     body = await body
+# 
+#                 exceptions = None
+#                 break
+# 
+#             except Exception as e:
+#                 exceptions[e.__class__.__name__].append(e)
 
         if exceptions:
             try:
@@ -1653,7 +1729,8 @@ class Request(Call):
         self.body_kwargs = body_kwargs or {}
 
     def has_body(self):
-        return True if self.body else False
+        return self.body or self.body_args or self.body_kwargs
+        #return True if self.body else False
 
     def should_have_body(self):
         """Returns True if the request should normally have a body"""

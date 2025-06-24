@@ -150,8 +150,10 @@ class TestCase(BaseAsyncTestCase):
 
         else:
             header = [
+                "from typing import Any, Annotated",
                 "from endpoints import *",
                 "from endpoints.decorators import *",
+                "from endpoints.compat import *",
                 "from {} import {} as Application".format(
                     self.application_class.__module__,
                     self.application_class.__name__
