@@ -354,6 +354,217 @@ class ReflectParamTest(TestCase):
         r = c.post("/", {"che": "1234"})
         self.assertEqual("Che", r._body)
 
+    def test_regex_issue_77(self):
+        """
+        https://github.com/Jaymon/endpoints/issues/77
+        """
+        c = self.create_server("""
+            import datetime
+
+            def parse(dts):
+                return datetime.datetime.strptime(dts, "%Y-%m-%d")
+
+            class Foo(Controller):
+                def GET(
+                    self,
+                    dt: Annotated[parse, dict(regex=r"^\d{4}-\d{2}-\d{2}$")]
+                ):
+                    return dt
+        """)
+
+        res = c.handle("/foo", query="dt=2018-01-01")
+        self.assertEqual(res._body.year, 2018)
+        self.assertEqual(res._body.month, 1)
+        self.assertEqual(res._body.day, 1)
+
+    async def test_append_list_choices(self):
+        rp = self.create_reflect_params("""
+            class Default(Controller):
+                def POST(self, foo: Annotated[list[int], dict(choices=[1, 2])]):
+                    pass
+        """)[0]
+
+        self.assertEqual([1, 2], rp.normalize_value("1,2"))
+
+        with self.assertRaises(ValueError):
+            rp.normalize_value("1,2,3")
+
+        self.assertEqual([1], rp.normalize_value(1))
+
+        with self.assertRaises(ValueError):
+            rp.normalize_value(3)
+
+    async def test_param_multiple_names(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: Annotated[int, dict(names=["foos", "foo3"])]
+                ):
+                    return foo
+        """)[0]
+
+        bind_info = rm.get_bind_info(**{"foos": 1})
+        self.assertEqual(1, bind_info["args"][0])
+
+        bind_info = rm.get_bind_info(**{"foo": 2})
+        self.assertEqual(2, bind_info["args"][0])
+
+        bind_info = rm.get_bind_info(**{"foo3": 3})
+        self.assertEqual(3, bind_info["args"][0])
+
+        with self.assertRaises(TypeError):
+            rm.get_bind_info(**{"foo4": 4})
+
+    async def test_param_size(self):
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: Annotated[int, dict(min_size=100)],
+                    bar: Annotated[int, dict(max_size=100)],
+                    che: Annotated[int, dict(min_size=100, max_size=200)],
+                    boo: Annotated[str, dict(min_size=2, max_size=4)],
+                ):
+                    pass
+        """)
+
+        self.assertEqual(100, rps[0].normalize_value("100"))
+        self.assertEqual(200, rps[0].normalize_value("200"))
+        with self.assertRaises(ValueError):
+            rps[0].normalize_value("10")
+
+        self.assertEqual(10, rps[1].normalize_value("10"))
+        self.assertEqual(100, rps[1].normalize_value("100"))
+        with self.assertRaises(ValueError):
+            rps[1].normalize_value("200")
+
+        self.assertEqual(150, rps[2].normalize_value("150"))
+        with self.assertRaises(ValueError):
+            rps[2].normalize_value("300")
+        with self.assertRaises(ValueError):
+            rps[2].normalize_value("10")
+
+        self.assertEqual("foo", rps[3].normalize_value("foo"))
+        with self.assertRaises(ValueError):
+            rps[3].normalize_value("barbar")
+
+    async def test_param_empty_default(self):
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: int | None = None
+                ):
+                    pass
+        """)
+
+        self.assertEqual(None, rps[0].normalize_value(None))
+
+    async def test_param_regex(self):
+        rps = self.create_reflect_params("""
+            import re
+
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: Annotated[str, dict(regex=r"^\S+@\S+$")],
+                    bar: Annotated[str, dict(regex=re.compile(r"^\S+@\S+$"))],
+                ):
+                    pass
+        """)
+
+        rps[0].normalize_value("foo@bar.com")
+        with self.assertRaises(ValueError):
+            rps[0].normalize_value(" foo@bar.com")
+
+        rps[1].normalize_value("foo@bar.com")
+        with self.assertRaises(ValueError):
+            rps[1].normalize_value(" foo@bar.com")
+
+    async def test_param_bool(self):
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: bool,
+                ):
+                    pass
+        """)
+
+        self.assertEqual(True, rps[0].normalize_value("true"))
+        self.assertEqual(True, rps[0].normalize_value("True"))
+        self.assertEqual(True, rps[0].normalize_value("1"))
+        self.assertEqual(False, rps[0].normalize_value("false"))
+        self.assertEqual(False, rps[0].normalize_value("False"))
+        self.assertEqual(False, rps[0].normalize_value("0"))
+
+    async def test_param_list(self):
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(
+                    self,
+                    foo: list,
+                ):
+                    pass
+        """)
+
+        v = ["bar", "baz"]
+        self.assertEqual(v, rps[0].normalize_value(v))
+
+    async def test_positionals(self):
+        """Make sure positional args work"""
+        rms = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET_1(
+                    self,
+                    foo: int,
+                    /,
+                ):
+                    pass
+
+                def GET_2(
+                    self,
+                    foo: str,
+                    bar: int = 20,
+                    /,
+                ):
+                    pass
+
+                def GET_3(
+                    self,
+                    foo: int,
+                    bar: int = 20,
+                    /,
+                    *,
+                    che: str = "che value"
+                ):
+                    pass
+        """)
+
+        bind_info = rms[0].get_bind_info(*[1])
+        self.assertEqual([1], bind_info["args"])
+        with self.assertRaises(TypeError):
+            rms[0].get_bind_info()
+
+        bind_info = rms[1].get_bind_info(*[1])
+        self.assertEqual(["1", 20], bind_info["args"])
+
+        bind_info = rms[1].get_bind_info(*[1, 2])
+        self.assertEqual(["1", 2], bind_info["args"])
+
+        bind_info = rms[2].get_bind_info(*[1, 2], **{"che": "3"})
+        self.assertEqual([1, 2], bind_info["args"])
+        self.assertEqual("3", bind_info["kwargs"]["che"])
+
+        bind_info = rms[2].get_bind_info(*[1], **{"che": "3"})
+        self.assertEqual([1, 20], bind_info["args"])
+        self.assertEqual("3", bind_info["kwargs"]["che"])
+
+        bind_info = rms[2].get_bind_info(*[1])
+        self.assertEqual([1, 20], bind_info["args"])
+        self.assertEqual("che value", bind_info["kwargs"]["che"])
+
 
 class OpenABCTest(TestCase):
     def test_fields(self):

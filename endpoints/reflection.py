@@ -23,6 +23,7 @@ from datatypes import (
     NamingConvention,
     ClassKeyFinder,
     HTTPClient,
+    Boolean,
 )
 from datatypes.reflection import ReflectObject
 
@@ -388,20 +389,6 @@ class ReflectMethod(ReflectCallable):
 
         method_info.setdefault("method_name", self.name)
 
-
-#         method_info["positional_params"] = []
-#         method_info["keyword_params"] = []
-#         for rp in self.reflect_params():
-#             if rp.is_positional():
-#                 method_info["positional_params"].append(rp)
-# 
-#             else:
-#                 method_info["keyword_params"].append(rp)
-
-#         method_info["params"] = []
-#         for rp in self.reflect_params():
-#             method_info["params"].append(rp)
-
         method_info["params"] = {}
         for rp in self.reflect_params():
             method_info["params"][rp.name] = rp
@@ -428,9 +415,21 @@ class ReflectMethod(ReflectCallable):
         return self.http_verb_has_body(self.http_verb)
 
     def get_bind_info(self, *args, **kwargs):
-        bind_info = super().get_bind_info(*args, **kwargs)
         method_info = self.get_method_info()
         params = method_info["params"]
+
+        try:
+            bind_info = super().get_bind_info(*args, **kwargs)
+
+        except TypeError:
+            # check for aliases and try again
+            for name, rp in params.items():
+                if name not in kwargs:
+                    for n in rp.flags["aliases"]:
+                        if n in kwargs:
+                            kwargs[name] = kwargs.pop(n)
+
+            bind_info = super().get_bind_info(*args, **kwargs)
 
         # normalize positional arguments
         for index, value in enumerate(bind_info["args"]):
@@ -444,11 +443,6 @@ class ReflectMethod(ReflectCallable):
             if name in method_info["params"]:
                 rp = method_info["params"][name]
                 bind_info["kwargs"][name] = rp.normalize_value(value)
-
-#         for param_index, param_name in enumerate(bind_info["names"]):
-# 
-#         for rp in method_info["params"]:
-#             pass
 
         return bind_info
 
@@ -491,6 +485,9 @@ class ReflectParam(ReflectObject):
         else:
             flags["type"] = str
 
+        flags.setdefault("aliases", [])
+        flags["aliases"].extend(flags.pop("names", []))
+
         return flags
 
     def get_docblock(self):
@@ -532,12 +529,6 @@ class ReflectParam(ReflectObject):
         flags = self.flags
         rt = self.reflect_type()
 
-#         paction = flags["action"]
-        pchoices = set(flags.get("choices", []))
-        allow_empty = flags.get("allow_empty", False)
-        min_size = flags.get("min_size", None)
-        max_size = flags.get("max_size", None)
-
         if rt.is_listish():
             if not isinstance(val, list):
                 val = [val]
@@ -545,7 +536,7 @@ class ReflectParam(ReflectObject):
             vs = []
             for v in val:
                 if isinstance(v, basestring):
-                    vs.extend(String(v).split(','))
+                    vs.extend(v.split(','))
 
                 else:
                     vs.append(v)
@@ -565,11 +556,14 @@ class ReflectParam(ReflectObject):
             if failed:
                 raise ValueError("param failed regex check")
 
-        if rt.is_listish():
-            if value_types := list(rt.get_value_types()):
-                val = rt.get_origin_type()(map(value_types[0], val))
+        if rt.is_bool():
+            val = Boolean(val)
 
-            if pchoices:
+        else:
+            val = rt.cast(val)
+
+        if pchoices := set(flags.get("choices", [])):
+            if rt.is_listish():
                 for v in val:
                     if v not in pchoices:
                         raise ValueError(
@@ -579,10 +573,7 @@ class ReflectParam(ReflectObject):
                             )
                         )
 
-        else:
-            val = rt.cast(val)
-
-            if pchoices:
+            else:
                 if val not in pchoices:
                     raise ValueError(
                         "param value {} not in choices {}".format(
@@ -591,11 +582,12 @@ class ReflectParam(ReflectObject):
                         )
                     )
 
+        allow_empty = flags.get("allow_empty", True)
         if not allow_empty and val is not False and not val:
             if "default" not in flags:
                 raise ValueError("param was empty")
 
-        if min_size is not None:
+        if (min_size := flags.get("min_size", None)) is not None:
             failed = False
             if rt.is_numberish():
                 if val < min_size:
@@ -608,7 +600,7 @@ class ReflectParam(ReflectObject):
             if failed:
                 raise ValueError("param was smaller than {}".format(min_size))
 
-        if max_size is not None:
+        if (max_size := flags.get("max_size", None)) is not None:
             failed = False
             if rt.is_numberish():
                 if val > max_size:
