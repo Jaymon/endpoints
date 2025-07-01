@@ -274,23 +274,11 @@ class ReflectMethod(ReflectCallable):
         self.http_verb = http_verb
         self._reflect_controller = reflect_controller
 
-#     def __call__(
-#         self,
-#         controller_instance,
-#         *controller_args,
-#         **controller_kwargs
-#     ):
-#         method = getattr(controller_instance, self.name)
-#         method_info = self.get_method_info()
-# #         pout.v(method, method_info)
-# 
-#         return method(*controller_args, **controller_kwargs)
-
     def reflect_class(self):
         return self._reflect_controller
 
     def reflect_params(self):
-        """This will reflect all params defined with the @param decorator"""
+        """This will reflect all params in the method signature"""
         signature_info = self.get_signature_info()
         for name in signature_info["names"]:
             yield self.create_reflect_param_instance(name, signature_info)
@@ -361,13 +349,6 @@ class ReflectMethod(ReflectCallable):
 
         return version
 
-#     def get_method_info(self):
-#         reflect_class = self.reflect_class()
-#         mns = reflect_class.value["http_method_names"]
-#         for method_info in mns.get(self.http_verb, mns.get("ANY", {})):
-#             if method_info["method_name"] == self.name:
-#                 return method_info
-
     @functools.cache
     def get_method_info(self):
         method_info = {}
@@ -431,18 +412,24 @@ class ReflectMethod(ReflectCallable):
 
             bind_info = super().get_bind_info(*args, **kwargs)
 
+        bound = bind_info["bound"]
+
+        pout.v(bound)
+
         # normalize positional arguments
-        for index, value in enumerate(bind_info["args"]):
+        for index, value in enumerate(bound.args):
             name = bind_info["signature_info"]["names"][index]
             if name in method_info["params"]:
                 rp = method_info["params"][name]
-                bind_info["args"][index] = rp.normalize_value(value)
+                bound.arguments[name] = rp.normalize_value(value)
+
+        pout.v(bound)
 
         # normalize keyword arguments
-        for name, value in bind_info["kwargs"].items():
+        for name, value in bound.kwargs.items():
             if name in method_info["params"]:
                 rp = method_info["params"][name]
-                bind_info["kwargs"][name] = rp.normalize_value(value)
+                bound.arguments[name] = rp.normalize_value(value)
 
         return bind_info
 
@@ -461,6 +448,7 @@ class ReflectParam(ReflectObject):
 
         self._reflect_method = reflect_method
         self.flags = self.get_flags(name, signature_info)
+        self.index = signature_info["indexes"][name]
 
     def get_flags(self, name, signature_info):
         flags = {}

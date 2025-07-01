@@ -212,7 +212,6 @@ class BaseApplicationTest(TestCase):
             "       return ''",
             "",
             "class Hdec(Controller):",
-            "    @param('foo', default='bar')",
             "    def POST(self, needed_bit, **kwargs):",
             "       return ''",
             "",
@@ -234,9 +233,11 @@ class BaseApplicationTest(TestCase):
         """there was an error when there was only one expected argument, turns
         out the call was checking for "arguments" when the message just had
         "argument"
+
+        The error is:
+            TypeError: Foo.GET() got an unexpected keyword argument 'che'
         """
         c = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Foo(Controller):",
             "    def GET(self): pass",
             "",

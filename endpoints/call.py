@@ -978,12 +978,64 @@ class Controller(object):
 
         :param *controller_args:
         :param **controller_kwargs:
-        :returns: tuple[tuple, dict], whatever is returned from this method is
-            passed into the controller request method as *args, **kwargs
+        :returns: tuple[Sequence, Mapping], whatever is returned from this
+            method is passed into the controller request method
+            as *args, **kwargs
         """
         return controller_args, controller_kwargs
 
 #     async def normalize_controller_params(self, 
+
+#     async def bind_controller_params(
+#         self,
+#         reflect_method,
+#         *controller_args,
+#         **controller_kwargs,
+#     ):
+# 
+#         try:
+#             return reflect_method.signature.bind_partial(
+#                 *controller_args,
+#                 **controller_kwargs
+#             )
+# 
+#         except TypeError as e:
+#             e_msg = str(e)
+#             if "too many positional arguments" in e_msg:
+#                 raise CallError(404) from e
+# 
+#             elif "unexpected keyword argument"
+#                 # TypeError: got an unexpected keyword argument '<NAME>'
+#                 raise CallError(400) from e
+# 
+#             else:
+#                 raise
+
+
+    async def get_method_params(
+        self,
+        reflect_method,
+        *controller_args,
+        **controller_kwargs,
+    ):
+
+        positional_count = len(controller_args)
+
+        for rp in reflect_method.reflect_params():
+            if rp.index < positional_count:
+                controller_args[rp.index] = rp.normalize_value(controller_args[rp.index])
+
+            else:
+                if rp.name not in controller_kwargs:
+                    for n in rp.flags["aliases"]:
+                        if n in controller_kwargs:
+                            controller_kwargs[name] = controller_kwargs.pop(n)
+
+                if rp.name in controller_kwargs:
+
+                    controller_kwargs[rp.name] = rp.normalize_value(controller_kwargs[rp.name])
+
+        return controller_args, controller_kwargs
 
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
@@ -1023,23 +1075,39 @@ class Controller(object):
                 # if we have method args and we don't have a method to even
                 # answer the request it should be a 404 since the path is
                 # invalid
-                raise TypeError(
+                raise CallError(
+                    404,
                     "Could not find a {} method for path {}".format(
                         request.method,
                         request.path,
                     )
                 )
 
+#                 raise TypeError(
+#                     "Could not find a {} method for path {}".format(
+#                         request.method,
+#                         request.path,
+#                     )
+#                 )
+
             else:
                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
                 # and 501 (Not Implemented) if the method is unrecognized or
                 # not implemented by the origin server
-                raise NotImplementedError(
+                raise CallError(
+                    501,
                     "{} {} not implemented".format(
                         request.method,
                         request.path
                     )
                 )
+
+#                 raise NotImplementedError(
+#                     "{} {} not implemented".format(
+#                         request.method,
+#                         request.path
+#                     )
+#                 )
 
         for rm in reflect_methods:
             http_method_name = rm.name
@@ -1062,15 +1130,21 @@ class Controller(object):
                     )
                 )
 
-                bind_info = rm.get_bind_info(
-                    *controller_args,
-                    **controller_kwargs
-                )
+#                 body = http_method(*controller_args, **controller_kwargs)
 
-                body = http_method(
-                    *bind_info["args"],
-                    **bind_info["kwargs"]
+                method_args, method_kwargs = await self.get_method_params(
+                    reflect_method,
+                    *controller_args,
+                    **controller_kwargs,
                 )
+                body = http_method(*method_args, **method_kwargs)
+
+#                 bound = await self.bind_controller_params(
+#                     rm,
+#                     *controller_args,
+#                     **controller_kwargs
+#                 )
+#                 body = http_method(*bound.args, **bound.kwargs)
 
                 while inspect.iscoroutine(body):
                     body = await body
