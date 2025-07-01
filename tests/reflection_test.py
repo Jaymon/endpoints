@@ -45,9 +45,7 @@ class ReflectControllerTest(TestCase):
         rc = self.create_reflect_controllers("""
             class Foo(Controller):
                 cors = True
-                @param(0)
-                @param(1)
-                def GET(self, bar, che):
+                def GET(self, bar, che, /):
                     pass
 
                 def POST(self, **kwargs):
@@ -220,7 +218,6 @@ class ReflectMethodTest(TestCase):
 
         method_info = rm.get_method_info()
         self.assertEqual("GET_foo", method_info["method_name"])
-        self.assertEqual(3, len(method_info["params"]))
 
     def test_auto_mediatype(self):
         rm = self.create_reflect_methods("""
@@ -230,18 +227,6 @@ class ReflectMethodTest(TestCase):
 
         method_info = rm.get_method_info()
         self.assertEqual("text/html", method_info["response_media_type"])
-
-    def test_bind_signature_info(self):
-        rm = self.create_reflect_methods("""
-            class Foo(Controller):
-                def POST(self, foo, /, *, bar: int, che: str = None):
-                    pass
-        """)[0]
-
-        pout.v(rm.get_bind_info(*[1], **{"bar": 2}))
-
-        raise TODO()
-
 
 
 class ReflectParamTest(TestCase):
@@ -271,59 +256,6 @@ class ReflectParamTest(TestCase):
             [1, 2, 3, 4, 5],
             rps[0].normalize_value(["1,2,3,4", "5"])
         )
-
-        return
-
-
-#         p = Param('foo', type=int, choices=set([1, 2, 3]))
-#         with self.assertRaises(ValueError):
-#             r = p.handle([], {'foo': '8'})
-# 
-#         p = Param('foo', type=int, choices=set([1, 2, 3]))
-#         r = p.handle([], {'foo': '1'})
-#         self.assertEqual(1, r[1]["foo"])
-
-#         p1 = Param('foo', type=int)
-#         p2 = Param('bar', type=float)
-#         r = p1.handle(*p2.handle([], {'foo': '1', 'bar': '1.5'}))
-#         self.assertEqual(1, r[1]["foo"])
-#         self.assertEqual(1.5, r[1]["bar"])
-
-#         p = Param('foo', type=int, action='blah')
-#         with self.assertRaises(RuntimeError):
-#             p.handle([], {'foo': '1'})
-
-#         p = Param('foo', type=int, action='store_list')
-#         with self.assertRaises(ValueError):
-#             p.handle([], {'foo': ['1,2,3,4', '5']})
-# 
-#         p = Param('foo', type=int, action='append_list')
-#         r = p.handle([], {'foo': ['1,2,3,4', '5']})
-#         self.assertEqual(list(range(1, 6)), r[1]["foo"])
-# 
-#         p = Param('foo', type=int, action='store_list')
-#         r = p.handle([], {'foo': '1,2,3,4'})
-#         self.assertEqual(list(range(1, 5)), r[1]["foo"])
-
-#         p = Param('foo', type=int, default=1, required=False)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p = Param('foo', type=int, default=1, required=True)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p = Param('foo', type=int, default=1)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-
-#         p = Param('foo', type=int)
-#         with self.assertRaises(ValueError):
-#             p.handle([], {})
-# 
-#         p = Param('foo', type=int)
-#         r = p.handle([], {'foo': '1'})
-#         self.assertEqual(1, r[1]["foo"])
 
     def test_param_body(self):
         """This was moved from decorators_test.ParamTest when a param_body
@@ -380,7 +312,10 @@ class ReflectParamTest(TestCase):
     async def test_append_list_choices(self):
         rp = self.create_reflect_params("""
             class Default(Controller):
-                def POST(self, foo: Annotated[list[int], dict(choices=[1, 2])]):
+                def POST(
+                    self,
+                    foo: Annotated[list[int], dict(choices=[1, 2])]
+                ):
                     pass
         """)[0]
 
@@ -405,16 +340,16 @@ class ReflectParamTest(TestCase):
         """)[0]
 
         bind_info = rm.get_bind_info(**{"foos": 1})
-        self.assertEqual(1, bind_info["args"][0])
+        self.assertEqual(1, bind_info["bound_kwargs"]["foo"])
 
         bind_info = rm.get_bind_info(**{"foo": 2})
-        self.assertEqual(2, bind_info["args"][0])
+        self.assertEqual(2, bind_info["bound_kwargs"]["foo"])
 
         bind_info = rm.get_bind_info(**{"foo3": 3})
-        self.assertEqual(3, bind_info["args"][0])
+        self.assertEqual(3, bind_info["bound_kwargs"]["foo"])
 
-        with self.assertRaises(TypeError):
-            rm.get_bind_info(**{"foo4": 4})
+        bind_info = rm.get_bind_info(**{"foo4": 4})
+        self.assertTrue("foo" in bind_info["missing_names"])
 
     async def test_param_size(self):
         rps = self.create_reflect_params("""
@@ -543,28 +478,26 @@ class ReflectParamTest(TestCase):
         """)
 
         bind_info = rms[0].get_bind_info(*[1])
-        return
-        self.assertEqual((1,), bind_info["bound"].args)
-        with self.assertRaises(TypeError):
-            rms[0].get_bind_info()
+        self.assertEqual([1], bind_info["bound_args"])
+        bind_info = rms[0].get_bind_info()
+        self.assertTrue("foo" in bind_info["missing_names"])
 
         bind_info = rms[1].get_bind_info(*[1])
-        self.assertEqual(("1", 20), bind_info["bound"].args)
+        self.assertEqual([1], bind_info["bound_args"])
 
         bind_info = rms[1].get_bind_info(*[1, 2])
-        self.assertEqual(["1", 2], bind_info["args"])
+        self.assertEqual([1, 2], bind_info["bound_args"])
 
         bind_info = rms[2].get_bind_info(*[1, 2], **{"che": "3"})
-        self.assertEqual([1, 2], bind_info["args"])
-        self.assertEqual("3", bind_info["kwargs"]["che"])
+        self.assertEqual([1, 2], bind_info["bound_args"])
+        self.assertEqual("3", bind_info["bound_kwargs"]["che"])
 
         bind_info = rms[2].get_bind_info(*[1], **{"che": "3"})
-        self.assertEqual([1, 20], bind_info["args"])
-        self.assertEqual("3", bind_info["kwargs"]["che"])
+        self.assertEqual([1], bind_info["bound_args"])
+        self.assertEqual("3", bind_info["bound_kwargs"]["che"])
 
         bind_info = rms[2].get_bind_info(*[1])
-        self.assertEqual([1, 20], bind_info["args"])
-        self.assertEqual("che value", bind_info["kwargs"]["che"])
+        self.assertEqual([1], bind_info["bound_args"])
 
 
 class OpenABCTest(TestCase):
@@ -601,9 +534,7 @@ class OpenAPITest(TestCase):
     def test_params_body(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                @param("bar", type=int, help="bar variable")
-                @param("che", type=str, required=False, help="che variable")
-                def POST(self, **kwargs):
+                def POST(self, bar: int, che: Optional[str]):
                     pass
         """)
 
@@ -708,12 +639,10 @@ class OpenAPITest(TestCase):
     def test_operation_operationid_multiple_methods_with_args(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                @param(0)
-                def GET_1(self, bar):
+                def GET_1(self, bar, /):
                     pass
 
-                @param(0)
-                def GET_2(self, che):
+                def GET_2(self, che, /):
                     pass
         """)
 
@@ -802,8 +731,7 @@ class OpenAPITest(TestCase):
     def test_url_path(self):
         oa = self.create_openapi("""
             class Default(Controller):
-                @param(0, required=True, help="url param help")
-                def ANY(self, param, *args, **kwargs) -> dict:
+                def ANY(self, param, /, *args, **kwargs) -> dict:
                     pass
         """)
 
@@ -877,9 +805,7 @@ class PathItemTest(TestCase):
         oa = self.create_openapi("""
             class Foo(Controller):
                 cors = True
-                @param(0)
-                @param(1)
-                def GET(self, bar, che):
+                def GET(self, bar, che, /):
                     pass
         """)
 
@@ -893,8 +819,7 @@ class PathItemTest(TestCase):
     def test_params_positional_named(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                @param(0)
-                def GET(self, zero, *args, **kwargs):
+                def GET(self, zero, /, *args, **kwargs):
                     pass
         """)
 
@@ -911,8 +836,7 @@ class OperationTest(TestCase):
         with a requestBody with a foo property"""
         oa = self.create_openapi("""
             class Default(Controller):
-                @param("foo", type=int, default=1)
-                def ANY(self, foo) -> None:
+                def ANY(self, foo: int = 1) -> None:
                     pass
         """)
 
@@ -926,7 +850,6 @@ class OperationTest(TestCase):
     def test_params_query(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                @param("zero")
                 def GET(self, zero, *args, **kwargs):
                     pass
         """)

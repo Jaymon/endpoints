@@ -25,7 +25,7 @@ from datatypes import (
     HTTPClient,
     Boolean,
 )
-from datatypes.reflection import ReflectObject
+from datatypes.reflection.inspect import ReflectArgument, ReflectObject
 
 # for `OpenAPI.write_yaml` support
 try:
@@ -279,9 +279,12 @@ class ReflectMethod(ReflectCallable):
 
     def reflect_params(self):
         """This will reflect all params in the method signature"""
-        signature_info = self.get_signature_info()
-        for name in signature_info["names"]:
-            yield self.create_reflect_param_instance(name, signature_info)
+        for param in self.get_params():
+            yield self.create_reflect_param_instance(param)
+
+#         signature_info = self.get_signature_info()
+#         for name in signature_info["names"]:
+#             yield self.create_reflect_param_instance(name, signature_info)
 
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
@@ -311,13 +314,49 @@ class ReflectMethod(ReflectCallable):
             if rp.is_positional():
                 yield rp
 
-    def create_reflect_param_instance(self, name, signature_info, **kwargs):
+    def create_reflect_param_instance(self, *args, **kwargs):
         kwargs["reflect_method"] = self
         return kwargs.pop("reflect_param_class", ReflectParam)(
-            name,
-            signature_info,
+            *args,
+            **kwargs,
+        )
+
+    def create_reflect_http_method_instance(self, http_verb, **kwargs):
+        """Basically clone this instance but for the specific http_verb
+
+        This is mainly for things like ANY
+
+        :param http_verb: str, the http verb (eg, GET or POST)
+        :returns: ReflectMethod, it will have the same target as
+            self.get_target() but, most likely, a different http_verb
+        """
+        return self.reflect_class().create_reflect_http_method_instance(
+            http_verb,
+            self.name,
             **kwargs
         )
+
+    def create_reflect_argument(self, target, *args, **kwargs):
+        if target:
+            params = self.get_param_info()
+            if target.name in params:
+                kwargs.setdefault("reflect_param", params[target.name])
+
+        kwargs.setdefault("reflect_argument_class", ReflectArgument)
+        return super().create_reflect_argument(target, *args, **kwargs)
+
+    def reflect_arguments(self, *args, **kwargs):
+        params = self.get_param_info()
+
+        # resolve any aliases
+        for name, rp in params.items():
+            if name not in kwargs:
+                for n in rp.flags["aliases"]:
+                    if n in kwargs:
+                        kwargs[name] = kwargs.pop(n)
+                        break
+
+        yield from super().reflect_arguments(*args, **kwargs)
 
     def get_url_path(self):
         """Get the path for this method. The reason why this is on the method
@@ -350,6 +389,14 @@ class ReflectMethod(ReflectCallable):
         return version
 
     @functools.cache
+    def get_param_info(self):
+        params = {}
+        for rp in self.reflect_params():
+            params[rp.name] = rp
+
+        return params
+
+    @functools.cache
     def get_method_info(self):
         method_info = {}
         media_types = self.get_class().get_response_media_types()
@@ -370,108 +417,123 @@ class ReflectMethod(ReflectCallable):
 
         method_info.setdefault("method_name", self.name)
 
-        method_info["params"] = {}
-        for rp in self.reflect_params():
-            method_info["params"][rp.name] = rp
+        method_info["params"] = self.get_param_info()
 
         return method_info
-
-    def create_reflect_http_method_instance(self, http_verb, **kwargs):
-        """Basically clone this instance but for the specific http_verb
-
-        This is mainly for things like ANY
-
-        :param http_verb: str, the http verb (eg, GET or POST)
-        :returns: ReflectMethod, it will have the same target as
-            self.get_target() but, most likely, a different http_verb
-        """
-        return self.reflect_class().create_reflect_http_method_instance(
-            http_verb,
-            self.name,
-            **kwargs
-        )
 
     def has_body(self):
         """Returns True if http_verb accepts a body in the request"""
         return self.http_verb_has_body(self.http_verb)
 
-    def get_bind_info(self, *args, **kwargs):
-        method_info = self.get_method_info()
-        params = method_info["params"]
+#     def get_bind_info(self, *args, **kwargs):
+#         method_info = self.get_method_info()
+#         params = method_info["params"]
+# 
+#         try:
+#             bind_info = super().get_bind_info(*args, **kwargs)
+# 
+#         except TypeError:
+#             # check for aliases and try again
+#             for name, rp in params.items():
+#                 if name not in kwargs:
+#                     for n in rp.flags["aliases"]:
+#                         if n in kwargs:
+#                             kwargs[name] = kwargs.pop(n)
+# 
+#             bind_info = super().get_bind_info(*args, **kwargs)
+# 
+#         bound = bind_info["bound"]
+# 
+#         pout.v(bound)
+# 
+#         # normalize positional arguments
+#         for index, value in enumerate(bound.args):
+#             name = bind_info["signature_info"]["names"][index]
+#             if name in method_info["params"]:
+#                 rp = method_info["params"][name]
+#                 bound.arguments[name] = rp.normalize_value(value)
+# 
+#         pout.v(bound)
+# 
+#         # normalize keyword arguments
+#         for name, value in bound.kwargs.items():
+#             if name in method_info["params"]:
+#                 rp = method_info["params"][name]
+#                 bound.arguments[name] = rp.normalize_value(value)
+# 
+#         return bind_info
 
-        try:
-            bind_info = super().get_bind_info(*args, **kwargs)
 
-        except TypeError:
-            # check for aliases and try again
-            for name, rp in params.items():
-                if name not in kwargs:
-                    for n in rp.flags["aliases"]:
-                        if n in kwargs:
-                            kwargs[name] = kwargs.pop(n)
+class ReflectArgument(ReflectArgument):
+    def __init__(
+        self,
+        target,
+        value,
+        reflect_callable,
+        reflect_param=None,
+        **kwargs,
+    ):
+        super().__init__(target, value, reflect_callable, **kwargs)
 
-            bind_info = super().get_bind_info(*args, **kwargs)
+        self._reflect_param = reflect_param
 
-        bound = bind_info["bound"]
+    def reflect_param(self):
+        return self._reflect_param
 
-        pout.v(bound)
+    def normalize_value(self):
+        v = self.value
+        if rp := self.reflect_param():
+            v = rp.normalize_value(v)
 
-        # normalize positional arguments
-        for index, value in enumerate(bound.args):
-            name = bind_info["signature_info"]["names"][index]
-            if name in method_info["params"]:
-                rp = method_info["params"][name]
-                bound.arguments[name] = rp.normalize_value(value)
-
-        pout.v(bound)
-
-        # normalize keyword arguments
-        for name, value in bound.kwargs.items():
-            if name in method_info["params"]:
-                rp = method_info["params"][name]
-                bound.arguments[name] = rp.normalize_value(value)
-
-        return bind_info
+        return v
 
 
 class ReflectParam(ReflectObject):
-    """Reflects a Param instance
+    """Reflects an inspect.Parameter instance from an http method's signature
 
     Reflected params only apply to http methods on controllers
     """
     @property
     def name(self):
-        return self.get_target()
+        return self.get_target().name
 
-    def __init__(self, name, signature_info, reflect_method, **kwargs):
-        super().__init__(name)
+    def __init__(self, param, reflect_method, **kwargs):
+        super().__init__(param)
 
         self._reflect_method = reflect_method
-        self.flags = self.get_flags(name, signature_info)
-        self.index = signature_info["indexes"][name]
+        self.flags = self.get_flags(param)
 
-    def get_flags(self, name, signature_info):
+    def get_flags(self, param):
         flags = {}
 
         flags["is_positional"] = False
-        if name in signature_info["positional_only_names"]:
+        if param.kind == param.POSITIONAL_ONLY:
             flags["is_positional"] = True
 
-        flags["required"] = name in signature_info["required"]
+        if param.default is param.empty:
+            flags["required"] = True
 
-        if name in signature_info["defaults"]:
-            flags["default"] = signature_info["defaults"][name]
+        else:
+            flags["required"] = False
+            flags["default"] = param.default
 
-        if name in signature_info["annotations"]:
-            flags["type"] = signature_info["annotations"][name]
+        if param.annotation is param.empty:
+            if param.kind == param.VAR_POSITIONAL:
+                flags["type"] = list
+
+            elif param.kind == param.VAR_KEYWORD:
+                flags["type"] = dict
+
+            else:
+                flags["type"] = str
+
+        else:
+            flags["type"] = param.annotation
 
             rt = self.create_reflect_type(flags["type"])
             if rt.is_annotated():
                 for metadata in rt.get_metadata():
                     flags.update(metadata)
-
-        else:
-            flags["type"] = str
 
         flags.setdefault("aliases", [])
         flags["aliases"].extend(flags.pop("names", []))
@@ -480,9 +542,10 @@ class ReflectParam(ReflectObject):
 
     def get_docblock(self):
         if rdb := self.reflect_method().reflect_docblock():
-            signature_info = rdb.get_signature_info()
-            if self.name in signature_info["descriptions"]:
-                return signature_info["descriptions"][self.name]
+            name = self.name
+            param_descs = rdb.get_param_descriptions()
+            if name in param_descs:
+                return param_descs[name]
 
     def reflect_class(self):
         return self.reflect_method().reflect_class()
@@ -506,6 +569,9 @@ class ReflectParam(ReflectObject):
 
     def is_positional(self):
         return self.flags["is_positional"]
+
+    def allow_empty(self):
+        return self.flags.get("allow_empty", True)
 
     def normalize_value(self, val):
         """This will take the value and make sure it meets expectations
@@ -1321,24 +1387,23 @@ class Schema(OpenABC):
     def get_param_fields(self, reflect_param):
         """Internal method. Returns the schema fields for a param"""
         ret = {}
-        param = reflect_param.get_target()
 
         reflect_type = reflect_param.reflect_type()
         ret.update(self.get_type_fields(reflect_type))
 
-        min_size = param.flags.get("min_size", 0)
-        max_size = param.flags.get("max_size", 0)
+        min_size = reflect_param.flags.get("min_size", 0)
+        max_size = reflect_param.flags.get("max_size", 0)
         if size := self.get_size_fields(ret["type"], min_size, max_size):
             self.update(size)
 
-        if desc := param.flags.get("help", ""):
+        if desc := reflect_param.get_docblock():
             ret["description"] = desc
 
-        if "choices" in param.flags:
-            ret["enum"] = list(param.flags["choices"])
+        if "choices" in reflect_param.flags:
+            ret["enum"] = list(reflect_param.flags["choices"])
 
-        if "regex" in param.flags:
-            ret["pattern"] = param.flags["regex"]
+        if "regex" in reflect_param.flags:
+            ret["pattern"] = reflect_param.flags["regex"]
 
         return ret
 
@@ -1881,13 +1946,12 @@ class Parameter(OpenABC):
 
     def get_param_fields(self, reflect_param):
         ret = {}
-        param = self.reflect_param.target
 
-        if param.is_kwarg:
-            ret["name"] = param.name
+        if reflect_param.is_keyword():
+            ret["name"] = reflect_param.name
             ret["in"] = "query"
-            ret["required"] = param.flags.get("required", False)
-            ret["allowEmptyValue"] = param.flags.get("allow_empty", False)
+            ret["required"] = reflect_param.is_required()
+            ret["allowEmptyValue"] = reflect_param.allow_empty()
 
         else:
             ret["name"] = reflect_param.name
@@ -1897,7 +1961,7 @@ class Parameter(OpenABC):
             # REQUIRED and its value MUST be true"
             ret["required"] = True
 
-        if desc := param.flags.get("help", ""):
+        if desc := reflect_param.get_docblock():
             ret["description"] = desc
 
         schema = self.create_schema_instance()
@@ -1967,7 +2031,7 @@ class Operation(OpenABC):
             return parameters
 
     def get_tags_value(self, **kwargs):
-        tags = list(self.reflect_method.reflect_class().value["module_keys"])
+        tags = list(self.reflect_method.reflect_class().module_keys)
         if not tags and self.root:
             for tag in self.root.get("tags", []):
                 if tag.reflect_module is None:
@@ -1995,10 +2059,10 @@ class Operation(OpenABC):
         parts = []
         rc = self.reflect_method.reflect_class()
         parts.append(self.reflect_method.http_verb.lower())
-        for k in rc.value["module_keys"]:
+        for k in rc.module_keys:
             parts.append(NamingConvention(k).upper_camelcase())
 
-        for k in rc.value["class_keys"]:
+        for k in rc.class_keys:
             parts.append(NamingConvention(k).upper_camelcase())
 
         # sometimes the http verb method has a suffix, this adds that suffix
@@ -2752,16 +2816,5 @@ class OpenAPI(OpenABC):
         """Reflect all the controllers of this application"""
         pathfinder = self.application.router.pathfinder
         for keys, value in pathfinder.get_class_items():
-            reflect_controller = self.create_reflect_controller_instance(
-                keys,
-                value
-            )
-
-            yield reflect_controller
-
-    def create_reflect_controller_instance(self, keys, value, **kwargs):
-        return kwargs.get("reflect_controller_class", ReflectController)(
-            keys,
-            value
-        )
+            yield value["reflect_class"]
 

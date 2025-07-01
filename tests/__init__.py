@@ -150,7 +150,7 @@ class TestCase(BaseAsyncTestCase):
 
         else:
             header = [
-                "from typing import Any, Annotated",
+                "from typing import *",
                 "from endpoints import *",
                 "from endpoints.decorators import *",
                 "from endpoints.compat import *",

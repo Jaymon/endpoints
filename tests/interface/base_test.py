@@ -397,7 +397,8 @@ class BaseApplicationTest(TestCase):
 
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to
-        default class name if the path bit fails to be a controller class name"""
+        default class name if the path bit fails to be a controller class name
+        """
         c = self.create_server({
             "nmcon": [
                 "from endpoints import Controller",

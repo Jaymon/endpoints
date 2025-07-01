@@ -1019,23 +1019,41 @@ class Controller(object):
         **controller_kwargs,
     ):
 
-        positional_count = len(controller_args)
+        method_args = []
+        method_kwargs = {}
+        rps = reflect_method.get_method_info()["params"]
 
-        for rp in reflect_method.reflect_params():
-            if rp.index < positional_count:
-                controller_args[rp.index] = rp.normalize_value(controller_args[rp.index])
+        ras = reflect_method.reflect_arguments(
+            *controller_args,
+            **controller_kwargs,
+        )
+
+        for ra in ras:
+            if ra.is_bound():
+                v = ra.normalize_value()
+
+                if ra.is_bound_positional():
+                    if ra.is_catchall():
+                        method_args.extend(v)
+
+                    else:
+                        method_args.append(v)
+
+                else:
+                    if ra.is_catchall():
+                        method_kwargs.update(v)
+
+                    else:
+                        method_kwargs[ra.name] = v
 
             else:
-                if rp.name not in controller_kwargs:
-                    for n in rp.flags["aliases"]:
-                        if n in controller_kwargs:
-                            controller_kwargs[name] = controller_kwargs.pop(n)
+                # calling the method is going to fail, so let's just
+                # short-circuit nromalizing the values
+                method_args = controller_args
+                method_kwargs = controller_kwargs
+                break
 
-                if rp.name in controller_kwargs:
-
-                    controller_kwargs[rp.name] = rp.normalize_value(controller_kwargs[rp.name])
-
-        return controller_args, controller_kwargs
+        return method_args, method_kwargs
 
     async def handle(self, *controller_args, **controller_kwargs):
         """handles the request and sets the response
@@ -1133,7 +1151,7 @@ class Controller(object):
 #                 body = http_method(*controller_args, **controller_kwargs)
 
                 method_args, method_kwargs = await self.get_method_params(
-                    reflect_method,
+                    rm,
                     *controller_args,
                     **controller_kwargs,
                 )
