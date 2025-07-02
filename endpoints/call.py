@@ -181,12 +181,12 @@ class Router(object):
 
         ret['method_kwargs'] = request.kwargs
 
-        ret["module_name"] = controller_class.__module__
+        #ret["module_name"] = controller_class.__module__
         #ret['module_path'] = "/".join(value["module_keys"])
 
-        ret["class"] = controller_class
+        #ret["class"] = controller_class
         ret["reflect_class"] = rc
-        ret['class_name'] = controller_class.__name__
+        #ret['class_name'] = controller_class.__name__
         #ret['class_path'] = rc.get_url_path()
 
         return ret

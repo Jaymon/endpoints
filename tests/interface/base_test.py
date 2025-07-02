@@ -364,10 +364,10 @@ class BaseApplicationTest(TestCase):
         c = self.create_server(controller_prefixes=["foo", "bar"])
 
         t = c.find("/user")
-        self.assertTrue("bar", t["module_name"])
+        self.assertTrue("bar", t["reflect_class"].modpath)
 
         t = c.find("/che")
-        self.assertTrue("foo", t["module_name"])
+        self.assertTrue("foo", t["reflect_class"].modpath)
 
     def test_routing_1(self):
         """there was a bug that caused errors raised after the yield to return
@@ -387,12 +387,14 @@ class BaseApplicationTest(TestCase):
         c = self.create_server(controller_prefixes=[controller_prefix])
 
         info = c.find()
-        self.assertEqual(info['module_name'], controller_prefix)
-        self.assertEqual(info['class_name'], "Default")
+        rc = info["reflect_class"]
+        self.assertEqual(controller_prefix, rc.modpath)
+        self.assertEqual("Default", rc.name)
 
         info = c.find("/foo/che/baz")
+        rc = info["reflect_class"]
         self.assertEqual(2, len(info['method_args']))
-        self.assertEqual(info['class_name'], "Foo")
+        self.assertEqual("Foo", rc.name)
 
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to
@@ -427,8 +429,9 @@ class BaseApplicationTest(TestCase):
 
         path = '/nomodbar' # same name as one of the non controller classes
         info = c.find(path)
-        self.assertEqual('Default', info['class_name'])
-        self.assertEqual(c.controller_prefix, info['module_name'])
+        rc = info["reflect_class"]
+        self.assertEqual('Default', rc.name)
+        self.assertEqual(c.controller_prefix, rc.modpath)
         self.assertEqual('nomodbar', info['method_args'][0])
 
     def test_import_error(self):

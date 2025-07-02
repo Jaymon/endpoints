@@ -438,8 +438,10 @@ class RouterTest(TestCase):
         ])
 
         info = c.find("/")
-        self.assertEqual('Default', info['class_name'])
-        self.assertTrue(issubclass(info['class'], Controller))
+        self.assertEqual('Default', info["reflect_class"].name)
+        self.assertTrue(
+            issubclass(info["reflect_class"].get_target(), Controller)
+        )
 
     def test_find_controller_info_advanced(self):
         c = self.create_server({
@@ -556,7 +558,19 @@ class RouterTest(TestCase):
             d = c.find(request=request)
 
             for key, val in t["out"].items():
-                self.assertEqual(val, d[key], t["in"]["path"])
+                rc = d["reflect_class"]
+                if key == "module_name":
+                    self.assertEqual(val, rc.modpath, t["in"]["path"])
+
+                elif key == "class_name":
+                    self.assertEqual(
+                        val,
+                        rc.reflect_class().name,
+                        t["in"]["path"]
+                    )
+
+                else:
+                    self.assertEqual(val, d[key], t["in"]["path"])
 
 
 class RequestTest(TestCase):
