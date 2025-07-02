@@ -510,7 +510,16 @@ class Controller(object):
         *controller_args,
         **controller_kwargs,
     ):
+        """Convert controller positionals and keywords to the actual arguments
+        that will be passed to the http handler method
 
+        :param reflect_method: ReflectMethod
+        :argument *controller_args: The positionals returned from
+            `self.get_controller_params`
+        :keyword **controller_kwargs: The keywords returned from
+            `self.get_controller_params`
+        :returns: tuple[Sequence[Any, ...], Mapping[str, Any]]
+        """
         method_args = []
         method_kwargs = {}
         rps = reflect_method.get_method_info()["params"]
@@ -607,29 +616,20 @@ class Controller(object):
                 )
 
         for rm in reflect_methods:
-            http_method_name = rm.name
-            http_method = getattr(self, http_method_name)
-
             # we update the controller info so other handlers know what
             # method succeeded/failed
             request.controller_info["reflect_method"] = rm
-            request.controller_info["http_method_name"] = http_method_name
-            request.controller_info["http_method"] = http_method
+            request.controller_info["http_method_name"] = rm.name
 
             try:
-                logger.debug(
-                    "Request Controller method: {}:{}.{}".format(
-                        request.controller_info['module_name'],
-                        request.controller_info['class_name'],
-                        http_method_name
-                    )
-                )
+                logger.debug(f"Request Controller method: {rm.callpath}")
 
                 method_args, method_kwargs = await self.get_method_params(
                     rm,
                     *controller_args,
                     **controller_kwargs,
                 )
+                http_method = getattr(self, rm.name)
                 body = http_method(*method_args, **method_kwargs)
 
                 while inspect.iscoroutine(body):
@@ -640,7 +640,6 @@ class Controller(object):
 
             except Exception as e:
                 exceptions[e.__class__.__name__].append(e)
-
 
         if exceptions:
             try:
