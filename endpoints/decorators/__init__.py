@@ -27,6 +27,5 @@ from .utils import (
 
 from .call import (
     version,
-    param,
 )
 

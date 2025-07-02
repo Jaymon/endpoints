@@ -53,19 +53,17 @@ class _HTTPTestCase(TestCase):
         self.assertRegex(r.body, r"https?://[^/]")
 
     def test_get_list_param_decorator(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller, decorators",
-            "class Listparamdec(Controller):",
-            "    @decorators.param(",
-            "        'user_ids',",
-            "        'user_ids[]',",
-            "        type=int,",
-            "        action='append_list'",
-            "    )",
-            "    def GET(self, **kwargs):",
-            "        return int(''.join(map(str, kwargs['user_ids'])))",
-            ""
-        ])
+        server = self.create_server("""
+            class Listparamdec(Controller):
+                def GET(
+                    self,
+                    user_ids: Annotated[
+                        list[int],
+                        dict(aliases=["user_ids[]"]),
+                    ],
+                ):
+                    return int(''.join(map(str, user_ids)))
+        """)
 
         c = self.create_client()
         r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
@@ -182,15 +180,12 @@ class _HTTPTestCase(TestCase):
             self.assertEqual(v, r.body[k])
 
     def test_post_body_file_2(self):
-        """make sure specifying a @param for the file upload works as
-        expected"""
+        """make sure a file upload works as expected"""
         filepath = testdata.create_file("post_file_with_param")
-        server = self.create_server(contents=[
+        server = self.create_server([
             "class Default(Controller):",
-            "    @decorators.param('file')",
-            "    def POST(self, **kwargs):",
-            "        return kwargs['file'].filename",
-            #"        return kwargs['file']['filename']",
+            "    def POST(self, file, **kwargs):",
+            "        return file.filename",
             "",
         ])
 

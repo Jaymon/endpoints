@@ -138,7 +138,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self):",
             "        pass",
@@ -439,8 +438,6 @@ class BaseApplicationTest(TestCase):
                 "class Default(Controller):",
                 "    def GET(self): pass",
             ])
-#         res = c.handle('/')
-#         self.assertEqual(404, res.code)
 
     def test_callback_info(self):
         c = self.create_server()

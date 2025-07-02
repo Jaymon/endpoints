@@ -33,10 +33,6 @@ from endpoints.decorators.utils import (
     nohttpcache,
     code_error,
 )
-from endpoints.decorators.call import (
-    param,
-)
-
 
 from . import (
     testdata,
@@ -625,9 +621,6 @@ class CodeErrorTest(TestCase):
 
     def test_raise(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import code_error, param",
-            "",
             "class Foo(Controller):",
             "    @code_error(330, ValueError, IndexError)",
             "    def GET(self, error_type, /):",
@@ -652,8 +645,6 @@ class CodeErrorTest(TestCase):
 class VersionTest(TestCase):
     def test_simple(self):
         c = self.create_server([
-            "from endpoints import Controller",
-            "from endpoints.decorators import version",
             "class Foo(Controller):",
             "    @version('', 'v1')",
             "    def GET_1(self):",

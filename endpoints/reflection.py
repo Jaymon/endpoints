@@ -175,9 +175,6 @@ class ReflectController(ReflectClass):
         if class_path := "/".join(self.class_keys):
             path += "/" + class_path
 
-#         if name := self.get_url_name():
-#             path += "/" + name
-
         if not path:
             path = "/"
 
@@ -281,10 +278,6 @@ class ReflectMethod(ReflectCallable):
         """This will reflect all params in the method signature"""
         for param in self.get_params():
             yield self.create_reflect_param_instance(param)
-
-#         signature_info = self.get_signature_info()
-#         for name in signature_info["names"]:
-#             yield self.create_reflect_param_instance(name, signature_info)
 
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
@@ -425,44 +418,6 @@ class ReflectMethod(ReflectCallable):
         """Returns True if http_verb accepts a body in the request"""
         return self.http_verb_has_body(self.http_verb)
 
-#     def get_bind_info(self, *args, **kwargs):
-#         method_info = self.get_method_info()
-#         params = method_info["params"]
-# 
-#         try:
-#             bind_info = super().get_bind_info(*args, **kwargs)
-# 
-#         except TypeError:
-#             # check for aliases and try again
-#             for name, rp in params.items():
-#                 if name not in kwargs:
-#                     for n in rp.flags["aliases"]:
-#                         if n in kwargs:
-#                             kwargs[name] = kwargs.pop(n)
-# 
-#             bind_info = super().get_bind_info(*args, **kwargs)
-# 
-#         bound = bind_info["bound"]
-# 
-#         pout.v(bound)
-# 
-#         # normalize positional arguments
-#         for index, value in enumerate(bound.args):
-#             name = bind_info["signature_info"]["names"][index]
-#             if name in method_info["params"]:
-#                 rp = method_info["params"][name]
-#                 bound.arguments[name] = rp.normalize_value(value)
-# 
-#         pout.v(bound)
-# 
-#         # normalize keyword arguments
-#         for name, value in bound.kwargs.items():
-#             if name in method_info["params"]:
-#                 rp = method_info["params"][name]
-#                 bound.arguments[name] = rp.normalize_value(value)
-# 
-#         return bind_info
-
 
 class ReflectArgument(ReflectArgument):
     def __init__(
@@ -525,7 +480,7 @@ class ReflectParam(ReflectObject):
                 flags["type"] = dict
 
             else:
-                flags["type"] = str
+                flags["type"] = Any
 
         else:
             flags["type"] = param.annotation
@@ -1534,6 +1489,9 @@ class Schema(OpenABC):
 
         elif rt.is_none():
             ret["type"] = "null"
+
+        elif rt.is_any():
+            ret["type"] = "string"
 
         else:
             raise ValueError(f"Not sure how to handle type {rt}")

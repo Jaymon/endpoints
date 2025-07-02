@@ -53,358 +53,6 @@ from .reflection import ReflectController
 logger = logging.getLogger(__name__)
 
 
-class Param(object):
-    """Check a value against criteria
-
-    this tries to be as similar to python's built-in argparse as possible
-
-    :example:
-
-        p = Param('name', type=int, action='store_list')
-        args, kwargs = p.handle(args, kwargs)
-
-    Check .__init__ to see what you can pass into the contructor. Check the
-    decorators.utils.param to see how this is used
-    """
-    encoding = environ.ENCODING
-
-    def __init__(self, *names, **flags):
-        """
-        :param name: str, the name of the query_param
-        :param **flags:
-            - dest: str, the key in kwargs this param will be set into
-            - type: type, a python type like `int` or `float`
-            - action: str, the possible string values are:
-                - "store" - the default value
-                - "store_false" - set if you want default param value to be
-                    True, and False only if param is passed in
-                - "store_true" - opposite of store_false
-                - "store_list" - set to have a value like 1,2,3 be blown up to
-                    ['1', '2', '3']
-                - "append" - if multiple param values should be turned into an
-                    array (eg, foo=1&foo=2 would become foo=[1, 2])
-                - "append_list" - it's store_list + append, so foo=1&foo=2,3
-                    would become foo=[1, 2, 3]
-            - default: Any, the value that should be set if the param isn't
-                there, if this is callable (eg, time.time or datetime.utcnow)
-                then it will be called every time this param is checked for a
-                value
-            - required: bool, True if param is required, default is True
-            - choices: set, a set of values to be in tested against (eg, val in
-                choices)
-            - value: str, it's the one-off of `choices`, equivalent to
-                choices=["<VALUE>"]
-            - allow_empty: bool, True allows values like False, 0, '' through,
-                default is False, this will also let through any empty value
-                that was set via the default flag
-            - max_size: int, the maximum size of the param
-            - min_size: int, the minimum size of the param
-            - regex: regexObject, if you would like the param to be validated
-                with a regular expression, uses the re.search() method
-            - help: str, a helpful description for this param
-        """
-        self.normalize_type(names)
-        self.normalize_flags(flags)
-
-    def handle(self, args, kwargs):
-        """this is where all the magic happens, this will try and find the
-        param and put its value in kwargs if it has a default and stuff"""
-        if self.is_kwarg:
-            kwargs = self.normalize_kwarg(kwargs)
-
-        else:
-            args = self.normalize_arg(args)
-
-        return args, kwargs
-
-    def normalize_flags(self, flags):
-        """normalize the flags to make sure needed values are there
-
-        after this method is called self.flags is available
-
-        :param flags: the flags that will be normalized
-        """
-        flags['type'] = flags.get('type', None)
-        paction = flags.get('action', 'store')
-        if paction == 'store_false':
-            flags['default'] = True 
-            flags['type'] = bool
-
-        elif paction == 'store_true':
-            flags['default'] = False
-            flags['type'] = bool
-
-        if 'default' in flags:
-            prequired = False
-
-        else:
-            prequired = flags.get('required', True)
-
-        flags["action"] = paction
-        flags["required"] = prequired
-
-        self.flags = flags
-
-    def normalize_type(self, names):
-        """Decide if this param is an arg or a kwarg and set appropriate
-        internal flags"""
-        self.name = names[0]
-        self.is_kwarg = False
-        self.is_arg = False
-        self.names = []
-
-        try:
-            # http://stackoverflow.com/a/16488383/5006 uses ask forgiveness
-            # because of py2/3 differences of integer check
-            self.index = int(self.name)
-            self.name = ""
-            self.is_arg = True
-
-        except ValueError:
-            self.is_kwarg = True
-            self.names = names
-
-    def normalize_default(self, default):
-        ret = default
-        if isinstance(default, dict):
-            ret = dict(default)
-
-        elif isinstance(default, list):
-            ret = list(default)
-
-        else:
-            if callable(default):
-                ret = default()
-
-        return ret
-
-    def normalize_arg(self, args):
-        flags = self.flags
-        index = self.index
-        args = list(args)
-
-        paction = flags['action']
-        if paction not in set(['store', 'store_false', 'store_true']):
-            raise RuntimeError('unsupported positional param action {}'.format(
-                paction
-            ))
-
-        if 'dest' in flags:
-            logger.warning("dest is ignored in positional param")
-
-        try:
-            val = args.pop(index)
-
-        except IndexError as e:
-            if flags["required"]:
-                raise ValueError(
-                    f"Positional param at index {index} does not exist"
-                ) from e
-
-            else:
-                val = self.normalize_default(flags.get('default', None))
-
-        try:
-            val = self.normalize_val(val)
-
-        except ValueError as e:
-            raise ValueError(
-                "Positional arg {} failed with {}".format(index, String(e))
-            ) from e
-
-        args.insert(index, val)
-
-        return args
-
-    def find_kwarg(self, names, required, default, kwargs):
-        """actually try to retrieve names key from params dict
-
-        :param names: the names this kwarg can be
-        :param required: True if a name has to be found in kwargs
-        :param default: the default value if name isn't found
-        :param kwargs: the kwargs that will be used to find the value
-        :returns: tuple, found_name, val where found_name is the actual name
-            kwargs contained
-        """
-        val = default
-        found_name = ''
-        for name in names:
-            if name in kwargs:
-                val = kwargs[name]
-                found_name = name
-                break
-
-        if not found_name and required:
-            raise ValueError("required param {} does not exist".format(
-                self.name
-            ))
-
-        return found_name, val
-
-    def normalize_kwarg(self, kwargs):
-        flags = self.flags
-        name = self.name
-
-        pdefault = self.normalize_default(flags.get('default', None))
-        prequired = flags['required']
-        dest_name = flags.get('dest', name)
-
-        has_val = True
-        found_name, val = self.find_kwarg(
-            self.names,
-            prequired,
-            pdefault,
-            kwargs
-        )
-        if found_name:
-            # we are going to replace found_name with dest_name
-            kwargs.pop(found_name)
-
-        else:
-            # we still want to run a default value through normalization
-            # but if we didn't find a value and don't have a default, don't
-            # set any value
-            has_val = 'default' in flags
-
-        if has_val:
-            kwargs[dest_name] = self.normalize_val(val)
-
-        return kwargs
-
-    def normalize_val(self, val):
-        """This will take the value and make sure it meets expectations
-
-        :param val: the raw value pulled from kwargs or args
-        :returns: val that has met all param checks
-        :raises: ValueError if val fails any checks
-        """
-        flags = self.flags
-        paction = flags['action']
-        ptype = flags['type']
-        pchoices = set(flags.get('choices', []))
-        allow_empty = flags.get('allow_empty', False)
-        min_size = flags.get('min_size', None)
-        max_size = flags.get('max_size', None)
-        regex = flags.get('regex', None)
-
-        if paction in set(['store_list']):
-            if isinstance(val, list) and len(val) > 1:
-                raise ValueError("too many values for param")
-
-            if isinstance(val, basestring):
-                val = list(val.split(','))
-
-            else:
-                val = list(val)
-
-        elif paction in set(['append', 'append_list']):
-            if not isinstance(val, list):
-                val = [val]
-
-            if paction == 'append_list':
-                vs = []
-                for v in val:
-                    if isinstance(v, basestring):
-                        vs.extend(String(v).split(','))
-                    else:
-                        vs.append(v)
-
-                val = vs
-
-        else:
-            if paction not in set(['store', 'store_false', 'store_true']):
-                raise RuntimeError('unknown param action {}'.format(paction))
-
-        if regex:
-            failed = False
-            if isinstance(regex, basestring):
-                if not re.search(regex, val): failed = True
-            else:
-                if not regex.search(val): failed = True
-
-            if failed:
-                raise ValueError("param failed regex check")
-
-        if ptype:
-            if isinstance(val, list) and ptype != list:
-                val = list(map(ptype, val))
-
-            else:
-                if isinstance(ptype, type):
-                    if issubclass(ptype, bool):
-                        val = Boolean(val)
-
-                    elif issubclass(ptype, (bytes, bytearray)):
-                        charset = flags.get("encoding", self.encoding)
-                        val = ptype(ByteString(val, charset))
-
-                    elif issubclass(ptype, basestring):
-                        charset = flags.get("encoding", self.encoding)
-                        val = ptype(String(val, charset))
-
-                    else:
-                        val = ptype(val)
-
-                else:
-                    val = ptype(val)
-
-
-        if "value" in flags:
-            pchoices.add(flags["value"])
-
-        if pchoices:
-            if isinstance(val, list) and ptype != list:
-                for v in val:
-                    if v not in pchoices:
-                        raise ValueError(
-                            "param value {} not in choices {}".format(
-                                v,
-                                pchoices
-                            )
-                        )
-
-            else:
-                if val not in pchoices:
-                    raise ValueError(
-                        "param value {} not in choices {}".format(
-                            val,
-                            pchoices
-                        )
-                    )
-
-        if not allow_empty and val is not False and not val:
-            if 'default' not in flags:
-                raise ValueError("param was empty")
-
-        if min_size is not None:
-            failed = False
-            if isinstance(val, (int, float)):
-                if val < min_size:
-                    failed = True
-
-            else:
-                if len(val) < min_size:
-                    failed = True
-
-            if failed:
-                raise ValueError("param was smaller than {}".format(min_size))
-
-        if max_size is not None:
-            failed = False
-            if isinstance(val, (int, float)):
-                if val > max_size:
-                    failed = True
-
-            else:
-                if len(val) > max_size:
-                    failed = True
-
-            if failed:
-                raise ValueError("param was bigger than {}".format(max_size))
-
-        return val
-
-
 class Pathfinder(ClasspathFinder):
     """Internal class used by Router. This holds the tree of all the
     controllers so Router can resolve the path"""
@@ -600,66 +248,6 @@ class Router(object):
         ret['method_args'].extend(request.body_args)
 
         ret['method_kwargs'] = request.kwargs
-
-#         if not rc.has_http_method(request.method):
-#             if len(ret["method_args"]) > 0:
-#                 # if we have method args and we don't have a method to even
-#                 # answer the request it should be a 404 since the path is
-#                 # invalid
-#                 raise TypeError(
-#                     "Could not find a {} method for path {}".format(
-#                         request.method,
-#                         request.path,
-#                     )
-#                 )
-# 
-#             else:
-#                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                 # and 501 (Not Implemented) if the method is unrecognized or
-#                 # not implemented by the origin server
-#                 raise NotImplementedError(
-#                     "{} {} not implemented".format(
-#                         request.method,
-#                         request.path
-#                     )
-#                 )
-
-
-
-
-
-
-#         http_method_names = rc.get_http_method_names()
-#         http_verb = request.method.upper()
-# 
-#         if method_names := http_method_names.get(http_verb):
-#             ret['http_method_names'] = method_names
-# 
-#         elif method_names := http_method_names.get("ANY"):
-#             ret['http_method_names'] = method_names
-# 
-#         else:
-#             if len(ret["method_args"]) > 0:
-#                 # if we have method args and we don't have a method to even
-#                 # answer the request it should be a 404 since the path is
-#                 # invalid
-#                 raise TypeError(
-#                     "Could not find a {} method for path {}".format(
-#                         request.method,
-#                         request.path,
-#                     )
-#                 )
-# 
-#             else:
-#                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                 # and 501 (Not Implemented) if the method is unrecognized or
-#                 # not implemented by the origin server
-#                 raise NotImplementedError(
-#                     "{} {} not implemented".format(
-#                         request.method,
-#                         request.path
-#                     )
-#                 )
 
         ret["module_name"] = controller_class.__module__
         ret['module_path'] = "/".join(value["module_keys"])
@@ -984,34 +572,6 @@ class Controller(object):
         """
         return controller_args, controller_kwargs
 
-#     async def normalize_controller_params(self, 
-
-#     async def bind_controller_params(
-#         self,
-#         reflect_method,
-#         *controller_args,
-#         **controller_kwargs,
-#     ):
-# 
-#         try:
-#             return reflect_method.signature.bind_partial(
-#                 *controller_args,
-#                 **controller_kwargs
-#             )
-# 
-#         except TypeError as e:
-#             e_msg = str(e)
-#             if "too many positional arguments" in e_msg:
-#                 raise CallError(404) from e
-# 
-#             elif "unexpected keyword argument"
-#                 # TypeError: got an unexpected keyword argument '<NAME>'
-#                 raise CallError(400) from e
-# 
-#             else:
-#                 raise
-
-
     async def get_method_params(
         self,
         reflect_method,
@@ -1030,7 +590,11 @@ class Controller(object):
 
         for ra in ras:
             if ra.is_bound():
-                v = ra.normalize_value()
+                try:
+                    v = ra.normalize_value()
+
+                except ValueError as e:
+                    raise CallError(400, String(e)) from e
 
                 if ra.is_bound_positional():
                     if ra.is_catchall():
@@ -1077,9 +641,6 @@ class Controller(object):
         request = self.request
         exceptions = defaultdict(list)
 
-#         http_method_names = request.controller_info["http_method_names"]
-#         pout.v(http_method_names)
-
         controller_args, controller_kwargs = await self.get_controller_params(
             *controller_args,
             **controller_kwargs
@@ -1101,13 +662,6 @@ class Controller(object):
                     )
                 )
 
-#                 raise TypeError(
-#                     "Could not find a {} method for path {}".format(
-#                         request.method,
-#                         request.path,
-#                     )
-#                 )
-
             else:
                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
                 # and 501 (Not Implemented) if the method is unrecognized or
@@ -1119,13 +673,6 @@ class Controller(object):
                         request.path
                     )
                 )
-
-#                 raise NotImplementedError(
-#                     "{} {} not implemented".format(
-#                         request.method,
-#                         request.path
-#                     )
-#                 )
 
         for rm in reflect_methods:
             http_method_name = rm.name
@@ -1148,21 +695,12 @@ class Controller(object):
                     )
                 )
 
-#                 body = http_method(*controller_args, **controller_kwargs)
-
                 method_args, method_kwargs = await self.get_method_params(
                     rm,
                     *controller_args,
                     **controller_kwargs,
                 )
                 body = http_method(*method_args, **method_kwargs)
-
-#                 bound = await self.bind_controller_params(
-#                     rm,
-#                     *controller_args,
-#                     **controller_kwargs
-#                 )
-#                 body = http_method(*bound.args, **bound.kwargs)
 
                 while inspect.iscoroutine(body):
                     body = await body
@@ -1173,40 +711,6 @@ class Controller(object):
             except Exception as e:
                 exceptions[e.__class__.__name__].append(e)
 
-
-
-#         for http_method_info in http_method_names:
-#             http_method_name = http_method_info["method_name"]
-#             http_method = getattr(self, http_method_name)
-# 
-#             # we update the controller info so other handlers know what
-#             # method succeeded/failed
-#             request.controller_info["http_method_info"] = http_method_info
-#             request.controller_info["http_method_name"] = http_method_name
-#             request.controller_info["http_method"] = http_method
-# 
-#             try:
-#                 logger.debug(
-#                     "Request Controller method: {}:{}.{}".format(
-#                         request.controller_info['module_name'],
-#                         request.controller_info['class_name'],
-#                         http_method_name
-#                     )
-#                 )
-# 
-#                 body = http_method(
-#                     *controller_args,
-#                     **controller_kwargs
-#                 )
-# 
-#                 while inspect.iscoroutine(body):
-#                     body = await body
-# 
-#                 exceptions = None
-#                 break
-# 
-#             except Exception as e:
-#                 exceptions[e.__class__.__name__].append(e)
 
         if exceptions:
             try:

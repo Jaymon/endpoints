@@ -8,7 +8,6 @@ from endpoints.call import (
     Request,
     Response,
     Router,
-    Param,
     Pathfinder,
 )
 
@@ -18,7 +17,6 @@ from . import TestCase, testdata
 class ControllerTest(TestCase):
     def test_any_1(self):
         c = self.create_server([
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def ANY(self):",
             "        return 'any'",
@@ -37,7 +35,6 @@ class ControllerTest(TestCase):
 
     def test_any_2(self):
         c = self.create_server([
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def ANY(self, **kwargs):",
             "        return 'any'",
@@ -55,7 +52,6 @@ class ControllerTest(TestCase):
 
     def test_unsupported_method_404(self):
         c = self.create_server([
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def POST(self, foo):",
             "        pass",
@@ -117,7 +113,6 @@ class ControllerTest(TestCase):
         """There is a bug that is making the controller method throw a 404 when
         it should throw a 500"""
         c = self.create_server([
-            "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self):",
             "        raise TypeError('This should not cause a 404')"
@@ -126,7 +121,6 @@ class ControllerTest(TestCase):
         self.assertEqual(500, res.code)
 
         c = self.create_server([
-            "from endpoints import Controller",
             "class Bogus(object):",
             "    def handle_controller(self, foo):",
             "        pass",
@@ -840,74 +834,4 @@ class ResponseTest(TestCase):
             fs = r.headers["Content-Length"]
             self.assertEqual("text/plain", mt)
             self.assertEqual(3, int(fs))
-
-
-# class ParamTest(TestCase):
-#     def test_param_body(self):
-#         """This was moved from decorators_test.ParamTest when a param_body
-#         decorator existed, that's why it has the strange name"""
-#         p = Param('foo', type=int, choices=set([1, 2, 3]))
-# 
-#         with self.assertRaises(ValueError):
-#             p.handle([], {})
-# 
-#         with self.assertRaises(ValueError):
-#             p.handle([], {'foo': '8'})
-# 
-#         r = p.handle([], {'foo': '1'})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#     def test_param_query(self):
-#         """This was moved from decorators_test.ParamTest when a param_query
-#         decorator existed, that's why it has the strange name
-#         """
-#         p = Param('foo', type=int, choices=set([1, 2, 3]))
-#         with self.assertRaises(ValueError):
-#             r = p.handle([], {'foo': '8'})
-# 
-#         p = Param('foo', type=int, choices=set([1, 2, 3]))
-#         r = p.handle([], {'foo': '1'})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p1 = Param('foo', type=int)
-#         p2 = Param('bar', type=float)
-#         r = p1.handle(*p2.handle([], {'foo': '1', 'bar': '1.5'}))
-#         self.assertEqual(1, r[1]["foo"])
-#         self.assertEqual(1.5, r[1]["bar"])
-# 
-#         p = Param('foo', type=int, action='blah')
-#         with self.assertRaises(RuntimeError):
-#             p.handle([], {'foo': '1'})
-# 
-#         p = Param('foo', type=int, action='store_list')
-#         with self.assertRaises(ValueError):
-#             p.handle([], {'foo': ['1,2,3,4', '5']})
-# 
-#         p = Param('foo', type=int, action='append_list')
-#         r = p.handle([], {'foo': ['1,2,3,4', '5']})
-#         self.assertEqual(list(range(1, 6)), r[1]["foo"])
-# 
-#         p = Param('foo', type=int, action='store_list')
-#         r = p.handle([], {'foo': '1,2,3,4'})
-#         self.assertEqual(list(range(1, 5)), r[1]["foo"])
-# 
-#         p = Param('foo', type=int, default=1, required=False)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p = Param('foo', type=int, default=1, required=True)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p = Param('foo', type=int, default=1)
-#         r = p.handle([], {})
-#         self.assertEqual(1, r[1]["foo"])
-# 
-#         p = Param('foo', type=int)
-#         with self.assertRaises(ValueError):
-#             p.handle([], {})
-# 
-#         p = Param('foo', type=int)
-#         r = p.handle([], {'foo': '1'})
-#         self.assertEqual(1, r[1]["foo"])
 
