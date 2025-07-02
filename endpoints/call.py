@@ -608,13 +608,11 @@ class Controller(object):
 
         for rm in reflect_methods:
             http_method_name = rm.name
-            http_method_info = rm.get_method_info()
             http_method = getattr(self, http_method_name)
 
             # we update the controller info so other handlers know what
             # method succeeded/failed
-            request.controller_info["reflect_http_method"] = rm
-            request.controller_info["http_method_info"] = http_method_info
+            request.controller_info["reflect_method"] = rm
             request.controller_info["http_method_name"] = http_method_name
             request.controller_info["http_method"] = http_method
 
@@ -665,15 +663,13 @@ class Controller(object):
             response = self.response
 
             if response.media_type is None:
-                method_info = request.controller_info.get(
-                    "http_method_info",
-                    {}
-                )
-                if "response_media_type" in method_info:
-                    response.media_type = method_info["response_media_type"]
+                if rm := request.controller_info.get("reflect_method", None):
+                    minfo = rm.get_method_info()
+                    if "response_media_type" in minfo:
+                        response.media_type = minfo["response_media_type"]
 
-                elif "response_callback" in method_info:
-                    method_info["response_callback"](response)
+                    elif "response_callback" in minfo:
+                        minfo["response_callback"](response)
 
             response.body = await self.get_response_body(body)
 

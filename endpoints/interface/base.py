@@ -568,7 +568,7 @@ class BaseApplication(ApplicationABC):
             **kwargs
         )
 
-        controller = request.controller_info['class'](
+        controller = request.controller_info["reflect_class"].get_target()(
             request,
             response,
             **kwargs
