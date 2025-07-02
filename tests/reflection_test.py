@@ -1,13 +1,17 @@
 # -*- coding: utf-8 -*-
 
+from datatypes.reflection.inspect import ReflectType
+
 from endpoints.compat import *
-from endpoints.reflection import (
+from endpoints.reflection.openapi import (
     OpenAPI,
     Field,
     Schema,
-    ReflectController,
-    ReflectType,
 )
+from endpoints.reflection.inspect import (
+    ReflectController,
+)
+
 
 from . import TestCase
 

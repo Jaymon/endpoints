@@ -47,7 +47,7 @@ from .utils import (
     Url,
     Status,
 )
-from .reflection import ReflectController
+from .reflection.inspect import ReflectController
 
 
 logger = logging.getLogger(__name__)
