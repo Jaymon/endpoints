@@ -12,7 +12,6 @@ from endpoints.reflection.inspect import (
     ReflectController,
 )
 
-
 from . import TestCase
 
 
@@ -504,7 +503,7 @@ class ReflectParamTest(TestCase):
         self.assertEqual([1], bind_info["bound_args"])
 
 
-class OpenABCTest(TestCase):
+class OpenapiOpenABCTest(TestCase):
     def test_fields(self):
         fields = OpenAPI.fields
         self.assertLess(0, len(fields))
@@ -524,7 +523,7 @@ class OpenABCTest(TestCase):
             self.assertTrue(k in class_keys, k)
 
 
-class OpenAPITest(TestCase):
+class OpenapiOpenAPITest(TestCase):
     def test_minimum_controller(self):
         oa = self.create_openapi("""
             class Default(Controller):
@@ -804,7 +803,7 @@ class OpenAPITest(TestCase):
         self.assertEqual(["bar"], pi["get"]["tags"])
 
 
-class PathItemTest(TestCase):
+class OpenapiPathItemTest(TestCase):
     def test_multiple_path_with_options(self):
         oa = self.create_openapi("""
             class Foo(Controller):
@@ -834,7 +833,7 @@ class PathItemTest(TestCase):
         self.assertEqual("path", parameter["in"])
 
 
-class OperationTest(TestCase):
+class OpenapiOperationTest(TestCase):
     def test_any_parameters(self):
         """Makes sure ANY sets a get operation with parameters and sets a post
         with a requestBody with a foo property"""
@@ -892,7 +891,7 @@ class OperationTest(TestCase):
         self.assertEqual(3, len(pi["post"]["security"]))
 
 
-class SchemaTest(TestCase):
+class OpenapiSchemaTest(TestCase):
     def test_list_value_types(self):
         rt = ReflectType(list[dict[str, int]|tuple[float, float]])
         schema = Schema(None)
@@ -956,7 +955,7 @@ class SchemaTest(TestCase):
         self.assertEqual(schema, schema2)
 
 
-class ComponentsTest(TestCase):
+class OpenapiComponentsTest(TestCase):
     def test_get_security_schemes_value(self):
         oa = self.create_openapi("")
         schemes = oa.components.securitySchemes
@@ -1003,7 +1002,7 @@ class ComponentsTest(TestCase):
         self.assertEqual(s, s4)
 
 
-class ResponseTest(TestCase):
+class OpenapiResponseTest(TestCase):
     def test_infer_or_type(self):
         oa = self.create_openapi("""
             class Default(Controller):

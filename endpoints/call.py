@@ -1,44 +1,29 @@
 # -*- coding: utf-8 -*-
-import time
-import datetime
 import logging
 import os
 import inspect
-import json
 import re
 import io
-import sys
 from collections import defaultdict
-import itertools
-from typing import Any
 from types import NoneType
-
-from .compat import *
-from .utils import AcceptHeader
-from .exception import (
-    CallError,
-    VersionError,
-    Redirect,
-    CallStop,
-    AccessDenied,
-    CloseConnection,
-)
-from .config import environ
 
 from datatypes import (
     HTTPHeaders as Headers,
     property as cachedproperty,
-    Dirpath,
-    ReflectModule,
-    ReflectPath,
-    DictTree,
-    Profiler,
-    Boolean,
-    ClasspathFinder,
     NamingConvention,
+    Dirpath,
 )
 
 from .compat import *
+from .exception import (
+    CallError,
+    #VersionError,
+    Redirect,
+    CallStop,
+    #AccessDenied,
+    CloseConnection,
+)
+from .config import environ
 from .utils import (
     AcceptHeader,
     MimeType,
@@ -47,63 +32,10 @@ from .utils import (
     Url,
     Status,
 )
-from .reflection.inspect import ReflectController
+from .reflection.inspect import Pathfinder
 
 
 logger = logging.getLogger(__name__)
-
-
-class Pathfinder(ClasspathFinder):
-    """Internal class used by Router. This holds the tree of all the
-    controllers so Router can resolve the path"""
-    def _get_node_module_info(self, key, **kwargs):
-        """Handle normalizing each module key to kebabcase"""
-        key = NamingConvention(key).kebabcase()
-        return super()._get_node_module_info(key, **kwargs)
-
-    def create_reflect_controller_instance(self, target, **kwargs):
-        return kwargs.get("reflect_controller_class", ReflectController)(
-            target,
-            **kwargs
-        )
-
-    def _get_node_class_info(self, key, **kwargs):
-        """Handle normalizing each class key. If it's the destination key
-        then it will use the controller class's .get_name method for the
-        key. If it's a waypoint key then it will normalize to kebab case
-        """
-        if "class" in kwargs:
-            # The actual controller `Che` in: Foo.Bar.Che
-            rc = self.create_reflect_controller_instance(
-                kwargs["class"],
-                **kwargs
-            )
-            key = rc.get_url_name()
-
-        else:
-            # can be `Foo` or `Bar` in: Foo.Bar.Che
-            rc = None
-            key = NamingConvention(key).kebabcase()
-
-
-        key, value = super()._get_node_class_info(key, **kwargs)
-
-        if rc:
-            value["reflect_class"] = rc
-
-            logger.debug(
-                (
-                    "Registering verbs: {}"
-                    " to path: {}"
-                    " and controller: {}"
-                ).format(
-                    ", ".join(rc.get_http_method_names().keys()),
-                    rc.get_url_path(),
-                    rc.classpath,
-                )
-            )
-
-        return key, value
 
 
 class Router(object):
@@ -122,10 +54,10 @@ class Router(object):
         loaded into memory
 
         :param controller_prefixes: list, the controller module prefixes to use
-            to find controllers to answer requests (eg, if you pass in `foo.bar`
-            then any submodules will be stripped of `foo.bar` and use the rest
-            of the module path to figure out the full requestable path, so 
-            `foo.bar.che.Boo` would have `che/boo` as its path
+            to find controllers to answer requests (eg, if you pass in 
+            `foo.bar` then any submodules will be stripped of `foo.bar` and use
+            the rest of the module path to figure out the full requestable
+            path, so `foo.bar.che.Boo` would have `che/boo` as its path
         :param paths: list, the paths to check for controllers. This looks for
             a module named `controllers` in the paths, the first found module
             wins

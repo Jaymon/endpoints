@@ -1,17 +1,14 @@
 # -*- coding: utf-8 -*-
-import asyncio
 
 from endpoints.compat import *
-from endpoints.utils import ByteString
 from endpoints.call import (
     Controller,
     Request,
     Response,
     Router,
-    Pathfinder,
 )
 
-from . import TestCase, testdata
+from . import TestCase
 
 
 class ControllerTest(TestCase):
@@ -65,7 +62,7 @@ class ControllerTest(TestCase):
         res = c.handle("/")
         self.assertEqual(501, res.code)
 
-    def test_cors(self):
+    async def test_cors(self):
         class Cors(Controller):
             def __init__(self, *args, **kwargs):
                 super().__init__(*args, **kwargs)
@@ -88,7 +85,7 @@ class ControllerTest(TestCase):
         req.set_header('Access-Control-Request-Method', 'POST')
         req.set_header('Access-Control-Request-Headers', 'xone, xtwo')
         c = Cors(req, res)
-        asyncio.run(c.OPTIONS())
+        await c.OPTIONS()
         self.assertEqual(
             req.get_header('Origin'),
             c.response.get_header('Access-Control-Allow-Origin')
@@ -817,7 +814,7 @@ class ResponseTest(TestCase):
                 if isinstance(fp, mtinfo[0]):
                     return mtinfo[1]
 
-        path = testdata.create_file("12345", ext="jpg")
+        path = self.create_file("12345", ext="jpg")
         with path.open() as fp:
             r.body = fp
             get_mtcb(fp)(r)
@@ -826,7 +823,7 @@ class ResponseTest(TestCase):
             self.assertEqual("image/jpeg", mt)
             self.assertEqual(5, int(fs))
 
-        path = testdata.create_file("123", ext="txt")
+        path = self.create_file("123", ext="txt")
         with path.open() as fp:
             r.body = fp
             get_mtcb(fp)(r)
