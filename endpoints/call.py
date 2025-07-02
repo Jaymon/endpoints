@@ -182,12 +182,12 @@ class Router(object):
         ret['method_kwargs'] = request.kwargs
 
         ret["module_name"] = controller_class.__module__
-        ret['module_path'] = "/".join(value["module_keys"])
+        #ret['module_path'] = "/".join(value["module_keys"])
 
         ret["class"] = controller_class
         ret["reflect_class"] = rc
         ret['class_name'] = controller_class.__name__
-        ret['class_path'] = rc.get_url_path()
+        #ret['class_path'] = rc.get_url_path()
 
         return ret
 
@@ -616,10 +616,14 @@ class Controller(object):
                 )
 
         for rm in reflect_methods:
+            # we pull the method from self because rm is unbounded since it was
+            # created from the reflect Controller class and not the reflected
+            # instance
+            http_method = getattr(self, rm.name)
+
             # we update the controller info so other handlers know what
             # method succeeded/failed
             request.controller_info["reflect_method"] = rm
-            request.controller_info["http_method_name"] = rm.name
 
             try:
                 logger.debug(f"Request Controller method: {rm.callpath}")
@@ -629,7 +633,6 @@ class Controller(object):
                     *controller_args,
                     **controller_kwargs,
                 )
-                http_method = getattr(self, rm.name)
                 body = http_method(*method_args, **method_kwargs)
 
                 while inspect.iscoroutine(body):
@@ -730,11 +733,10 @@ class Controller(object):
         elif isinstance(e, TypeError):
             e_msg = String(e)
             if controller_info := request.controller_info:
+                rm = controller_info["reflect_method"]
+
                 # filter out TypeErrors raised from non handler methods
-                if (
-                    controller_info["http_method_name"] in e_msg
-                    and "argument" in e_msg
-                ):
+                if rm.name in e_msg and "argument" in e_msg:
                     if "positional" in e_msg:
                         # <METHOD>() missing 1 required positional
                         # argument: <ARGUMENT> TypeError: <METHOD>()
@@ -1077,8 +1079,9 @@ class Request(Call):
         class_path = ""
         module_path = ""
         if self.controller_info:
-            class_path = self.controller_info.get("class_path", "")
-            module_path = self.controller_info.get("module_path", "")
+            rc = self.controller_info["reflect_class"]
+            class_path = rc.get_url_path()
+            module_path = rc.get_module_url_path()
 
         u = Url(
             scheme=scheme,
@@ -1087,7 +1090,7 @@ class Request(Call):
             query=query,
             port=port,
             controller_class_path=class_path,
-            controller_module_path=module_path
+            controller_module_path=module_path,
         )
         return u
 

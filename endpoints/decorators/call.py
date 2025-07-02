@@ -37,12 +37,10 @@ class version(ControllerDecorator):
         req_version = req.version()
 
         e_msg = (
-            "Request Controller method: {}:{}.{}"
+            "Request Controller method: {}"
             " failed version check ({} not in {})"
         ).format(
-            req.controller_info['module_name'],
-            req.controller_info['class_name'],
-            req.controller_info['http_method_name'],
+            req.controller_info["reflect_method"].callpath,
             req_version,
             self.versions,
         )
