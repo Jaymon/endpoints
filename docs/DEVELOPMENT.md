@@ -27,4 +27,4 @@ and used with endpoints like so:
 
     $ ls -d * | entr sh -c "killall endpoints; endpoints --prefix=mycontroller --host=localhost:8000 &"
 
-Hat tip to [Mindey](https://github.com/firstopinion/endpoints/issues/57) for this command.
+Hat tip to [Mindey](https://github.com/jaymon/endpoints/issues/57) for this command.

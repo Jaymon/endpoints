@@ -11,8 +11,7 @@ from .exception import (
 from .utils import AcceptHeader, Url
 from .call import Controller, Request, Response
 from . import decorators
-from .decorators import version # this is for fluidity/convenience
 
 
-__version__ = "7.3.1"
+__version__ = "8.0.0"
 

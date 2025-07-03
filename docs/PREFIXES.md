@@ -18,7 +18,4 @@ Now, when Endpoints is started it would route to any Controller class found in t
 
 You can define multiple controller prefixes through the environment also:
 
-	$ export ENDPOINTS_PREFIX_1=foo.controllers
-	$ export ENDPOINTS_PREFIX_2=bar.controllers
-
-Endpoints will check ENDPOINTS_PREFIX_1 through ENDPOINTS_PREFIX_N as long as there is no break (ie, you can't set ENDPOINTS_PREFIX_1 and then ENDPOINTS_PREFIX_3 and expect ENDPOINTS_PREFIX_3 to be found).
+	$ export ENDPOINTS_PREFIX=foo.controllers:bar.controllers

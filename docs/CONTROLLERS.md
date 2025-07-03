@@ -46,51 +46,6 @@ Let's see if it worked:
     "hello Alice"
 
 
-Nice, but now we want to be even more clever, we want **GET** to act differently depending on who has signed in:
-
-
-```python
-from endpoints import Controller
-from endpoints.decorators.auth import auth_basic, AuthBackend
-from endpoints.decorators import route
-
-class Backend(AuthBackend):
-    async def handle(self, controller, username, password):
-        ret = False
-        request = controller.request
-        if username == "Alice" and password == "1234":
-            request.username = "Alice"
-            ret = True
-        elif username == "Bob" and password == "5678":
-            request.username = "Bob"
-            ret = True
-        return ret
-
-auth_basic.backend_class = Backend
-
-class Hello(Controller):
-    @auth_basic()
-    @route(lambda request: request.username == "Alice")
-    async def GET_alice(self):
-        return "hello Alice"
-
-    @auth_basic()
-    @route(lambda request: request.username == "Bob")
-    async def GET_bob(self, **kwargs):
-        return "hola Bob"
-```
-
-Let's see it in action:
-
-    $ curl -v "http://localhost:8000/hello" -u "Alice:1234"
-    "hello Alice"
-    $ curl -v "http://localhost:8000/hello" -u "Bob:5678"
-    "hola Bob"
-
-
-Hopefully that gives you a feel for how to define your own controllers and some of the ways you can customize them.
-
-
 ### Handling path parameters and query vars
 
 You can define your controller methods to accept certain path params and to accept query params:
@@ -176,10 +131,10 @@ class User(Controller):
 	async def GET(self): pass
 ```
 
-would be equivalent to:
+could be equivalent to:
 
 ```python
-#controllers/user.py
+# controllers/user.py
 
 from endpoints import Controller
 
