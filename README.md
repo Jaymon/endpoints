@@ -86,14 +86,16 @@ Finally, in the ***last request***, the `controllers` module was accessed, then 
 
 It uses the following convention.
 
-    METHOD /module/class/args?kwargs
+    <HTTP-METHOD> /<MODULE-PATH>/<CLASS-PATH>/<POSITIONAL-ARGUMENTS>?<KEYWORD-ARGUMENTS>
 
-_Endpoints_ will use the prefix module you set as a reference point to find the correct submodule using the path specified by the request.
+_Endpoints_ will use the prefix module path you set as a reference point (either passed in via the environment variable `ENDPOINTS_PREFIX` or passed into the `Application(controller_prefix=...)` instance) to find the correct submodule using the path specified by the request.
 
 Requests are translated from the left bit to the right bit of the path.
-So for the path `/foo/bar/che/baz`, endpoints would first check for the `foo` module, then the `foo.bar` module, then the `foo.bar.che` module, etc. until it fails to find a valid module.
+So for the path `/foo/bar/che/baz`, endpoints would first check for the `<PREFIX>.foo` module, then the `<PREFIX>.foo.bar` module, then the `<PREFIX>.foo.bar.che` module, etc. until it fails to find a valid module.
 
-Once the module is found, endpoints will then attempt to find the class with the remaining path bits. If no matching class is found then a class named `Default` will be used if it exists.
+Once the module is found, endpoints will then attempt to find the class with the remaining path parts. If no matching class is found then a class named `Default` will be used if it exists.
+
+Once if finds the class, it will use the `<HTTP-METHOD>` (eg, `GET`) to decide what method on the found class to call.
 
 This makes it easy to bundle your controllers into a `controllers` package/module.
 

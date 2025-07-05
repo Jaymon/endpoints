@@ -7,10 +7,17 @@ Endpoints uses the annotations to cast the passed up value to match the given an
 Here's an example:
 
 ```python
+from typing import Literal
 from endpoints import Controller
 
 class Foo(Controller):
-    async def POST(self, bar, che: int, baz: bool = False, bam: str = "bang"):
+    async def POST(
+        self,
+        bar, 
+        che: Literal[1, 2, 3],
+        baz: bool = False,
+        bam: str = "bang"
+    ):
         """
         :param bar: the bar of foo
         :param che: The specific che you want
