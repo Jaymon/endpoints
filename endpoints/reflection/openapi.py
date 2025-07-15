@@ -1722,7 +1722,7 @@ class PathItem(OpenABC):
         http_verbs = kwargs.get("http_verbs", ["GET", "POST"])
 
         for http_verb in http_verbs:
-            verb_rmethod = reflect_method.create_reflect_http_method_instance(
+            verb_rmethod = reflect_method.create_reflect_http_method(
                 http_verb
             )
 

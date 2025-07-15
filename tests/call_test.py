@@ -184,6 +184,16 @@ class ControllerTest(TestCase):
         self.assertEqual(500, res.code)
         self.assertTrue(isinstance(res.body, ValueError))
 
+    def test_casting(self):
+        c = self.create_server("""
+            class Default(Controller):
+                async def GET(self, foo: int, bar: int = None, /):
+                    return {"foo_is_int": isinstance(foo, int)}
+        """)
+
+        res = c.handle("/12/")
+        self.assertTrue(res.body["foo_is_int"])
+
 
 class RouterTest(TestCase):
     def test_paths_depth_1(self):

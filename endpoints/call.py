@@ -515,7 +515,6 @@ class Controller(object):
         """
         method_args = []
         method_kwargs = {}
-        rps = reflect_method.get_method_info()["params"]
 
         ras = reflect_method.reflect_arguments(
             *controller_args,
@@ -524,32 +523,41 @@ class Controller(object):
 
         for ra in ras:
             if ra.is_bound():
-                try:
-                    v = ra.normalize_value()
-
-                except ValueError as e:
-                    raise CallError(400, String(e)) from e
-
-                if ra.is_bound_positional():
-                    if ra.is_catchall():
-                        method_args.extend(v)
-
-                    else:
-                        method_args.append(v)
+                if ra.has_multiple_values():
+                    # method call is going to fail anyway so short-circuit
+                    # processing
+                    method_args = controller_args
+                    method_kwargs = controller_kwargs
+                    break
 
                 else:
-                    if ra.is_catchall():
-                        method_kwargs.update(v)
+                    try:
+                        v = ra.normalize_value()
+
+                    except ValueError as e:
+                        raise CallError(400, String(e)) from e
 
                     else:
-                        method_kwargs[ra.name] = v
+                        if ra.is_bound_positional():
+                            if ra.is_catchall():
+                                method_args.extend(v)
+
+                            else:
+                                method_args.append(v)
+
+                        else:
+                            if ra.is_catchall():
+                                method_kwargs.update(v)
+
+                            else:
+                                method_kwargs[ra.name] = v
 
             else:
-                # calling the method is going to fail, so let's just
-                # short-circuit nromalizing the values
-                method_args = controller_args
-                method_kwargs = controller_kwargs
-                break
+                if ra.is_unbound_positionals():
+                    method_args.extend(ra.value)
+
+                elif ra.is_unbound_keywords():
+                    method_kwargs.update(ra.value)
 
         return method_args, method_kwargs
 
