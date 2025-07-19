@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import json
+import zipfile
+
 
 import testdata
 
@@ -326,7 +328,6 @@ class _HTTPTestCase(TestCase):
         """
         fp = self.create_file("hello world")
         s = self.create_server([
-            "from endpoints import Controller",
             "import io",
             "class Foo(Controller):",
             "    def GET(self) -> io.IOBase:",
@@ -335,7 +336,7 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
 
         r = c.get("/foo")
-        self.assertEqual("hello world", r.body)
+        self.assertEqual(b"hello world", r.body)
 
     def test_io_streaming_2(self):
         """Make sure a binary file opened through path.Filepath doesn't get
@@ -345,7 +346,6 @@ class _HTTPTestCase(TestCase):
         """
         fp = self.create_file("hello world")
         s = self.create_server([
-            "from endpoints import Controller",
             "from datatypes import Filepath",
             "import io",
             "class Foo(Controller):",
@@ -355,7 +355,7 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
 
         r = c.get("/foo")
-        self.assertEqual("hello world", r.body)
+        self.assertEqual(b"hello world", r.body)
 
     def test_io_streaming_3(self):
         """Make sure a non-binary file doesn't get into an infinite loop
@@ -374,6 +374,27 @@ class _HTTPTestCase(TestCase):
 
         r = c.get("/foo")
         self.assertEqual("hello world", r.body)
+
+    def test_zipped_binary_file(self):
+        zip_path = self.create_file(ext="zip")
+        with zipfile.ZipFile(zip_path, mode="w") as zf:
+            image_path = self.create_png()
+            zf.write(image_path, image_path.basename)
+
+        server = self.create_server(f"""
+            import zipfile
+
+            class Default(Controller):
+                def GET(self):
+                    with zipfile.ZipFile("{zip_path}") as zf:
+                        self.response.media_type = "image/png"
+                        fp = zf.open("{image_path.basename}")
+                        return fp
+        """)
+        c = self.create_client()
+
+        res = c.get("/")
+        self.assertEqual(200, res.code)
 
 
 class _WebSocketTestCase(TestCase):

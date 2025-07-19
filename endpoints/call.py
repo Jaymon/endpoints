@@ -1372,6 +1372,10 @@ class Response(Call):
         return isinstance(self.body, io.IOBase)
         #return hasattr(self._body, "read") if self.has_body() else False
 
+    def is_binary_file(self):
+        """Return True if the response body is a binary file"""
+        return self.is_file() and not isinstance(self.body, io.TextIOBase)
+
     def is_success(self):
         """return True if this response is considered a "successful" response
         """

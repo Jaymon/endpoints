@@ -519,7 +519,7 @@ class BaseApplication(ApplicationABC):
 
         body_iterator = functools.partial(body.read, 8192)
         try:
-            if "b" in body.mode:
+            if response.is_binary_file():
                 for chunk in iter(body_iterator, b""):
                     yield chunk
 
@@ -527,6 +527,15 @@ class BaseApplication(ApplicationABC):
                 # http://stackoverflow.com/questions/15599639/
                 for chunk in iter(body_iterator, ""):
                     yield bytes(chunk, response.encoding)
+
+#             if "b" in body.mode:
+#                 for chunk in iter(body_iterator, b""):
+#                     yield chunk
+# 
+#             else:
+#                 # http://stackoverflow.com/questions/15599639/
+#                 for chunk in iter(body_iterator, ""):
+#                     yield bytes(chunk, response.encoding)
 
         finally:
             # close the pointer since we've consumed it
@@ -607,6 +616,9 @@ class BaseApplication(ApplicationABC):
 
                 else:
                     response.encoding = environ.ENCODING
+
+            if response.is_binary_file():
+                response.encoding = None
 
             if response.media_type and not response.has_header("Content-Type"):
                 if response.encoding:
