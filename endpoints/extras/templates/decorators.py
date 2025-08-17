@@ -34,12 +34,14 @@ class template(ControllerDecorator):
         else:
             ext = "html"
 
-        self.content_type = kwargs.pop("content_type", MimeType.find(ext))
+        #self.content_type = kwargs.pop("content_type", MimeType.find(ext))
+        self.media_type = kwargs.pop("media_type", MimeType.find(ext))
 
         return super().definition(**kwargs)
 
     async def handle(self, controller, **kwargs):
-        controller.response.set_header("Content-Type", self.content_type)
+        controller.response.media_type = self.media_type
+        #controller.response.set_header("Content-Type", self.content_type)
 
     async def get_response_body(self, controller, body):
         # let's return the rendered template using whatever the controller
