@@ -651,6 +651,11 @@ class Controller(object):
                     raise list(exceptions.values())[0][0]
 
                 else:
+                    for excs in exceptions.values():
+                        for exc in excs:
+                            if not isinstance(exc, CallError):
+                                logger.warning(exc)
+
                     raise CallError(
                         400,
                         "Could not find a method to satisfy {} {}".format(
