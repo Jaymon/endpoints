@@ -1855,7 +1855,7 @@ class Info(OpenABC):
     """
     _title = Field(str, required=True, default="Endpoints API")
 
-    _version = Field(str, required=True, default="0.1.0")
+    _version = Field(str, required=True, default="0.0.1")
 
     _description = Field(str)
 
@@ -2060,8 +2060,8 @@ class OpenAPI(OpenABC):
         # https://github.com/swagger-api/swagger-ui/releases/latest
         kwargs.setdefault("swagger_version", "5.17.14")
 
-        kwargs.setdefault("title", self["info"]["title"])
-        kwargs.setdefault("description", self["info"]["description"])
+        kwargs.setdefault("title", self["info"].get("title", ""))
+        kwargs.setdefault("description", self["info"].get("description", ""))
 
         if "url" in kwargs:
             kwargs["spec"] = "{}"
