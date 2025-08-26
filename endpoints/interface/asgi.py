@@ -86,19 +86,6 @@ class Application(BaseApplication):
         try:
             sent_response = await send_response_body(response, sent_response)
 
-            # https://peps.python.org/pep-0525/
-            # https://stackoverflow.com/a/37550568
-#             async for body in self.get_response_body(response):
-#                 if not sent_response:
-#                     await self.start_response(kwargs["send"], response)
-#                     sent_response = True
-# 
-#                 await kwargs["send"]({
-#                     "type": "http.response.body",
-#                     "body": body,
-#                     "more_body": True,
-#                 })
-
         except Exception as e:
             try:
                 response.code = 500
@@ -112,19 +99,6 @@ class Application(BaseApplication):
                 # we've got to give up and just return something, or in this
                 # case nothing
                 raise
-
-#             response.code = 500
-#             await self.handle_error(request, response, e, **kwargs)
-#             if not sent_response:
-#                 await self.start_response(kwargs["send"], response)
-#                 sent_response = True
-# 
-#             await kwargs["send"]({
-#                 "type": "http.response.body",
-#                 "body": response.body,
-#                 "more_body": True,
-#             })
-            #raise
 
         finally:
             if not sent_response:

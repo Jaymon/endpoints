@@ -29,6 +29,7 @@ class Application(BaseApplication):
     def __call__(self, environ, start_response):
         """this is what will be called for each request that that WSGI server
         handles"""
+        pout.v(environ, start_response)
         return asyncio.run(super().__call__(environ, start_response))
 
     def normalize_call_kwargs(self, environ, start_response):

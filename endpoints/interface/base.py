@@ -25,6 +25,7 @@ from ..call import (
     Response,
     Router,
 )
+from ..reflection.inspect import Pathfinder
 from ..exception import (
     CloseConnection,
 )
@@ -131,6 +132,9 @@ class BaseApplication(ApplicationABC):
     router_class = Router
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
+
+    pathfinder_class = Pathfinder
+    """Used by router, handles finding and reflecting controllers"""
 
     @classmethod
     def dump_json(cls, body, **kwargs):
@@ -528,15 +532,6 @@ class BaseApplication(ApplicationABC):
                 for chunk in iter(body_iterator, ""):
                     yield bytes(chunk, response.encoding)
 
-#             if "b" in body.mode:
-#                 for chunk in iter(body_iterator, b""):
-#                     yield chunk
-# 
-#             else:
-#                 # http://stackoverflow.com/questions/15599639/
-#                 for chunk in iter(body_iterator, ""):
-#                     yield bytes(chunk, response.encoding)
-
         finally:
             # close the pointer since we've consumed it
             body.close()
@@ -562,6 +557,7 @@ class BaseApplication(ApplicationABC):
         return self.router_class(
             controller_prefixes=self.controller_prefixes,
             controller_class=self.controller_class,
+            pathfinder_class=self.pathfinder_class,
         )
 
     def create_controller(self, request, response, **kwargs):

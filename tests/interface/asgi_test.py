@@ -82,6 +82,19 @@ class HTTPTest(_HTTPTestCase):
         self.assertEqual(500, r.code)
         self.assertEqual("", r.json())
 
+#     def test_asgi_headers(self):
+#         """make sure request url gets controller_path correctly"""
+#         server = self.create_server(contents=[
+#             "class Default(Controller):",
+#             "    def GET(self):",
+#             "        return 1",
+#             "",
+#         ])
+# 
+#         c = self.create_client()
+#         r = c.get("/")
+#         pout.v(r.body)
+
 
 class WebSocketTest(_WebSocketTestCase):
     server_class = Server
