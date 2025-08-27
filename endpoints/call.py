@@ -670,16 +670,6 @@ class Controller(object):
         else:
             response = self.response
             response.media_type = await self.get_response_media_type(body)
-
-#             if response.media_type is None:
-#                 if rm := request.controller_info.get("reflect_method", None):
-#                     minfo = rm.get_method_info()
-#                     if "response_media_type" in minfo:
-#                         response.media_type = minfo["response_media_type"]
-# 
-#                     elif "response_callback" in minfo:
-#                         minfo["response_callback"](response)
-
             response.body = await self.get_response_body(body)
 
     async def handle_error(self, e, **kwargs):
@@ -781,21 +771,16 @@ class Controller(object):
         else:
             logger.exception(e)
 
-#         if not response.media_type:
-#             for mtinfo in self.get_response_media_types():
-#                 if isinstance(response.body, mtinfo[0]):
-#                     if callable(mtinfo[1]):
-#                         mtinfo[1](response)
-# 
-#                     else:
-#                         response.media_type = mtinfo[1]
-# 
-#                     break
-
-        response.media_type = await self.get_response_media_type(e)
+        response.media_type = await self.get_response_media_type(response.body)
         response.body = await self.get_response_body(response.body)
 
-    async def get_response_media_type(self, body):
+    async def get_response_media_type(self, body) -> str|None:
+        """Get the media type for this response based on `body`
+
+        :param body: Any, the body before it is passed to
+            .get_response_body`
+        :returns: the media type for the body
+        """
         media_type = self.response.media_type
 
         if not media_type:
@@ -827,25 +812,6 @@ class Controller(object):
                         break
 
         return media_type
-
-#             for mtinfo in self.get_response_media_types():
-#                 if isinstance(response.body, mtinfo[0]):
-#                     if callable(mtinfo[1]):
-#                         mtinfo[1](response)
-# 
-#                     else:
-#                         response.media_type = mtinfo[1]
-# 
-#                     break
-
-#             if response.media_type is None:
-#                 if rm := request.controller_info.get("reflect_method", None):
-#                     minfo = rm.get_method_info()
-#                     if "response_media_type" in minfo:
-#                         response.media_type = minfo["response_media_type"]
-# 
-#                     elif "response_callback" in minfo:
-#                         minfo["response_callback"](response)
 
     async def get_response_body(self, body):
         """Called right after the controller's request method (eg GET, POST)

@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
 from collections import defaultdict
+from collections.abc import Callable
 import inspect
 from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
@@ -18,6 +19,7 @@ from datatypes import (
 from datatypes.reflection.inspect import ReflectArgument, ReflectObject
 
 from ..compat import *
+from ..utils import MimeType
 
 
 logger = logging.getLogger(__name__)
@@ -127,7 +129,26 @@ class ReflectController(ReflectClass):
             name=method_name
         )
 
-    def get_url_parts(self):
+    def get_module_url_path(self) -> str:
+        """Get the url path for just the module of this controller"""
+        path = ""
+        if module_path := "/".join(self.module_keys):
+            path += "/" + module_path
+
+        return path
+
+    def get_url_path(self) -> str:
+        """Get the root url path for this controller
+
+        This will not include any url path params. Since methods can define
+        url path params you want to call this same method on ReflectMethod
+        instances to get the full url path for a given http verb
+        """
+        path = "/" + "/".join(self.get_url_parts())
+        return path
+
+    def get_url_parts(self) -> list[str]:
+        """Get the url path as an array of parts"""
         # the path part that is covered by python modules
         for k in self.module_keys:
             yield k
@@ -143,47 +164,10 @@ class ReflectController(ReflectClass):
         if k := self.get_url_name():
             yield k
 
-    def get_module_url_path(self):
-        """Get the url path for just the module of this controller"""
-        path = ""
-        if module_path := "/".join(self.module_keys):
-            path += "/" + module_path
-
-        return path
-
-    def get_url_path(self):
-        """Get the root url path for this controller
-
-        This will not include any url path params. Since methods can define
-        url path params you want to call this same method on ReflectMethod
-        instances to get the full url path for a given http verb
-        """
-        path = "/" + "/".join(self.get_url_parts())
-        return path
-
-#         path = ""
-# 
-#         # the path part that is covered by python modules
-#         if module_path := "/".join(self.module_keys):
-#             path += "/" + module_path
-# 
-#         # the path part that is covered by classes that this controller
-#         # is defined in (eg, a class that has a property that is another
-#         # class, ..., and finally a class that has a Controller class as
-#         # a class property
-#         if class_path := "/".join(self.class_keys):
-#             path += "/" + class_path
-# 
-#         # the actual class name
-#         if class_name := self.get_url_name():
-#             path += "/" + class_name
-# 
-#         if not path:
-#             path = "/"
-# 
-#         return path
-
-    def get_url_name(self):
+    def get_url_name(self) -> str:
+        """Get the url name of this class, the reason why this is separate
+        from `.name` is because the controller's name can be different than
+        the url name"""
         return self.get_class().get_name()
 
     def reflect_url_paths(self):
@@ -391,7 +375,11 @@ class ReflectMethod(ReflectCallable):
 
         return params
 
-    def get_success_media_types(self):
+    def get_success_media_types(self) -> tuple[type, str|Callable]:
+        """Get the success response media types for this method
+
+        This follows the same format as `Controller.get_response_media_types`
+        """
         media_types = []
 
         if rrt := self.reflect_return_type():
@@ -417,11 +405,23 @@ class ReflectMethod(ReflectCallable):
                             media_types.append(rmt)
 
                 if not media_type:
-                    cmedia_types = self.get_class().get_response_media_types()
+                    controller_class = self.get_class()
+                    url_name = controller_class.get_name()
+                    if url_name and "." in url_name:
+                        if media_type := MimeType.find_type(url_name):
+                            rmt = (rt.get_origin_type(), media_type)
+                            media_types.append(rmt)
+
+                if not media_type:
+                    cmedia_types = controller_class.get_response_media_types()
+
                     for rct in rt.reflect_cast_types():
                         for mtinfo in cmedia_types:
                             exactcheck = rct.is_type(mtinfo[0])
-                            anycheck = mtinfo[0] is Any or mtinfo[0] is object
+                            anycheck = (
+                                mtinfo[0] is Any
+                                or mtinfo[0] is object
+                            )
                             if exactcheck or anycheck:
                                 media_type = mtinfo[1]
                                 rmt = (rct.get_origin_type(), mtinfo[1])
@@ -432,7 +432,11 @@ class ReflectMethod(ReflectCallable):
 
         return media_types
 
-    def get_error_media_types(self):
+    def get_error_media_types(self) -> tuple[type, str|Callable]:
+        """Get the error response media types for this method
+
+        This follows the same format as `Controller.get_response_media_types`
+        """
         media_types = []
         for t in self.get_class().get_response_media_types():
             body_types, body_media_type = t
@@ -452,13 +456,6 @@ class ReflectMethod(ReflectCallable):
                 *self.get_error_media_types(),
             ],
         }
-#         method_info["response_media_types"].extend(
-#             self.get_success_media_types(),
-#         )
-#         method_info["response_media_types"].extend(
-#             self.get_error_media_types(),
-#         )
-
         method_info.setdefault("method_name", self.name)
         method_info["params"] = self.get_param_info()
 

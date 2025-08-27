@@ -1187,17 +1187,6 @@ class Response(OpenABC):
 
         return content
 
-#     def set_200_code(self):
-#         content = {}
-# 
-#         for media_range in self.get_content_media_ranges():
-#             media_type = self.create_instance("media_type_class")
-#             media_type.set_response_method(self.reflect_method)
-#             if media_type:
-#                 content[media_range] = media_type
-# 
-#         return content
-
     def set_error_code(self):
         content = {}
 
@@ -1272,44 +1261,6 @@ class Response(OpenABC):
             media_types.append(media_type)
 
         return media_types
-
-#     def get_content_media_ranges(self):
-#         """See RequestBody.get_content_media_ranges"""
-#         media_types = []
-#         reflect_method = self.reflect_method
-#         version = reflect_method.get_version()
-# 
-#         pout.v(reflect_method.get_error_media_types())
-# 
-#         mts = (
-#             *(t[1] for t in reflect_method.get_success_media_types()),
-#             *(t[1] for t in reflect_method.get_error_media_types()),
-#         )
-# 
-#         for media_type in mts:
-#             # support Accept header response:
-#             # https://stackoverflow.com/a/62593737
-#             # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-#             if version:
-#                 media_type += f"; version={version}"
-# 
-#             media_types.append(media_type)
-# 
-#         pout.v(media_types)
-#         return media_types
-
-#         method_info = reflect_method.get_method_info()
-#         media_type = method_info.get(
-#             "response_media_type",
-#             environ.RESPONSE_MEDIA_TYPE
-#         )
-# 
-#         # support Accept header response:
-#         # https://stackoverflow.com/a/62593737
-#         # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-#         if version := reflect_method.get_version():
-#             media_type += f"; version={version}"
-#         return [media_type]
 
     def merge(self, other):
         """Merges self with other
@@ -1519,23 +1470,6 @@ class Operation(OpenABC):
                 parts.append(NamingConvention(p.name).upper_camelcase())
 
         return "".join(parts)
-
-#         for k in rc.module_keys:
-#             parts.append(NamingConvention(k).upper_camelcase())
-# 
-#         for k in rc.class_keys:
-#             parts.append(NamingConvention(k).upper_camelcase())
-# 
-#         if k := rc.get_url_name():
-#             parts.append(NamingConvention(k).upper_camelcase())
-# 
-#         # sometimes the http verb method has a suffix, this adds that suffix
-#         # to make sure the op ids are globally unique
-#         suffix = self.reflect_method.name.split("_", maxsplit=1)
-#         if len(suffix) > 1:
-#             parts.append(NamingConvention(suffix[1]).upper_camelcase())
-# 
-#         return "".join(parts)
 
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():
@@ -2179,7 +2113,8 @@ class OpenAPI(OpenABC):
             </head>
             <body>
                 <div id="swagger-ui"></div>
-                <script src="$cdn_base_url@$swagger_version/swagger-ui-bundle.js" crossorigin></script>
+                <script src="$cdn_base_url@$swagger_version/swagger-ui-bundle.js" crossorigin>
+                </script>
                 <script>
                     window.onload = function() {
                         configuration = {

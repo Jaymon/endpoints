@@ -231,6 +231,15 @@ class ReflectMethodTest(TestCase):
         media_types = rm.get_success_media_types()
         self.assertEqual("text/html", media_types[0][1])
 
+    def test_mediatype_ext(self):
+        rm = self.create_reflect_methods("""
+            class Default_jpg(Controller):
+                def GET() -> bytes: pass
+        """)[0]
+
+        media_types = rm.get_success_media_types()
+        self.assertEqual("image/jpeg", media_types[0][1])
+
     def test_mediatype_annotated_single(self):
         """
         https://docs.python.org/3/library/typing.html#typing.Annotated
