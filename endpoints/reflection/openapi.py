@@ -709,7 +709,7 @@ class Schema(OpenABC):
         self.reflect_method = reflect_method
         if rt := self.reflect_method.reflect_return_type():
             schemas = []
-            for srt in rt.reflect_actionable_types(depth=1):
+            for srt in rt.reflect_cast_types(depth=1):
                 if not srt.is_none():
                     schema = self.create_schema_instance()
                     schema.set_type(srt)
@@ -1177,12 +1177,9 @@ class Response(OpenABC):
         pass
 
     def set_success_code(self):
-        pass
-
-    def set_200_code(self):
         content = {}
 
-        for media_range in self.get_content_media_ranges():
+        for media_range in self.get_success_media_ranges():
             media_type = self.create_instance("media_type_class")
             media_type.set_response_method(self.reflect_method)
             if media_type:
@@ -1190,10 +1187,21 @@ class Response(OpenABC):
 
         return content
 
+#     def set_200_code(self):
+#         content = {}
+# 
+#         for media_range in self.get_content_media_ranges():
+#             media_type = self.create_instance("media_type_class")
+#             media_type.set_response_method(self.reflect_method)
+#             if media_type:
+#                 content[media_range] = media_type
+# 
+#         return content
+
     def set_error_code(self):
         content = {}
 
-        for media_range in self.get_content_media_ranges():
+        for media_range in self.get_error_media_ranges():
             media_type = self.create_instance("media_type_class")
             media_type.set_error_method(self.reflect_method)
             if media_type:
@@ -1229,22 +1237,79 @@ class Response(OpenABC):
     def get_description_value(self, **kwargs):
         return str(Status(int(self.code), default=f"A {self.code} response"))
 
-    def get_content_media_ranges(self):
-        """See RequestBody.get_content_media_ranges"""
+    def get_success_media_ranges(self):
+        media_types = []
         reflect_method = self.reflect_method
+        version = reflect_method.get_version()
 
-        method_info = reflect_method.get_method_info()
-        media_type = method_info.get(
-            "response_media_type",
-            environ.RESPONSE_MEDIA_TYPE
-        )
+        for t in reflect_method.get_success_media_types():
+            media_type = t[1]
 
-        # support Accept header response:
-        # https://stackoverflow.com/a/62593737
-        # https://github.com/OAI/OpenAPI-Specification/discussions/2777
-        if version := reflect_method.get_version():
-            media_type += f"; version={version}"
-        return [media_type]
+            # support Accept header response:
+            # https://stackoverflow.com/a/62593737
+            # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+            if version:
+                media_type += f"; version={version}"
+
+            media_types.append(media_type)
+
+        return media_types
+
+    def get_error_media_ranges(self):
+        media_types = []
+        reflect_method = self.reflect_method
+        version = reflect_method.get_version()
+
+        for t in reflect_method.get_error_media_types():
+            media_type = t[1]
+
+            # support Accept header response:
+            # https://stackoverflow.com/a/62593737
+            # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+            if version:
+                media_type += f"; version={version}"
+
+            media_types.append(media_type)
+
+        return media_types
+
+#     def get_content_media_ranges(self):
+#         """See RequestBody.get_content_media_ranges"""
+#         media_types = []
+#         reflect_method = self.reflect_method
+#         version = reflect_method.get_version()
+# 
+#         pout.v(reflect_method.get_error_media_types())
+# 
+#         mts = (
+#             *(t[1] for t in reflect_method.get_success_media_types()),
+#             *(t[1] for t in reflect_method.get_error_media_types()),
+#         )
+# 
+#         for media_type in mts:
+#             # support Accept header response:
+#             # https://stackoverflow.com/a/62593737
+#             # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+#             if version:
+#                 media_type += f"; version={version}"
+# 
+#             media_types.append(media_type)
+# 
+#         pout.v(media_types)
+#         return media_types
+
+#         method_info = reflect_method.get_method_info()
+#         media_type = method_info.get(
+#             "response_media_type",
+#             environ.RESPONSE_MEDIA_TYPE
+#         )
+# 
+#         # support Accept header response:
+#         # https://stackoverflow.com/a/62593737
+#         # https://github.com/OAI/OpenAPI-Specification/discussions/2777
+#         if version := reflect_method.get_version():
+#             media_type += f"; version={version}"
+#         return [media_type]
 
     def merge(self, other):
         """Merges self with other
@@ -1433,19 +1498,44 @@ class Operation(OpenABC):
         parts = []
         rc = self.reflect_method.reflect_class()
         parts.append(self.reflect_method.http_verb.lower())
-        for k in rc.module_keys:
-            parts.append(NamingConvention(k).upper_camelcase())
 
-        for k in rc.class_keys:
-            parts.append(NamingConvention(k).upper_camelcase())
+        for p in rc.get_url_parts():
+            parts.append(NamingConvention(p).upper_camelcase())
 
-        # sometimes the http verb method has a suffix, this adds that suffix
-        # to make sure the op ids are globally unique
+
+        # sometimes the http verb method has a suffix (eg `GET_foo`), this
+        # adds that suffix to make sure the op ids are globally unique
         suffix = self.reflect_method.name.split("_", maxsplit=1)
         if len(suffix) > 1:
             parts.append(NamingConvention(suffix[1]).upper_camelcase())
 
+        else:
+            # suffixes will make the request globally unique, but if it
+            # doesn't have a suffix add the positionals
+            for i, p in enumerate(self.reflect_method.reflect_path_params()):
+                if i == 0:
+                    parts.append("With")
+
+                parts.append(NamingConvention(p.name).upper_camelcase())
+
         return "".join(parts)
+
+#         for k in rc.module_keys:
+#             parts.append(NamingConvention(k).upper_camelcase())
+# 
+#         for k in rc.class_keys:
+#             parts.append(NamingConvention(k).upper_camelcase())
+# 
+#         if k := rc.get_url_name():
+#             parts.append(NamingConvention(k).upper_camelcase())
+# 
+#         # sometimes the http verb method has a suffix, this adds that suffix
+#         # to make sure the op ids are globally unique
+#         suffix = self.reflect_method.name.split("_", maxsplit=1)
+#         if len(suffix) > 1:
+#             parts.append(NamingConvention(suffix[1]).upper_camelcase())
+# 
+#         return "".join(parts)
 
     def get_request_body_value(self, **kwargs):
         if self.reflect_method.has_body():

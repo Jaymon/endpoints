@@ -39,8 +39,6 @@ class ReflectController(ReflectClass):
         self.modules = kwargs.get("modules", [])
 
         self.class_keys = list(kwargs.get("class_keys", []))
-        if class_key := self.get_url_name():
-            self.class_keys.append(class_key)
 
     def reflect_url_modules(self):
         """Reflect the controller modules for this controller
@@ -129,6 +127,22 @@ class ReflectController(ReflectClass):
             name=method_name
         )
 
+    def get_url_parts(self):
+        # the path part that is covered by python modules
+        for k in self.module_keys:
+            yield k
+
+        # the path part that is covered by classes that this controller
+        # is defined in (eg, a class that has a property that is another
+        # class, ..., and finally a class that has a Controller class as
+        # a class property
+        for k in self.class_keys:
+            yield k
+
+        # the last part is the class url name if this class has one
+        if k := self.get_url_name():
+            yield k
+
     def get_module_url_path(self):
         """Get the url path for just the module of this controller"""
         path = ""
@@ -144,21 +158,32 @@ class ReflectController(ReflectClass):
         url path params you want to call this same method on ReflectMethod
         instances to get the full url path for a given http verb
         """
-        path = ""
-
-        if module_path := "/".join(self.module_keys):
-            path += "/" + module_path
-
-        if class_path := "/".join(self.class_keys):
-            path += "/" + class_path
-
-        if not path:
-            path = "/"
-
+        path = "/" + "/".join(self.get_url_parts())
         return path
 
+#         path = ""
+# 
+#         # the path part that is covered by python modules
+#         if module_path := "/".join(self.module_keys):
+#             path += "/" + module_path
+# 
+#         # the path part that is covered by classes that this controller
+#         # is defined in (eg, a class that has a property that is another
+#         # class, ..., and finally a class that has a Controller class as
+#         # a class property
+#         if class_path := "/".join(self.class_keys):
+#             path += "/" + class_path
+# 
+#         # the actual class name
+#         if class_name := self.get_url_name():
+#             path += "/" + class_name
+# 
+#         if not path:
+#             path = "/"
+# 
+#         return path
+
     def get_url_name(self):
-        # TODO -- move Controller.get_name into here
         return self.get_class().get_name()
 
     def reflect_url_paths(self):
@@ -366,27 +391,75 @@ class ReflectMethod(ReflectCallable):
 
         return params
 
+    def get_success_media_types(self):
+        media_types = []
+
+        if rrt := self.reflect_return_type():
+            if rrt.is_union():
+                rts = rrt.reflect_types()
+
+            else:
+                rts = [rrt]
+
+            for rt in rts:
+                media_type = ""
+
+                if rt.is_annotated():
+                    info = rt.get_metadata_info()
+                    media_type = info["keywords"].get("media_type", "")
+                    if not media_type:
+                        if info["positionals"]:
+                            media_type = info["positionals"][0]
+
+                    if media_type:
+                        for rct in rt.reflect_cast_types():
+                            rmt = (rct.get_origin_type(), media_type)
+                            media_types.append(rmt)
+
+                if not media_type:
+                    cmedia_types = self.get_class().get_response_media_types()
+                    for rct in rt.reflect_cast_types():
+                        for mtinfo in cmedia_types:
+                            exactcheck = rct.is_type(mtinfo[0])
+                            anycheck = mtinfo[0] is Any or mtinfo[0] is object
+                            if exactcheck or anycheck:
+                                media_type = mtinfo[1]
+                                rmt = (rct.get_origin_type(), mtinfo[1])
+                                media_types.append(rmt)
+
+                                if exactcheck:
+                                    break
+
+        return media_types
+
+    def get_error_media_types(self):
+        media_types = []
+        for t in self.get_class().get_response_media_types():
+            body_types, body_media_type = t
+            if not isinstance(body_types, tuple):
+                body_types = (body_types,)
+            for body_type in body_types:
+                if issubclass(body_type, Exception):
+                    media_types.append(t)
+
+        return media_types
+
     @functools.cache
     def get_method_info(self):
-        method_info = {}
-        media_types = self.get_class().get_response_media_types()
-
-        rt = self.reflect_return_type()
-        for mtinfo in media_types:
-            exactcheck = rt is not None and rt.is_type(mtinfo[0])
-            anycheck = mtinfo[0] is Any or mtinfo[0] is object
-            if exactcheck or anycheck:
-                if callable(mtinfo[1]):
-                    method_info["response_callback"] = mtinfo[1]
-
-                else:
-                    method_info["response_media_type"] = mtinfo[1]
-
-                if exactcheck:
-                    break
+        method_info = {
+            "response_media_types": [
+                *self.get_success_media_types(),
+                *self.get_error_media_types(),
+            ],
+        }
+#         method_info["response_media_types"].extend(
+#             self.get_success_media_types(),
+#         )
+#         method_info["response_media_types"].extend(
+#             self.get_error_media_types(),
+#         )
 
         method_info.setdefault("method_name", self.name)
-
         method_info["params"] = self.get_param_info()
 
         return method_info

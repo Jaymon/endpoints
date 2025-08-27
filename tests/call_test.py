@@ -194,6 +194,16 @@ class ControllerTest(TestCase):
         res = c.handle("/12/")
         self.assertTrue(res.body["foo_is_int"])
 
+    def test_get_response_media_type(self):
+        c = self.create_server("""
+            class Default(Controller):
+                async def GET(self) -> Annotated[str, "plain/text"]:
+                    return "success"
+        """)
+
+        res = c.handle("/")
+        self.assertTrue("plain/text" in res.headers.get("Content-Type"))
+
 
 class RouterTest(TestCase):
     def test_paths_depth_1(self):

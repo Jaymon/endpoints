@@ -222,14 +222,46 @@ class ReflectMethodTest(TestCase):
         method_info = rm.get_method_info()
         self.assertEqual("GET_foo", method_info["method_name"])
 
-    def test_auto_mediatype(self):
+    def test_mediatype_auto(self):
         rm = self.create_reflect_methods("""
             class Default(Controller):
                 def GET() -> str: pass
         """)[0]
 
-        method_info = rm.get_method_info()
-        self.assertEqual("text/html", method_info["response_media_type"])
+        media_types = rm.get_success_media_types()
+        self.assertEqual("text/html", media_types[0][1])
+
+    def test_mediatype_annotated_single(self):
+        """
+        https://docs.python.org/3/library/typing.html#typing.Annotated
+        """
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET() -> Annotated[str, "text/plain"]: pass
+        """)[0]
+
+        media_types = rm.get_success_media_types()
+        self.assertEqual(1, len(media_types))
+        t = media_types[0]
+        self.assertTrue(issubclass(t[0], str))
+        self.assertEqual("text/plain", t[1])
+
+    def test_mediatype_annotated_union(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET() -> (
+                    Annotated[str, "text/yaml"]
+                    | Annotated[bytes, "image/jpeg"]
+                    | int
+                ): pass
+        """)[0]
+
+        media_types = rm.get_success_media_types()
+        self.assertEqual(3, len(media_types))
+
+        t = media_types[1]
+        self.assertTrue(issubclass(t[0], bytes))
+        self.assertEqual("image/jpeg", t[1])
 
 
 class ReflectParamTest(TestCase):
@@ -600,7 +632,7 @@ class OpenapiOpenAPITest(TestCase):
         for field_name in ["post", "get"]:
             self.assertTrue(field_name in pi)
 
-    def test_operation_operationid_1(self):
+    def test_operation_operationid_simple(self):
         oa = self.create_openapi("""
             class Foo(Controller):
                 def GET(self):
@@ -617,6 +649,7 @@ class OpenapiOpenAPITest(TestCase):
         for http_verb in ["post", "get", "put"]:
             self.assertEqual(f"{http_verb}Foo", pi[http_verb]["operationId"])
 
+    def test_operation_operationid_ext(self):
         oa = self.create_openapi({
             "bar": """class Foo_ext(Controller):
                 def GET(self):
@@ -626,6 +659,17 @@ class OpenapiOpenAPITest(TestCase):
 
         pi = oa.paths["/bar/foo.ext"]
         self.assertEqual("getBarFooExt", pi["get"]["operationId"])
+
+    def test_operation_operationid_positionals(self):
+        oa = self.create_openapi("""
+            class Foo(Controller):
+                def GET(self, bar, che, /):
+                    pass
+        """)
+        #pout.v(oa.paths)
+
+        pi = oa.paths["/foo/{bar}/{che}"]
+        self.assertEqual("getFooWithBarChe", pi["get"]["operationId"])
 
     def test_operation_operationid_any(self):
         oa = self.create_openapi("""
