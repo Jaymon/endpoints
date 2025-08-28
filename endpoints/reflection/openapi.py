@@ -1087,13 +1087,13 @@ class RequestBody(OpenABC):
 
         content = {}
 
-        for media_range in self.get_content_media_ranges(reflect_method):
+        for media_range in self.get_request_media_ranges(reflect_method):
             content[media_range] = self.create_instance("media_type_class")
             content[media_range].set_request_method(reflect_method)
 
         self["content"] = content
 
-    def get_content_media_ranges(self, reflect_method):
+    def get_request_media_ranges(self, reflect_method):
         """Get all the media types/ranges this should support
 
         The media-range and media-type abnfs:
@@ -1109,7 +1109,7 @@ class RequestBody(OpenABC):
 
         :returns: list[str]
         """
-        return ["*/*"]
+        return self.reflect_method.get_request_media_types()
 
 
 class Response(OpenABC):

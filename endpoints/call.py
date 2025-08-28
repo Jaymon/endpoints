@@ -782,34 +782,34 @@ class Controller(object):
         :returns: the media type for the body
         """
         media_type = self.response.media_type
+        if controller_info := self.request.controller_info:
+            if not media_type:
+                if rm := controller_info.get("reflect_method", None):
+                    info = rm.get_method_info()
+                    for t in info.get("response_media_types", []):
+                        body_object_type, body_media_type = t
+                        if isinstance(body, body_object_type):
+                            if callable(body_media_type):
+                                body_media_type(self.response)
+                                media_type = self.response.media_type
+
+                            else:
+                                media_type = body_media_type
+
+                            break
 
         if not media_type:
-            if rm := self.request.controller_info.get("reflect_method", None):
-                info = rm.get_method_info()
-                for t in info.get("response_media_types", []):
-                    body_object_type, body_media_type = t
-                    if isinstance(body, body_object_type):
-                        if callable(body_media_type):
-                            body_media_type(self.response)
-                            media_type = self.response.media_type
+            for t in self.get_response_media_types():
+                body_object_type, body_media_type = t
+                if isinstance(body, body_object_type):
+                    if callable(body_media_type):
+                        body_media_type(self.response)
+                        media_type = self.response.media_type
 
-                        else:
-                            media_type = body_media_type
+                    else:
+                        media_type = body_media_type
 
-                        break
-
-            if not media_type:
-                for t in self.get_response_media_types():
-                    body_object_type, body_media_type = t
-                    if isinstance(body, body_object_type):
-                        if callable(body_media_type):
-                            body_media_type(self.response)
-                            media_type = self.response.media_type
-
-                        else:
-                            media_type = body_media_type
-
-                        break
+                    break
 
         return media_type
 

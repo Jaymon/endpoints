@@ -246,7 +246,7 @@ class ReflectMethodTest(TestCase):
         """
         rm = self.create_reflect_methods("""
             class Default(Controller):
-                def GET() -> Annotated[str, "text/plain"]: pass
+                def GET(self) -> Annotated[str, "text/plain"]: pass
         """)[0]
 
         media_types = rm.get_success_media_types()
@@ -258,7 +258,7 @@ class ReflectMethodTest(TestCase):
     def test_mediatype_annotated_union(self):
         rm = self.create_reflect_methods("""
             class Default(Controller):
-                def GET() -> (
+                def GET(self) -> (
                     Annotated[str, "text/yaml"]
                     | Annotated[bytes, "image/jpeg"]
                     | int
@@ -271,6 +271,39 @@ class ReflectMethodTest(TestCase):
         t = media_types[1]
         self.assertTrue(issubclass(t[0], bytes))
         self.assertEqual("image/jpeg", t[1])
+
+    def test_mediatype_request(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def POST(self, file: io.BytesIO) -> str:
+                    pass
+        """)[0]
+
+        mts = rm.get_request_media_types()
+        self.assertEqual(1, len(mts))
+        self.assertTrue("multipart" in mts[0])
+
+        # the file doesn't have to be passed up so this should support
+        # the non multipart media types
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def POST(self, file: Optional[io.BytesIO] = None) -> str:
+                    pass
+        """)[0]
+
+        mts = rm.get_request_media_types()
+        self.assertEqual(3, len(mts))
+
+        # file is required so the only media type is multipart
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def POST(self, file: io.BytesIO, foo: int) -> str:
+                    pass
+        """)[0]
+
+        mts = rm.get_request_media_types()
+        self.assertEqual(1, len(mts))
+        self.assertTrue("multipart" in mts[0])
 
 
 class ReflectParamTest(TestCase):
@@ -582,10 +615,11 @@ class OpenapiOpenAPITest(TestCase):
                     pass
         """)
 
-        schema = oa.paths["/foo"].post.requestBody.content["*/*"]["schema"]
-        self.assertTrue(1, len(schema["required"]))
-        self.assertTrue("bar" in schema["required"])
-        self.assertTrue(2, len(schema["properties"]))
+        for media_type in oa.paths["/foo"].post.requestBody.content.values():
+            schema = media_type["schema"]
+            self.assertTrue(1, len(schema["required"]))
+            self.assertTrue("bar" in schema["required"])
+            self.assertTrue(2, len(schema["properties"]))
 
     def test_responses(self):
         oa = self.create_openapi("""
@@ -900,8 +934,9 @@ class OpenapiOperationTest(TestCase):
 
         self.assertEqual("foo", pi["get"]["parameters"][0]["name"])
         self.assertFalse("Paremeters"in pi["post"])
-        schema = pi["post"]["requestBody"]["content"]["*/*"]["schema"]
-        self.assertTrue("foo" in schema["properties"])
+        for media_type in pi["post"]["requestBody"]["content"].values():
+            schema = media_type["schema"]
+            self.assertTrue("foo" in schema["properties"])
 
     def test_params_query(self):
         oa = self.create_openapi("""

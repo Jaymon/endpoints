@@ -1,6 +1,7 @@
 # -*- coding: utf-8 -*-
 import re
-from collections import defaultdict
+import io
+from collections import defaultdict, Counter
 from collections.abc import Callable
 import inspect
 from typing import (
@@ -20,6 +21,7 @@ from datatypes.reflection.inspect import ReflectArgument, ReflectObject
 
 from ..compat import *
 from ..utils import MimeType
+from ..config import environ
 
 
 logger = logging.getLogger(__name__)
@@ -375,7 +377,7 @@ class ReflectMethod(ReflectCallable):
 
         return params
 
-    def get_success_media_types(self) -> tuple[type, str|Callable]:
+    def get_success_media_types(self) -> list[tuple[type, str|Callable]]:
         """Get the success response media types for this method
 
         This follows the same format as `Controller.get_response_media_types`
@@ -432,7 +434,7 @@ class ReflectMethod(ReflectCallable):
 
         return media_types
 
-    def get_error_media_types(self) -> tuple[type, str|Callable]:
+    def get_error_media_types(self) -> list[tuple[type, str|Callable]]:
         """Get the error response media types for this method
 
         This follows the same format as `Controller.get_response_media_types`
@@ -445,6 +447,40 @@ class ReflectMethod(ReflectCallable):
             for body_type in body_types:
                 if issubclass(body_type, Exception):
                     media_types.append(t)
+
+        return media_types
+
+    def get_request_media_types(self) -> list[str]:
+        """Get the request response media types for this method
+
+        Annoyingly, this returns a different format than the other media_types
+        methods
+        """
+        media_types = []
+        if self.has_body():
+            counts = Counter()
+            non_files = True
+
+            for rp in self.reflect_body_params():
+                counts["params"] += 1
+                if rp.is_file():
+                    counts["files"] += 1
+                    if not rp.is_required():
+                        counts["optional_files"] += 1
+
+            if counts["files"] > 0:
+                media_types.append("multipart/form-data")
+                non_files = counts["optional_files"] == counts["files"]
+
+            if non_files:
+                primary_media_type = environ.RESPONSE_MEDIA_TYPE
+                default_media_type = "application/x-www-form-urlencoded"
+
+                if primary_media_type:
+                    media_types.append(primary_media_type)
+
+                if default_media_type != primary_media_type:
+                    media_types.append(default_media_type)
 
         return media_types
 
@@ -571,6 +607,10 @@ class ReflectParam(ReflectObject):
 
     def is_positional(self):
         return self.flags["is_positional"]
+
+    def is_file(self) -> bool:
+        """Return True if this param is a file type"""
+        return self.reflect_type().is_type(io.IOBase)
 
     def allow_empty(self):
         return self.flags.get("allow_empty", True)

@@ -69,7 +69,7 @@ class _HTTPTestCase(TestCase):
 
         c = self.create_client()
         r = c.get('/listparamdec?user_ids[]=12&user_ids[]=34')
-        self.assertEqual(1234, r.body)
+        self.assertEqual("1234", r.body)
 
     def test_get_404_request(self):
         server = self.create_server(contents=[

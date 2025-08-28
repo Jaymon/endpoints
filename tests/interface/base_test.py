@@ -166,7 +166,7 @@ class BaseApplicationTest(TestCase):
         self.assertTrue("foo" in res._body)
 
     def test_lowercase_method(self):
-        c = self.create_server(contents={"foo2": [
+        c = self.create_server({"foo2": [
             "class Bar(Controller):",
             "    def get(*args, **kwargs): pass"
         ]})
@@ -175,7 +175,7 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(501, res.code)
 
     def test_handle_redirect(self):
-        c = self.create_server(contents={"handle": [
+        c = self.create_server({"handle": [
             "class Testredirect(Controller):",
             "    def GET(*args, **kwargs):",
             "        raise Redirect('http://example.com')"
@@ -187,7 +187,7 @@ class BaseApplicationTest(TestCase):
 
     def test_handle_404_typeerror_1(self):
         """make sure not having a controller is correctly identified as a 404"""
-        c = self.create_server(contents=[
+        c = self.create_server([
             "class NoFoo(Controller):",
             "    def GET(*args, **kwargs):",
             "        pass",
@@ -198,7 +198,7 @@ class BaseApplicationTest(TestCase):
 
     def test_handle_404_typeerror_2(self):
         """make sure 404 works when a path bit is missing"""
-        c = self.create_server(contents=[
+        c = self.create_server([
             "class Default(Controller):",
             "    def GET(self, needed_bit, **kwargs):",
             "       return ''",
