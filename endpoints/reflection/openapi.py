@@ -172,7 +172,8 @@ class OpenABC(dict):
 
         https://peps.python.org/pep-0487/
         """
-        cls.classfinder.add_class(cls, OpenABC)
+        cls.classfinder.set_cutoff_class(OpenABC)
+        cls.classfinder.add_class(cls)
 
     def __getattr__(self, key):
         try:

@@ -13,5 +13,5 @@ from .call import Controller, Request, Response
 from . import decorators
 
 
-__version__ = "8.1.0"
+__version__ = "8.1.1"
 
