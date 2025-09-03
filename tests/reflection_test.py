@@ -1090,6 +1090,22 @@ class OpenapiComponentsTest(TestCase):
         self.assertEqual(s, s4)
 
 
+class OpenapiRequestBodyTest(TestCase):
+    def test_file_upload(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def POST(self, foo: io.BytesIO) -> None:
+                    return None
+        """)
+
+        op = oa.paths["/"]["post"]
+        content = op["requestBody"]["content"]
+        mt = content["multipart/form-data"]
+        schema = mt["schema"]
+        self.assertEqual("string", schema["properties"]["foo"]["type"])
+        self.assertEqual("binary", schema["properties"]["foo"]["format"])
+
+
 class OpenapiResponseTest(TestCase):
     def test_infer_or_type(self):
         oa = self.create_openapi("""

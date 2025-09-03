@@ -7,6 +7,7 @@ import json
 import datetime
 import logging
 from string import Template
+import io
 
 from datatypes import (
     ReflectClass,
@@ -904,6 +905,12 @@ class Schema(OpenABC):
             else:
                 ret["format"] = "date"
 
+        elif rt.is_type(io.IOBase):
+            # github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#considerations-for-file-uploads
+            # https://swagger.io/docs/specification/v3_0/describing-request-body/file-upload/
+            ret["type"] = "string"
+            ret["format"] = "binary"
+
         elif rt.is_none():
             ret["type"] = "null"
 
@@ -1035,11 +1042,9 @@ class Schema(OpenABC):
 
 
 class MediaType(OpenABC):
-    """
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#media-type-object
+    """Media type is found in both RequestBody and Response
 
-    TODO -- file uploads:
-        https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#considerations-for-file-uploads
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#media-type-object
     """
     _schema = Field(Schema)
 
@@ -1088,13 +1093,13 @@ class RequestBody(OpenABC):
 
         content = {}
 
-        for media_range in self.get_request_media_ranges(reflect_method):
+        for media_range in self.get_media_ranges(reflect_method):
             content[media_range] = self.create_instance("media_type_class")
             content[media_range].set_request_method(reflect_method)
 
         self["content"] = content
 
-    def get_request_media_ranges(self, reflect_method):
+    def get_media_ranges(self, reflect_method):
         """Get all the media types/ranges this should support
 
         The media-range and media-type abnfs:
