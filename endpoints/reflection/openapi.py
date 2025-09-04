@@ -709,9 +709,9 @@ class Schema(OpenABC):
             self.set_object_keys()
             self.add_param(reflect_param)
 
-        for reflect_param in reflect_method.reflect_url_params():
-            self.set_object_keys()
-            self.add_param(reflect_param)
+#         for reflect_param in reflect_method.reflect_url_params():
+#             self.set_object_keys()
+#             self.add_param(reflect_param)
 
     def set_response_method(self, reflect_method):
         """Called from Response and is the main hook into customizing and
@@ -1096,7 +1096,7 @@ class RequestBody(OpenABC):
 
     _required = Field(bool)
 
-    def set_method(self, reflect_method):
+    def init_instance(self, reflect_method, **kwargs):
         self.reflect_method = reflect_method
 
         content = {}
@@ -1344,11 +1344,20 @@ class Parameter(OpenABC):
 
     _examples = Field(dict[str, Example|Reference])
 
-    def set_param(self, reflect_param):
+    def init_instance(self, reflect_param, **kwargs):
+        """
+        :param reflect_param: ReflectParam
+        """
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
 
+#     def set_param(self, reflect_param):
+#         self.reflect_param = reflect_param
+#         self.update(self.get_param_fields(reflect_param))
+
     def get_param_fields(self, reflect_param):
+        """Internal method. Converts a param into a format openapi
+        understands"""
         ret = {}
 
         if reflect_param.is_keyword():
@@ -1425,11 +1434,13 @@ class Operation(OpenABC):
         if not self.reflect_method.has_body():
             parameters = []
 
-            # this is a positional argument (part of path) or query param
-            # (after the ? in the url)
+            # the query params (after the ? in the url) go here
+            # the path params are handled in PathItem
             for reflect_param in self.reflect_method.reflect_query_params():
-                parameter = self.create_instance("parameter_class")
-                parameter.set_param(reflect_param)
+                parameter = self.create_instance(
+                    "parameter_class",
+                    reflect_param,
+                )
                 parameters.append(parameter)
 
             return parameters
@@ -1489,9 +1500,9 @@ class Operation(OpenABC):
         if self.reflect_method.has_body():
             rb = self.create_instance(
                 "request_body_class",
+                self.reflect_method,
                 **kwargs
             )
-            rb.set_method(self.reflect_method)
             return rb
 
     def get_security_value(self, **kwargs):
@@ -1513,19 +1524,6 @@ class Operation(OpenABC):
 
                             if sr:
                                 sreqs.append(sr)
-
-#                         if scheme_name.startswith(name):
-#                             sr = self.create_instance(
-#                                 "security_requirement_class",
-#                                 **kwargs
-#                             )
-#                             sr.set_security_scheme(
-#                                 scheme_name,
-#                                 scheme
-#                             )
-# 
-#                             if sr:
-#                                 sreqs.append(sr)
 
         return sreqs
 
@@ -1711,11 +1709,13 @@ class PathItem(OpenABC):
     def add_parameters(self, reflect_method):
         parameters = self.get("parameters", [])
 
-        # this is a positional argument (part of path) or query param
-        # (after the ? in the url)
+        # the positional arguments (part of path) of the url go here
+        # the query keywords (after the ?) of the url are in Operation
         for reflect_param in reflect_method.reflect_path_params():
-            parameter = self.create_instance("parameter_class")
-            parameter.set_param(reflect_param)
+            parameter = self.create_instance(
+                "parameter_class",
+                reflect_param,
+            )
             parameters.append(parameter)
 
         self["parameters"] = parameters

@@ -305,6 +305,18 @@ class ReflectMethodTest(TestCase):
         self.assertEqual(1, len(mts))
         self.assertTrue("multipart" in mts[0])
 
+    def test_reflect_defined_params(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET(self, *args, **kwargs):
+                    pass
+        """)[0]
+
+        self.assertEqual(0, len(list(rm.reflect_url_params())))
+        self.assertEqual(0, len(list(rm.reflect_query_params())))
+        self.assertEqual(0, len(list(rm.reflect_defined_params())))
+
+
 
 class ReflectParamTest(TestCase):
     """Test the ReflectParam class
@@ -575,6 +587,18 @@ class ReflectParamTest(TestCase):
 
         bind_info = rms[2].get_bind_info(*[1])
         self.assertEqual([1], bind_info["bound_args"])
+
+    def test_required_arg_kwargs(self):
+        """positional or keyword catch-alls shouldn't be required"""
+        rps = self.create_reflect_params("""
+            class Default(Controller):
+                def GET(self, *args, **kwargs):
+                    pass
+        """)
+
+        for count, rp in enumerate(rps):
+            self.assertFalse(rp.is_required())
+        self.assertLess(0, count)
 
 
 class OpenapiOpenABCTest(TestCase):
@@ -978,6 +1002,16 @@ class OpenapiOperationTest(TestCase):
         pi.add_method(rm)
         self.assertEqual(3, len(pi["post"]["security"]))
 
+    def test_parameters_catchall(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def GET(self, **kwargs):
+                    pass
+        """)
+
+        op = oa["paths"]["/"]["get"]
+        self.assertFalse("parameters" in op)
+
 
 class OpenapiSchemaTest(TestCase):
     def test_list_value_types(self):
@@ -1041,6 +1075,18 @@ class OpenapiSchemaTest(TestCase):
 
         schema.set_schema(schema2)
         self.assertEqual(schema, schema2)
+
+    def test_param_catchall(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def POST(self, **kwargs):
+                    pass
+        """)
+
+        op = oa["paths"]["/"]["post"]
+        content = op["requestBody"]["content"]
+        for media_type, mt in content.items():
+            self.assertEqual(0, len(mt))
 
 
 class OpenapiComponentsTest(TestCase):

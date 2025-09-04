@@ -267,31 +267,38 @@ class ReflectMethod(ReflectCallable):
         for param in self.get_params():
             yield self.create_reflect_param(param)
 
+    def reflect_defined_params(self):
+        """This will reflect all non catch-all params in the method signature
+        """
+        for reflect_param in self.reflect_params():
+            if not reflect_param.is_catchall():
+                yield reflect_param
+
     def reflect_body_params(self):
         """This will reflect all the params that are usually passed up using
         the body on a POST request"""
         if self.has_body():
-            for rp in self.reflect_params():
+            for rp in self.reflect_defined_params():
                 if rp.is_keyword():
                     yield rp
 
     def reflect_url_params(self):
         """This will reflect params that need to be in the url path or the
         query part of the url"""
-        for rp in self.reflect_params():
+        for rp in self.reflect_defined_params():
             if rp.is_positional() or not self.has_body():
                 yield rp
 
     def reflect_query_params(self):
         """This will reflect params that need to be in the query part of the
         url"""
-        for rp in self.reflect_params():
+        for rp in self.reflect_defined_params():
             if rp.is_keyword() and not self.has_body():
                 yield rp
 
     def reflect_path_params(self):
         """This will reflect params that need to be in the url path"""
-        for rp in self.reflect_params():
+        for rp in self.reflect_defined_params():
             if rp.is_positional():
                 yield rp
 
@@ -545,11 +552,15 @@ class ReflectParam(ReflectObject):
         flags = {}
 
         flags["is_positional"] = False
-        if param.kind == param.POSITIONAL_ONLY:
+        if param.kind in (param.VAR_POSITIONAL, param.POSITIONAL_ONLY):
             flags["is_positional"] = True
 
         if param.default is param.empty:
-            flags["required"] = True
+            if param.kind in (param.VAR_POSITIONAL, param.VAR_KEYWORD):
+                flags["required"] = False
+
+            else:
+                flags["required"] = True
 
         else:
             flags["required"] = False
@@ -611,6 +622,13 @@ class ReflectParam(ReflectObject):
     def is_file(self) -> bool:
         """Return True if this param is a file type"""
         return self.reflect_type().is_type(io.IOBase)
+
+    def is_catchall(self) -> bool:
+        """Return True if this param is catcha-all positional or keyword
+        (eg, `*args` or `**kwargs` value)"""
+        param = self.get_target()
+        kinds = (param.VAR_POSITIONAL, param.VAR_KEYWORD)
+        return param.kind in kinds
 
     def allow_empty(self):
         return self.flags.get("allow_empty", True)
