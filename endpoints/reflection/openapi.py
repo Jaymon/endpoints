@@ -501,6 +501,14 @@ class SecurityScheme(OpenABC):
 
     _openIdConnectUrl = Field(str)
 
+    def is_valid_decorator(self, scheme_name: str, reflect_decorator) -> str:
+        """Returns True if `reflect_decorator` is considered a match for
+        this scheme
+
+        :param reflect_decorator: ReflectAST
+        """
+        return scheme_name.startswith(reflect_decorator.name)
+
 
 class SecurityRequirement(OpenABC):
     """
@@ -1493,7 +1501,7 @@ class Operation(OpenABC):
                 name = rd.name
                 if name.startswith("auth_"):
                     for scheme_name, scheme in security_schemes.items():
-                        if scheme_name.startswith(name):
+                        if scheme.is_valid_decorator(scheme_name, rd):
                             sr = self.create_instance(
                                 "security_requirement_class",
                                 **kwargs
@@ -1505,6 +1513,19 @@ class Operation(OpenABC):
 
                             if sr:
                                 sreqs.append(sr)
+
+#                         if scheme_name.startswith(name):
+#                             sr = self.create_instance(
+#                                 "security_requirement_class",
+#                                 **kwargs
+#                             )
+#                             sr.set_security_scheme(
+#                                 scheme_name,
+#                                 scheme
+#                             )
+# 
+#                             if sr:
+#                                 sreqs.append(sr)
 
         return sreqs
 
@@ -1795,14 +1816,13 @@ class Components(OpenABC):
 
     def get_security_schemes_value(self, **kwargs):
         schemes = {}
-        class_key = "security_scheme_class"
 
-        scheme = self.create_instance(class_key, **kwargs)
+        scheme = self.create_security_scheme_instance(**kwargs)
         scheme["type"] = "http"
         scheme["scheme"] = "basic"
         schemes["auth_basic"] = scheme
 
-        scheme = self.create_instance(class_key, **kwargs)
+        scheme = self.create_security_scheme_instance(**kwargs)
         scheme["type"] = "http"
         scheme["scheme"] = "bearer"
         schemes["auth_bearer"] = scheme

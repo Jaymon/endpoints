@@ -1089,6 +1089,18 @@ class OpenapiComponentsTest(TestCase):
         s4 = oa.components.get_schema("foo")
         self.assertEqual(s, s4)
 
+    def test_security_decorator(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                @auth_bearer
+                def GET(self) -> None:
+                    return None
+        """)
+
+        op = oa["paths"]["/"]["get"]
+        self.assertEqual(1, len(op["security"]))
+        self.assertTrue("auth_bearer" in op["security"][0])
+
 
 class OpenapiRequestBodyTest(TestCase):
     def test_file_upload(self):
