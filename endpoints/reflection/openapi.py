@@ -1936,16 +1936,24 @@ class Info(OpenABC):
 
 
 class OpenAPI(OpenABC):
-    """Represents an OpenAPI 3.1.0 document
+    """Represents an OpenAPI 3.1.1 document
 
     This is the primary class for creating an OpenAPI document. See the
     OpenABC docblock for examples
 
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md
+    :example:
+        # A minimum OpenAPI spec
+        openapi: 3.1.1
+        info:
+            title: OpenAPI API spec
+            version: 0.0.1
+        paths: {}
+
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md
     https://github.com/OpenAPITools/openapi-generator
     https://github.com/OAI/OpenAPI-Specification
 
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#openapi-object
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#openapi-object
     """
     _openapi = Field(str, default="3.1.0", required=True)
 
