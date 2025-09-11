@@ -156,6 +156,114 @@ class Router(object):
         request.path and gathers the information needed to turn that path into
         a Controller
 
+        This uses the requested path_args and checks the internal tree to find
+        the right path or raises a TypeError if the path can't be resolved
+
+        we always translate an HTTP request using this pattern:
+
+            METHOD /module/class/args?kwargs
+
+        :param request: Request
+        :param **kwargs:
+        :returns: dict
+        """
+        ret = {}
+
+        logger.debug("Compiling Controller info using path: {}".format(
+            request.path
+        ))
+
+        rc_classes = []
+        leftover_path_args = list(request.path_args)
+        node = self.pathfinder
+
+        while node is not None:
+            if node.value and "class" in node.value:
+                rc_classes.append(node.value["reflect_class"])
+
+            if leftover_path_args:
+                try:
+                    node = node.get_node(leftover_path_args[0])
+                    leftover_path_args = leftover_path_args[1:]
+
+                except KeyError:
+                    node = None
+
+            else:
+                node = None
+
+        if rc_classes:
+            ret["leftover_path_args"] = leftover_path_args
+            ret["reflect_class"] = rc_classes[-1]
+            #ret["reflect_classes"] = rc_classes
+
+        else:
+            raise TypeError(
+                "Unknown controller with path: {}".format(
+                    request.path
+                )
+            )
+
+        return ret
+
+
+
+#         reflect_controller_classes = []
+#         if "class" in pathfinder.value:
+#             reflect_controller_classes.append(
+#                 pathfinder.value["reflect_class"]
+#             )
+# 
+#         while leftover_path_args:
+#             try:
+#                 node = pathfinder.get_node(leftover_path_args[0])
+#                 if "class" in node.value:
+#                     reflect_controller_classes.append(
+#                         node.value["reflect_class"]
+#                     )
+# 
+#                 leftover_path_args = leftover_path_args[1:]
+# 
+#             except KeyError:
+#                 break
+
+
+
+
+
+#         while True:
+#             value = pathfinder.get(keys, None) or {}
+#             if "class" in value:
+#                 break
+#                 #controller_class = value["class"]
+# 
+#             else:
+#                 if keys:
+#                     leftover_path_args.insert(0, keys.pop(-1))
+# 
+#                 else:
+#                     raise TypeError(
+#                         "Unknown controller with path: {}".format(
+#                             request.path
+#                         )
+#                     )
+
+        ret["leftover_path_args"] = leftover_path_args
+        ret["reflect_class"] = value["reflect_class"]
+
+        return ret
+
+
+
+
+    def xfind_controller_info(self, request, **kwargs):
+        """returns all the information needed to create a controller and handle
+        the request
+
+        This is where all the routing magic happens, this takes the
+        request.path and gathers the information needed to turn that path into
+        a Controller
+
         we always translate an HTTP request using this pattern:
 
             METHOD /module/class/args?kwargs
@@ -1046,7 +1154,7 @@ class Request(Call):
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
 
-    bodies: Iterable[tuple[Mapping, bytes]]|None = None
+#     bodies: Iterable[tuple[Mapping, bytes]]|None = None
     """Holds the bodies for this request, if this isn't a multipart request
     then this will still be an iterator with one item
 
