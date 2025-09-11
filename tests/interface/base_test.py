@@ -393,7 +393,7 @@ class BaseApplicationTest(TestCase):
 
         info = c.find("/foo/che/baz")
         rc = info["reflect_class"]
-        self.assertEqual(2, len(info['method_args']))
+        self.assertEqual(2, len(info['leftover_path_args']))
         self.assertEqual("Foo", rc.name)
 
     def test_default_match_with_path(self):
@@ -432,7 +432,7 @@ class BaseApplicationTest(TestCase):
         rc = info["reflect_class"]
         self.assertEqual('Default', rc.name)
         self.assertEqual(c.controller_prefix, rc.modpath)
-        self.assertEqual('nomodbar', info['method_args'][0])
+        self.assertEqual('nomodbar', info['leftover_path_args'][0])
 
     def test_import_error(self):
         with self.assertRaises(ImportError):

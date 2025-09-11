@@ -60,7 +60,9 @@ class Application(BaseApplication):
             d = await self.recv_websocket(**kwargs)
             body += d["body"]
 
-        self.set_request_body(request, body, **kwargs)
+        request.body = body
+        #request.bodies = self.get_request_bodies(request, body, **kwargs)
+        #self.set_request_body(request, body, **kwargs)
 
         response = self.create_response()
         await self.handle(request, response)
@@ -129,7 +131,9 @@ class Application(BaseApplication):
                 setattr(request, k, d[k])
 
         if "body" in d:
-            self.set_request_body(request, d["body"])
+            request.body = d["body"]
+            #request.bodies = self.get_request_bodies(request, d["body"])
+            #self.set_request_body(request, d["body"])
 
         if d["headers"]:
             request.add_headers(d["headers"])

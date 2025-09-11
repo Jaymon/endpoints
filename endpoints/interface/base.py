@@ -18,6 +18,7 @@ from datatypes import (
 )
 from datatypes.http import Multipart
 
+from ..compat import *
 from ..config import environ
 from ..call import (
     Controller,
@@ -266,44 +267,36 @@ class BaseApplication(ApplicationABC):
         this is separate from log_start so it can be easily overridden in
         children
         """
-        if not logger.isEnabledFor(logging.DEBUG):
-            return
+        pass
 
-        if uuid := getattr(request, "uuid", ""):
-            uuid += " "
-
-        try:
-            if request.has_body():
-                body_args = request.body_args
-                body_kwargs = request.body_kwargs
-
-                if body_args or body_kwargs:
-                    logger.debug(
-                        "Request {}body args: {}, body kwargs: {}".format(
-                            uuid,
-                            request.body_args,
-                            request.body_kwargs
-                        )
-                    )
-
-                else:
-                    logger.debug(
-                        "Request {}body: {}".format(
-                            uuid,
-                            request.body,
-                        )
-                    )
-
-            elif request.should_have_body():
-                logger.debug(
-                    "Request {}body: <EMPTY>".format(uuid)
-                )
-
-        except Exception as e:
-            logger.debug(
-                "Request {}body raw: {}".format(uuid, request.body)
-            )
-            logger.exception(e)
+#         if not logger.isEnabledFor(logging.DEBUG):
+#             return
+# 
+#         if uuid := getattr(request, "uuid", ""):
+#             uuid += " "
+# 
+#         try:
+#             if request.has_body():
+#                 if isinstance(request.body, io.IOBase):
+# 
+# 
+#                 logger.debug(
+#                     "Request {}bodies: {}".format(
+#                         uuid,
+#                         [p[1] for p in request.bodies],
+#                     )
+#                 )
+# 
+#             elif request.should_have_body():
+#                 logger.debug(
+#                     "Request {}bodies: <EMPTY>".format(uuid)
+#                 )
+# 
+#         except Exception as e:
+# #             logger.debug(
+# #                 "Request {}body raw: {}".format(uuid, request.body)
+# #             )
+#             logger.exception(e)
 
     def log_stop(self, request, response):
         """log a summary line on how the request went"""
@@ -431,50 +424,75 @@ class BaseApplication(ApplicationABC):
 
         return body
 
-    def set_request_body(self, request, body, **kwargs):
-        """
-        :returns: tuple[Any, list, dict], returns raw_body, body_args, and
-            body_kwargs
-        """
+    def get_request_bodies(
+        self,
+        request,
+        body,
+        **kwargs
+    ) -> Iterable[tuple[Mapping, bytes]]|None:
         if request.headers.is_chunked():
             body = self.get_request_chunked(request, body, **kwargs)
 
         if isinstance(body, io.IOBase):
             body = self.get_request_file(request, body, **kwargs)
 
-        args = []
-        kwargs = {}
-
         if body:
-            if isinstance(body, dict):
-                kwargs = body
+            if request.headers.is_multipart():
+                body = Multipart.decode(request.headers, body)
+                bodies = [(p.headers, p.body) for p in body]
 
-            elif isinstance(body, list):
-                args = body
+            else:
+                bodies = [(request.headers, body)]
 
-            elif request.headers.is_json():
-                jb = self.get_request_json(request, body, **kwargs)
+        else:
+            bodies = None
 
-                if isinstance(jb, dict):
-                    kwargs = jb
+        return bodies
 
-                elif isinstance(jb, list):
-                    args = jb
-
-                else:
-                    args = [jb]
-
-            elif request.headers.is_urlencoded():
-                kwargs = self.get_request_urlencoded(request, body, **kwargs)
-
-            elif request.headers.is_multipart():
-                kwargs = self.get_request_multipart(request, body, **kwargs)
-
-            elif request.headers.is_plain():
-                body = String(body, encoding=request.encoding)
-                args = [body]
-
-        request.set_body(body, args, kwargs)
+#     def set_request_body(self, request, body, **kwargs):
+#         """
+#         :returns: tuple[Any, list, dict], returns raw_body, body_args, and
+#             body_kwargs
+#         """
+#         if request.headers.is_chunked():
+#             body = self.get_request_chunked(request, body, **kwargs)
+# 
+#         if isinstance(body, io.IOBase):
+#             body = self.get_request_file(request, body, **kwargs)
+# 
+#         args = []
+#         kwargs = {}
+# 
+#         if body:
+#             if isinstance(body, dict):
+#                 kwargs = body
+# 
+#             elif isinstance(body, list):
+#                 args = body
+# 
+#             elif request.headers.is_json():
+#                 jb = self.get_request_json(request, body, **kwargs)
+# 
+#                 if isinstance(jb, dict):
+#                     kwargs = jb
+# 
+#                 elif isinstance(jb, list):
+#                     args = jb
+# 
+#                 else:
+#                     args = [jb]
+# 
+#             elif request.headers.is_urlencoded():
+#                 kwargs = self.get_request_urlencoded(request, body, **kwargs)
+# 
+#             elif request.headers.is_multipart():
+#                 kwargs = self.get_request_multipart(request, body, **kwargs)
+# 
+#             elif request.headers.is_plain():
+#                 body = String(body, encoding=request.encoding)
+#                 args = [body]
+# 
+#         request.set_body(body, args, kwargs)
 
     def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used
@@ -589,9 +607,7 @@ class BaseApplication(ApplicationABC):
 
         try:
             controller = self.create_controller(request, response)
-            controller_args = request.controller_info["method_args"]
-            controller_kwargs = request.controller_info["method_kwargs"]
-            await controller.handle(*controller_args, **controller_kwargs)
+            await controller.handle()
 
         except Exception as e:
             await self.handle_error(request, response, e, **kwargs)

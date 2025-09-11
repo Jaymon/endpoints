@@ -13,6 +13,7 @@ from datatypes import (
     NamingConvention,
     Dirpath,
 )
+from datatypes.http import Multipart
 
 from .compat import *
 from .exception import (
@@ -113,39 +114,39 @@ class Router(object):
 
         return pathfinder
 
-    def find_controller(self, path_args):
-        """Where all the magic happens, this takes a requested path_args and
-        checks the internal tree to find the right path or raises a TypeError
-        if the path can't be resolved
-
-        :param path_args: list[str], so path `/foo/bar/che` would be passed to
-            this method as `["foo", "bar", "che"]`
-        :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
-            controller_class, controller_args, and node value
-        """
-        keys = list(path_args)
-        controller_args = []
-        controller_class = None
-        value = {}
-        pathfinder = self.pathfinder
-
-        while not controller_class:
-            value = pathfinder.get(keys, None) or {}
-            if "class" in value:
-                controller_class = value["class"]
-
-            else:
-                if keys:
-                    controller_args.insert(0, keys.pop(-1))
-
-                else:
-                    raise TypeError(
-                        "Unknown controller with path /{}".format(
-                            "/".join(path_args),
-                        )
-                    )
-
-        return controller_class, controller_args, value
+#     def find_controller(self, path_args):
+#         """Where all the magic happens, this takes a requested path_args and
+#         checks the internal tree to find the right path or raises a TypeError
+#         if the path can't be resolved
+# 
+#         :param path_args: list[str], so path `/foo/bar/che` would be passed to
+#             this method as `["foo", "bar", "che"]`
+#         :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
+#             controller_class, controller_args, and node value
+#         """
+#         keys = list(path_args)
+#         controller_args = []
+#         controller_class = None
+#         value = {}
+#         pathfinder = self.pathfinder
+# 
+#         while not controller_class:
+#             value = pathfinder.get(keys, None) or {}
+#             if "class" in value:
+#                 controller_class = value["class"]
+# 
+#             else:
+#                 if keys:
+#                     controller_args.insert(0, keys.pop(-1))
+# 
+#                 else:
+#                     raise TypeError(
+#                         "Unknown controller with path /{}".format(
+#                             "/".join(path_args),
+#                         )
+#                     )
+# 
+#         return controller_class, controller_args, value
 
     def find_controller_info(self, request, **kwargs):
         """returns all the information needed to create a controller and handle
@@ -169,18 +170,30 @@ class Router(object):
             request.path
         ))
 
-        controller_class, controller_args, value = self.find_controller(
-            request.path_args
-        )
-        rc = value["reflect_class"]
+        keys = list(request.path_args)
+        leftover_path_args = []
+        pathfinder = self.pathfinder
+
+        while True:
+            value = pathfinder.get(keys, None) or {}
+            if "class" in value:
+                break
+                #controller_class = value["class"]
+
+            else:
+                if keys:
+                    leftover_path_args.insert(0, keys.pop(-1))
+
+                else:
+                    raise TypeError(
+                        "Unknown controller with path: {}".format(
+                            request.path
+                        )
+                    )
 
         # we merge the leftover path args with the body args
-        ret["method_args"] = controller_args
-        ret['method_args'].extend(request.body_args)
-
-        ret['method_kwargs'] = request.kwargs
-
-        ret["reflect_class"] = rc
+        ret["leftover_path_args"] = leftover_path_args
+        ret["reflect_class"] = value["reflect_class"]
 
         return ret
 
@@ -482,19 +495,105 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def get_controller_params(self, *controller_args, **controller_kwargs):
+    async def get_controller_params(self) -> tuple[Iterable, Mapping]:
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
         customize the arguments that are passed into the method
 
         This is ran before any decorators
 
-        :param *controller_args:
-        :param **controller_kwargs:
-        :returns: tuple[Sequence, Mapping], whatever is returned from this
-            method is passed into the controller request method
-            as *args, **kwargs
+        :returns: whatever is returned from this method is passed into the
+            controller request method as *args, **kwargs
         """
+        controller_args = []
+        controller_kwargs = {}
+
+        request = self.request
+        body = request.body
+
+        controller_args.extend(self.request.controller_info.get(
+            "leftover_path_args",
+            [],
+        ))
+
+        controller_kwargs.update(request.query_kwargs)
+
+        if request.headers.is_chunked():
+            body = self.application.get_request_chunked(request, body)
+
+        if isinstance(request.body, io.IOBase):
+            body = self.application.get_request_file(request, body)
+
+        bodies = []
+        if body:
+            if request.headers.is_multipart():
+                body = Multipart.decode(request.headers, body)
+                bodies = ((p.headers, p.body) for p in body)
+
+            else:
+                bodies.append((request.headers, body))
+
+        for headers, body in bodies:
+            if isinstance(body, dict):
+                controller_kwargs.update(body)
+
+            elif isinstance(body, list):
+                controller_args.extend(body)
+
+            elif headers.is_json():
+                jb = self.application.get_request_json(request, body)
+
+                if isinstance(jb, dict):
+                    controller_kwargs.update(jb)
+
+                elif isinstance(jb, list):
+                    controller_args.extend(jb)
+
+                else:
+                    controller_args.append(jb)
+
+            elif headers.is_urlencoded():
+                controller_kwargs.update(
+                    self.application.get_request_urlencoded(request, body)
+                )
+
+            elif headers.is_form_data():
+                value, params = headers.parse("Content-Disposition")
+                if "name" not in params:
+                    raise ValueError("Bad field data")
+
+                if "filename" in params:
+                    fp = io.BytesIO(body)
+                    fp.filename = params["filename"]
+                    fp.name = params["filename"]
+                    controller_kwargs[params["name"]] = fp
+
+                else:
+                    controller_kwargs[params["name"]] = String(
+                        body,
+                        encoding=headers.get_content_encoding()
+                    )
+
+            elif headers.is_plain():
+                body = String(body, encoding=headers.get_content_encoding())
+                controller_args.append(body)
+
+            else:
+                # treat anything else like a file
+
+                value, params = headers.parse("Content-Disposition")
+                fp = io.BytesIO(body)
+
+                if "filename" in params:
+                    fp.filename = params["filename"]
+                    fp.name = params["filename"]
+
+                if "name" in params:
+                    controller_kwargs[params["name"]] = fp
+
+                else:
+                    controller_args.append(fp)
+
         return controller_args, controller_kwargs
 
     async def get_method_params(
@@ -561,21 +660,15 @@ class Controller(object):
 
         return method_args, method_kwargs
 
-    async def handle(self, *controller_args, **controller_kwargs):
+    async def handle(self):
         """handles the request and sets the response
 
-        This should set any response information directly onto self.response
+        .. note:: This sets any response information directly onto
+            `.response` and pulls any request information directly
+            from `.request`
 
-        NOTE -- This method relies on .request.controller_info being populated
-
-        :param controller_method_names: list[str], a list of controller
-            method names to be ran, if one of them succeeds then the request is
-            considered successful, if all raise an error than an error will be
-            raised
-        :param *controller_args: tuple, the path arguments that will be passed
-            to the request handling method (eg, GET, POST)
-        :param **controller_kwargs: dict, the query and body params merged
-            together
+        .. note:: This method relies on `.request.controller_info` being
+            populated
         """
         if self.cors:
             self.handle_cors()
@@ -583,19 +676,16 @@ class Controller(object):
         request = self.request
         exceptions = defaultdict(list)
 
-        controller_args, controller_kwargs = await self.get_controller_params(
-            *controller_args,
-            **controller_kwargs
-        )
+        controller_args, controller_kwargs = await self.get_controller_params()
 
         rc = request.controller_info["reflect_class"]
 
         reflect_methods = rc.reflect_http_handler_methods(request.method)
         if not reflect_methods:
-            if len(request.controller_info["method_args"]) > 0:
-                # if we have method args and we don't have a method to even
-                # answer the request it should be a 404 since the path is
-                # invalid
+            if len(request.controller_info["leftover_path_args"]) > 0:
+                # if we have leftover path args and we don't have a method to
+                # even answer the request it should be NOT FOUND since the
+                # path is invalid
                 raise CallError(
                     404,
                     "Could not find a {} method for path {}".format(
@@ -606,7 +696,7 @@ class Controller(object):
 
             else:
                 # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                # and 501 (Not Implemented) if the method is unrecognized or
+                # should be Not Implemented if the method is unrecognized or
                 # not implemented by the origin server
                 raise CallError(
                     501,
@@ -942,16 +1032,27 @@ class Request(Call):
         * query_kwargs -- tied to query, the values in query but converted to a
             dict {name: val}
     '''
-    raw_request = None
+    raw_request: Mapping|None = None
     """the original raw request that was filtered through one of the interfaces
     """
 
-    method = None
+    method: str|None = None
     """the http method (GET, POST)"""
 
-    controller_info = None
+    controller_info: Mapping|None = None
     """will hold the controller information for the request, populated from the
     Call"""
+
+    body: bytes|io.IOBase|None = None
+    """Holds the raw body"""
+
+    bodies: Iterable[tuple[Mapping, bytes]]|None = None
+    """Holds the bodies for this request, if this isn't a multipart request
+    then this will still be an iterator with one item
+
+    Each tuple in the iterator will have index 0 be the headers and
+    index 1 will be the bytes of the body
+    """
 
     @cachedproperty(cached="_uuid")
     def uuid(self):
@@ -1266,22 +1367,24 @@ class Request(Call):
         """Return True if the request is a POST request"""
         return self.is_method("POST")
 
-    def set_body(self, body, body_args=None, body_kwargs=None):
-        """Set the body onto this instance
-
-        Interfaces are responsible for parsing the body so should always pass
-        body_args and body_kwargs
-
-        :param body: Any, the raw body for the request
-        :param body_args: list, any parsed positional arguments from `body`
-        :param body_kwargs: dict, any parsed keyword arguments from `body`
-        """
-        self.body = body
-        self.body_args = body_args or []
-        self.body_kwargs = body_kwargs or {}
+#     def set_body(self, body, body_args=None, body_kwargs=None):
+#         """Set the body onto this instance
+# 
+#         Interfaces are responsible for parsing the body so should always pass
+#         body_args and body_kwargs
+# 
+#         :param body: Any, the raw body for the request
+#         :param body_args: list, any parsed positional arguments from `body`
+#         :param body_kwargs: dict, any parsed keyword arguments from `body`
+#         """
+#         self.body = body
+#         self.body_args = body_args or []
+#         self.body_kwargs = body_kwargs or {}
 
     def has_body(self):
-        return self.body or self.body_args or self.body_kwargs
+        return self.body is not None
+        #return self.bodies is not None
+        #return self.body or self.body_args or self.body_kwargs
         #return True if self.body else False
 
     def should_have_body(self):

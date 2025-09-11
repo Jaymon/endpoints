@@ -202,11 +202,10 @@ class _HTTPTestCase(TestCase):
 
     def test_post_body_plain_with_content_type(self):
         server = self.create_server(contents=[
-            "from endpoints import Controller",
             "class Default(Controller):",
-            "    def POST(self, *args, **kwargs):",
+            "    def POST(self, body, **kwargs):",
             "        self.response.headers['content-type'] = 'text/plain'",
-            "        return self.request.body",
+            "        return body",
         ])
 
         body = "plain text body"
