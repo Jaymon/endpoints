@@ -65,10 +65,12 @@ class Application(BaseApplication):
         r.scheme = raw_request.get('wsgi.url_scheme', "http")
         r.host = raw_request["HTTP_HOST"]
 
-        self.set_request_body(
-            r,
-            raw_request.get('wsgi.input', None)
-        )
+        r.body = raw_request.get('wsgi.input', None)
+        #r.bodies = self.get_request_bodies(r, r.body)
+        #self.set_request_body(
+        #    r,
+        #    raw_request.get('wsgi.input', None)
+        #)
 
         r.raw_request = raw_request
         return r

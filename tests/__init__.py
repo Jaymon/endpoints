@@ -82,7 +82,9 @@ class Server(object):
         return self.handle(
             path,
             method="POST",
-            body_kwargs=body_kwargs or {},
+            body=body_kwargs if body_kwargs else None,
+#             bodies=[({}, body_kwargs)] if body_kwargs else None,
+#             body_kwargs=body_kwargs or {},
             **kwargs
         )
 
