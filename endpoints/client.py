@@ -20,7 +20,6 @@ from datatypes import Host, HTTPClient
 from .compat import *
 from .utils import String, ByteString, Base64, Url
 from .interface.base import BaseApplication
-from .call import Headers
 
 
 logger = logging.getLogger(__name__)

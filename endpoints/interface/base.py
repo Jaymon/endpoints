@@ -334,120 +334,120 @@ class BaseApplication(ApplicationABC):
         request.raw_request = raw_request
         return request
 
-    def get_request_urlencoded(self, request, body, **kwargs):
-        """Parse a form encoded body
+#     def get_request_urlencoded(self, request, body, **kwargs):
+#         """Parse a form encoded body
+# 
+#         A form encoded body has a content-type of:
+# 
+#             application/x-www-form-urlencoded
+# 
+#         :param request: Request
+#         :param body: str|bytes
+#         :returns: dict
+#         """
+#         return request._parse_query_str(body)
 
-        A form encoded body has a content-type of:
+#     def get_request_json(self, request, body, **kwargs):
+#         """Parse a json encoded body
+# 
+#         A json encoded body has a content-type of:
+# 
+#             application/json
+# 
+#         :param request: Request
+#         :param body: str|bytes
+#         :returns: dict|list|Any
+#         """
+#         return self.load_json(body)
 
-            application/x-www-form-urlencoded
+#     def get_request_multipart(self, request, body, **kwargs):
+#         """Parse a multipart form encoded body, this usually means the body
+#         contains an uploaded file
+# 
+#         A form encoded body has a content-type of:
+# 
+#             multipart/form-data
+# 
+#         :param request: Request
+#         :param body: str|bytes
+#         :returns: dict
+#         """
+#         fields, files = Multipart.decode(request.headers, body)
+#         fields.update(files)
+#         return fields
 
-        :param request: Request
-        :param body: str|bytes
-        :returns: dict
-        """
-        return request._parse_query_str(body)
+#     def get_request_plain(self, request, body, **kwargs):
+#         """Parse a plain encoded body
+# 
+#         A plain encoded body has a content-type of:
+# 
+#             text/plain
+# 
+#         :param request: Request
+#         :param body: str|bytes
+#         :returns: str
+#         """
+#         return String(body, encoding=request.encoding)
 
-    def get_request_json(self, request, body, **kwargs):
-        """Parse a json encoded body
+#     def get_request_chunked(self, request, body, **kwargs):
+#         """Do something with a chunked body, right now this just fails
+# 
+#         A body is chunked if the Transfer-Encoding header has a value of
+#         chunked
+# 
+#         :param request: Request
+#         :param body: str|bytes
+#         :returns: str, if this actually returned something it should be the
+#             raw body that can be processed further
+#         """
+#         raise IOError("Chunked bodies are not supported")
 
-        A json encoded body has a content-type of:
+#     def get_request_file(self, request, body, **kwargs):
+#         """Read the body into memory since it's a file pointer
+# 
+#         :param request: Request
+#         :param body: IOBase
+#         :returns: str, the raw body that can be processed further
+#         """
+#         length = int(request.get_header(
+#             "Content-Length",
+#             -1,
+#             allow_empty=False
+#         ))
+#         if length > 0:
+#             body = body.read(length)
+# 
+#         else:
+#             # since there is no content length we can conclude that we
+#             # don't actually have a body
+#             body = None
+# 
+#         return body
 
-            application/json
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: dict|list|Any
-        """
-        return self.load_json(body)
-
-    def get_request_multipart(self, request, body, **kwargs):
-        """Parse a multipart form encoded body, this usually means the body
-        contains an uploaded file
-
-        A form encoded body has a content-type of:
-
-            multipart/form-data
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: dict
-        """
-        fields, files = Multipart.decode(request.headers, body)
-        fields.update(files)
-        return fields
-
-    def get_request_plain(self, request, body, **kwargs):
-        """Parse a plain encoded body
-
-        A plain encoded body has a content-type of:
-
-            text/plain
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: str
-        """
-        return String(body, encoding=request.encoding)
-
-    def get_request_chunked(self, request, body, **kwargs):
-        """Do something with a chunked body, right now this just fails
-
-        A body is chunked if the Transfer-Encoding header has a value of
-        chunked
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: str, if this actually returned something it should be the
-            raw body that can be processed further
-        """
-        raise IOError("Chunked bodies are not supported")
-
-    def get_request_file(self, request, body, **kwargs):
-        """Read the body into memory since it's a file pointer
-
-        :param request: Request
-        :param body: IOBase
-        :returns: str, the raw body that can be processed further
-        """
-        length = int(request.get_header(
-            "Content-Length",
-            -1,
-            allow_empty=False
-        ))
-        if length > 0:
-            body = body.read(length)
-
-        else:
-            # since there is no content length we can conclude that we
-            # don't actually have a body
-            body = None
-
-        return body
-
-    def get_request_bodies(
-        self,
-        request,
-        body,
-        **kwargs
-    ) -> Iterable[tuple[Mapping, bytes]]|None:
-        if request.headers.is_chunked():
-            body = self.get_request_chunked(request, body, **kwargs)
-
-        if isinstance(body, io.IOBase):
-            body = self.get_request_file(request, body, **kwargs)
-
-        if body:
-            if request.headers.is_multipart():
-                body = Multipart.decode(request.headers, body)
-                bodies = [(p.headers, p.body) for p in body]
-
-            else:
-                bodies = [(request.headers, body)]
-
-        else:
-            bodies = None
-
-        return bodies
+#     def get_request_bodies(
+#         self,
+#         request,
+#         body,
+#         **kwargs
+#     ) -> Iterable[tuple[Mapping, bytes]]|None:
+#         if request.headers.is_chunked():
+#             body = self.get_request_chunked(request, body, **kwargs)
+# 
+#         if isinstance(body, io.IOBase):
+#             body = self.get_request_file(request, body, **kwargs)
+# 
+#         if body:
+#             if request.headers.is_multipart():
+#                 body = Multipart.decode(request.headers, body)
+#                 bodies = [(p.headers, p.body) for p in body]
+# 
+#             else:
+#                 bodies = [(request.headers, body)]
+# 
+#         else:
+#             bodies = None
+# 
+#         return bodies
 
 #     def set_request_body(self, request, body, **kwargs):
 #         """

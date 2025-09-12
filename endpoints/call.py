@@ -6,9 +6,10 @@ import re
 import io
 from collections import defaultdict
 from types import NoneType
+import json
 
 from datatypes import (
-    HTTPHeaders as Headers,
+    HTTPHeaders,
     property as cachedproperty,
     NamingConvention,
     Dirpath,
@@ -114,43 +115,9 @@ class Router(object):
 
         return pathfinder
 
-#     def find_controller(self, path_args):
-#         """Where all the magic happens, this takes a requested path_args and
-#         checks the internal tree to find the right path or raises a TypeError
-#         if the path can't be resolved
-# 
-#         :param path_args: list[str], so path `/foo/bar/che` would be passed to
-#             this method as `["foo", "bar", "che"]`
-#         :returns: tuple[Controller, list[str], dict[str, Any]], a tuple of
-#             controller_class, controller_args, and node value
-#         """
-#         keys = list(path_args)
-#         controller_args = []
-#         controller_class = None
-#         value = {}
-#         pathfinder = self.pathfinder
-# 
-#         while not controller_class:
-#             value = pathfinder.get(keys, None) or {}
-#             if "class" in value:
-#                 controller_class = value["class"]
-# 
-#             else:
-#                 if keys:
-#                     controller_args.insert(0, keys.pop(-1))
-# 
-#                 else:
-#                     raise TypeError(
-#                         "Unknown controller with path /{}".format(
-#                             "/".join(path_args),
-#                         )
-#                     )
-# 
-#         return controller_class, controller_args, value
-
     def find_controller_info(self, request, **kwargs):
-        """returns all the information needed to create a controller and handle
-        the request
+        """returns all the information needed to create a controller and
+        handle the request
 
         This is where all the routing magic happens, this takes the
         request.path and gathers the information needed to turn that path into
@@ -203,105 +170,6 @@ class Router(object):
                     request.path
                 )
             )
-
-        return ret
-
-
-
-#         reflect_controller_classes = []
-#         if "class" in pathfinder.value:
-#             reflect_controller_classes.append(
-#                 pathfinder.value["reflect_class"]
-#             )
-# 
-#         while leftover_path_args:
-#             try:
-#                 node = pathfinder.get_node(leftover_path_args[0])
-#                 if "class" in node.value:
-#                     reflect_controller_classes.append(
-#                         node.value["reflect_class"]
-#                     )
-# 
-#                 leftover_path_args = leftover_path_args[1:]
-# 
-#             except KeyError:
-#                 break
-
-
-
-
-
-#         while True:
-#             value = pathfinder.get(keys, None) or {}
-#             if "class" in value:
-#                 break
-#                 #controller_class = value["class"]
-# 
-#             else:
-#                 if keys:
-#                     leftover_path_args.insert(0, keys.pop(-1))
-# 
-#                 else:
-#                     raise TypeError(
-#                         "Unknown controller with path: {}".format(
-#                             request.path
-#                         )
-#                     )
-
-        ret["leftover_path_args"] = leftover_path_args
-        ret["reflect_class"] = value["reflect_class"]
-
-        return ret
-
-
-
-
-    def xfind_controller_info(self, request, **kwargs):
-        """returns all the information needed to create a controller and handle
-        the request
-
-        This is where all the routing magic happens, this takes the
-        request.path and gathers the information needed to turn that path into
-        a Controller
-
-        we always translate an HTTP request using this pattern:
-
-            METHOD /module/class/args?kwargs
-
-        :param request: Request
-        :param **kwargs:
-        :returns: dict
-        """
-        ret = {}
-
-        logger.debug("Compiling Controller info using path: {}".format(
-            request.path
-        ))
-
-        keys = list(request.path_args)
-        leftover_path_args = []
-        pathfinder = self.pathfinder
-
-        while True:
-            value = pathfinder.get(keys, None) or {}
-            if "class" in value:
-                break
-                #controller_class = value["class"]
-
-            else:
-                if keys:
-                    leftover_path_args.insert(0, keys.pop(-1))
-
-                else:
-                    raise TypeError(
-                        "Unknown controller with path: {}".format(
-                            request.path
-                        )
-                    )
-
-        # we merge the leftover path args with the body args
-        ret["leftover_path_args"] = leftover_path_args
-        ret["reflect_class"] = value["reflect_class"]
 
         return ret
 
@@ -523,6 +391,100 @@ class Controller(object):
             (object, kwargs.get("any_media_type", media_type))
         ]
 
+    @classmethod
+    def load_json(cls, body, **kwargs):
+        """Internal method. Used by .decode_json and
+        .get_websocket_loads. This exists so there is one place to customize
+        json loading
+
+        :param body: str|bytes
+        :returns: str
+        """
+        return json.loads(body)
+
+    @classmethod
+    def decode_json(cls, headers: HTTPHeaders, body: bytes) -> object:
+        """Parse a json encoded body
+
+        A json encoded body has a content-type of:
+
+            application/json
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict|list|Any
+        """
+        return cls.load_json(body)
+
+    @classmethod
+    def decode_urlencoded(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        """Parse a form encoded body
+
+        A form encoded body has a content-type of:
+
+            application/x-www-form-urlencoded
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict
+        """
+        u = Url(query=body)
+        return u.query_kwargs
+
+    @classmethod
+    def decode_bytes(cls, headers: HTTPHeaders, body: bytes) -> str:
+        return String(body, encoding=headers.get_content_encoding())
+
+    @classmethod
+    def decode_io(cls, headers: HTTPHeaders, body: io.IOBase) -> bytes:
+        """Read the body into memory since it's a file pointer
+
+        :param headers: HTTPHeaders
+        :param body: IOBase
+        :returns: bytes, the raw body that can be processed further
+        """
+        length = int(headers.get("Content-Length", -1) or -1)
+        if length > 0:
+            body = body.read(length)
+
+        else:
+            # since there is no content length we can conclude that we
+            # don't actually have a body
+            body = None
+
+        return body
+
+    @classmethod
+    def decode_form_data(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        value, params = headers.parse("Content-Disposition")
+        if "name" not in params:
+            raise ValueError("Bad field data")
+
+        if "filename" in params:
+            return cls.decode_attachment(headers, body)
+
+        else:
+            return {
+                params["name"]: cls.decode_bytes(headers, body)
+            }
+
+    @classmethod
+    def decode_attachment(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        value, params = headers.parse("Content-Disposition")
+        fp = io.BytesIO(body)
+
+        if "filename" in params:
+            fp.filename = params["filename"]
+            fp.name = params["filename"]
+
+        if "name" in params:
+            #d[params["name"]] = fp
+            return {params["name"]: fp}
+
+        else:
+            #d[""] = fp
+            return {"": fp}
+
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
@@ -627,10 +589,10 @@ class Controller(object):
         controller_kwargs.update(request.query_kwargs)
 
         if request.headers.is_chunked():
-            body = self.application.get_request_chunked(request, body)
+            raise IOError("Chunked bodies are not supported")
 
         if isinstance(request.body, io.IOBase):
-            body = self.application.get_request_file(request, body)
+            body = self.decode_io(request.headers, body)
 
         bodies = []
         if body:
@@ -649,7 +611,7 @@ class Controller(object):
                 controller_args.extend(body)
 
             elif headers.is_json():
-                jb = self.application.get_request_json(request, body)
+                jb = self.decode_json(headers, body)
 
                 if isinstance(jb, dict):
                     controller_kwargs.update(jb)
@@ -662,45 +624,23 @@ class Controller(object):
 
             elif headers.is_urlencoded():
                 controller_kwargs.update(
-                    self.application.get_request_urlencoded(request, body)
+                    self.decode_urlencoded(headers, body)
                 )
 
             elif headers.is_form_data():
-                value, params = headers.parse("Content-Disposition")
-                if "name" not in params:
-                    raise ValueError("Bad field data")
-
-                if "filename" in params:
-                    fp = io.BytesIO(body)
-                    fp.filename = params["filename"]
-                    fp.name = params["filename"]
-                    controller_kwargs[params["name"]] = fp
-
-                else:
-                    controller_kwargs[params["name"]] = String(
-                        body,
-                        encoding=headers.get_content_encoding()
-                    )
+                controller_kwargs.update(self.decode_form_data(headers, body))
 
             elif headers.is_plain():
-                body = String(body, encoding=headers.get_content_encoding())
-                controller_args.append(body)
+                controller_args.append(self.decode_bytes(headers, body))
 
             else:
                 # treat anything else like a file
-
-                value, params = headers.parse("Content-Disposition")
-                fp = io.BytesIO(body)
-
-                if "filename" in params:
-                    fp.filename = params["filename"]
-                    fp.name = params["filename"]
-
-                if "name" in params:
-                    controller_kwargs[params["name"]] = fp
+                d = self.decode_attachment(headers, body)
+                if len(d) == 1 and "" in d:
+                    controller_args.append(fp)
 
                 else:
-                    controller_args.append(fp)
+                    controller_kwargs.update(d)
 
         return controller_args, controller_kwargs
 
@@ -1041,7 +981,7 @@ class Controller(object):
 
 
 class Call(object):
-    headers_class = Headers
+    headers_class = HTTPHeaders
 
     body = None
     """Any, Holds the body for this instance"""
@@ -1055,7 +995,7 @@ class Call(object):
 
     def set_headers(self, headers):
         """replace all headers with passed in headers"""
-        self.headers = Headers(headers)
+        self.headers = HTTPHeaders(headers)
 
     def add_headers(self, headers, **kwargs):
         self.headers.update(headers, **kwargs)
