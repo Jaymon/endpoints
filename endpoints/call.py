@@ -5,6 +5,7 @@ import inspect
 import re
 import io
 from collections import defaultdict
+from collections.abc import AsyncGenerator
 from types import NoneType
 import json
 
@@ -33,6 +34,7 @@ from .utils import (
     Deepcopy,
     Url,
     Status,
+    JSONEncoder,
 )
 from .reflection.inspect import Pathfinder
 
@@ -351,12 +353,16 @@ class Controller(object):
             response.headers.pop('Content-Type', None)
 
         def handle_file(response):
+            # https://www.rfc-editor.org/rfc/rfc2046.txt 4.5.1
+            # The "octet-stream" subtype is used to indicate that a
+            # body contains arbitrary binary data
+            media_type = "application/octet-stream"
+
             filepath = getattr(response.body, "name", "")
             if filepath:
                 mt = MimeType.find_type(filepath)
                 filesize = os.path.getsize(filepath)
-                response.media_type = mt
-                response.set_header("Content-Type", mt)
+                response.media_type = mt or media_type
                 response.set_header("Content-Length", filesize)
                 logger.debug(" ".join([
                     f"Response body set to file: \"{filepath}\"",
@@ -365,10 +371,7 @@ class Controller(object):
                 ]))
 
             else:
-                # https://www.rfc-editor.org/rfc/rfc2046.txt 4.5.1
-                # The "octet-stream" subtype is used to indicate that a
-                # body contains arbitrary binary data
-                response.media_type = "application/octet-stream"
+                response.media_type = media_type
 
         media_type = kwargs.get("media_type", environ.RESPONSE_MEDIA_TYPE)
 
@@ -484,6 +487,78 @@ class Controller(object):
         else:
             #d[""] = fp
             return {"": fp}
+
+
+    @classmethod
+    async def encode_attachment(
+        cls,
+        body: io.IOBase,
+        encoding: str|None = None,
+    ) -> AsyncGenerator[bytes]:
+        """Internal method called when response body is a file
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        if body.closed:
+            raise IOError(
+                "cannot read streaming body because pointer is closed"
+            )
+
+        try:
+            while True:
+                chunk = body.read(8192)
+                if chunk:
+                    if not isinstance(chunk, bytes):
+                        chunk = bytes(chunk, encoding)
+
+                    yield chunk
+
+                else:
+                    break
+
+        finally:
+            # close the pointer since we've consumed it
+            body.close()
+
+    @classmethod
+    def dump_json(cls, body, **kwargs):
+        """Internal method. Used by .encode_json. This exists so there is one
+        place to customize json dumping
+
+        :param body: Any, it just has to be json encodable
+        :keyword json_encoder: Optional[JSONEncoder]
+        :keyword encoding: Optional[str], defaults to `environ.ENCODING` 
+            because python's builtin json makes everything ascii by default so
+            the encoding used for encoding text to bytes doesn't really matter
+        :returns: bytes
+        """
+        json_encoder = kwargs.get("json_encoder", JSONEncoder)
+        return bytes(
+            json.dumps(body, cls=json_encoder),
+            kwargs.get("encoding", environ.ENCODING)
+        )
+
+    @classmethod
+    async def encode_json(cls, body) -> AsyncGenerator[bytes]:
+        """Internal method called when response body should be dumped to
+        json
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        yield cls.dump_json(body)
+
+    @classmethod
+    async def encode_value(
+        cls,
+        body,
+        encoding: str|None = None
+    ) -> AsyncGenerator[bytes]:
+        """Internal method called when response body is unknown, it will be
+        treated like a string by default but child classes could customize
+        this method if they want to
+        """
+        yield String(body, encoding=encoding).encode()
+        #yield bytes(str(response.body), response.encoding)
 
     def __init__(self, request, response, **kwargs):
         self.request = request
@@ -722,6 +797,7 @@ class Controller(object):
             self.handle_cors()
 
         request = self.request
+        response = self.response
         exceptions = defaultdict(list)
 
         controller_args, controller_kwargs = await self.get_controller_params()
@@ -777,6 +853,7 @@ class Controller(object):
                 while inspect.iscoroutine(body):
                     body = await body
 
+                response.body = body
                 exceptions = None
                 break
 
@@ -806,9 +883,46 @@ class Controller(object):
                 await self.handle_error(e)
 
         else:
-            response = self.response
-            response.media_type = await self.get_response_media_type(body)
-            response.body = await self.get_response_body(body)
+            await self.handle_response()
+
+    async def handle_response(self):
+        request = self.request
+        response = self.response
+
+        response.media_type = await self.get_response_media_type(response.body)
+        response.body = await self.get_response_body(response.body)
+
+        if response.code is None:
+            # set the http status code to return to the client, by default,
+            # 200 if a body is present otherwise 204
+            if response.body is None:
+                response.code = 204
+
+            else:
+                response.code = 200
+
+        if response.encoding is None:
+            if encoding := request.accept_encoding:
+                response.encoding = encoding
+
+            else:
+                response.encoding = environ.ENCODING
+
+        if response.is_binary_file():
+            response.encoding = None
+
+        if response.media_type and not response.has_header("Content-Type"):
+            if response.encoding:
+                response.set_header(
+                    "Content-Type",
+                    "{};charset={}".format(
+                        response.media_type,
+                        response.encoding
+                    )
+                )
+
+            else:
+                response.set_header("Content-Type", response.media_type)
 
     async def handle_error(self, e, **kwargs):
         """Handles responses for error states. All raised exceptions will go
@@ -909,8 +1023,7 @@ class Controller(object):
         else:
             logger.exception(e)
 
-        response.media_type = await self.get_response_media_type(response.body)
-        response.body = await self.get_response_body(response.body)
+        await self.handle_response()
 
     async def get_response_media_type(self, body) -> str|None:
         """Get the media type for this response based on `body`
@@ -963,6 +1076,30 @@ class Controller(object):
         :return: Any
         """
         return body
+
+    async def __aiter__(self) -> AsyncGenerator[bytes]:
+        #async def get_controller_response(self) -> AsyncGenerator[bytes]:
+        request = self.request
+        response = self.response
+
+        if response.has_body():
+            if response.is_file():
+                chunks = self.encode_attachment(
+                    response.body,
+                    response.encoding,
+                )
+
+            elif response.is_json():
+                chunks = self.encode_json(response.body)
+
+            else:
+                chunks = self.encode_value(
+                    response.body,
+                    response.encoding,
+                )
+
+            async for chunk in chunks:
+                yield chunk
 
     def log_error_warning(self, e):
         #logger = self.logger

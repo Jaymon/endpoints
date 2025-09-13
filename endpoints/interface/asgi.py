@@ -65,14 +65,34 @@ class Application(BaseApplication):
         #self.set_request_body(request, body, **kwargs)
 
         response = self.create_response()
-        await self.handle(request, response)
+
+        controller = await self.handle(request, response)
+
+#         await self.start_response(kwargs["send"], response)
+# 
+#         try:
+#             # https://peps.python.org/pep-0525/
+#             # https://stackoverflow.com/a/37550568
+#             async for body in controller:
+#                 await kwargs["send"]({
+#                     "type": "http.response.body",
+#                     "body": body,
+#                     "more_body": True,
+#                 })
+# 
+#         finally:
+#             await kwargs["send"]({
+#                 "type": "http.response.body",
+#                 "body": b"",
+#                 "more_body": False,
+#             })
 
         sent_response = False
 
-        async def send_response_body(response, sent_response):
+        async def send_response_body(controller, sent_response):
             # https://peps.python.org/pep-0525/
             # https://stackoverflow.com/a/37550568
-            async for body in self.get_response_body(response):
+            async for body in controller:
                 if not sent_response:
                     await self.start_response(kwargs["send"], response)
                     sent_response = True
@@ -86,21 +106,11 @@ class Application(BaseApplication):
             return sent_response
 
         try:
-            sent_response = await send_response_body(response, sent_response)
+            sent_response = await send_response_body(controller, sent_response)
 
         except Exception as e:
-            try:
-                response.code = 500
-                await self.handle_error(request, response, e, **kwargs)
-                sent_response = await send_response_body(
-                    response,
-                    sent_response
-                )
-
-            except Exception:
-                # we've got to give up and just return something, or in this
-                # case nothing
-                raise
+            await controller.handle_error(e)
+            sent_response = await send_response_body(controller, sent_response)
 
         finally:
             if not sent_response:
@@ -111,7 +121,52 @@ class Application(BaseApplication):
                 "type": "http.response.body",
                 "body": b"",
                 "more_body": False,
-            })
+                })
+
+
+#         async def send_response_body(response, sent_response):
+#             # https://peps.python.org/pep-0525/
+#             # https://stackoverflow.com/a/37550568
+#             async for body in self.get_response_body(response):
+#                 if not sent_response:
+#                     await self.start_response(kwargs["send"], response)
+#                     sent_response = True
+# 
+#                 await kwargs["send"]({
+#                     "type": "http.response.body",
+#                     "body": body,
+#                     "more_body": True,
+#                 })
+# 
+#             return sent_response
+# 
+#         try:
+#             sent_response = await send_response_body(response, sent_response)
+# 
+#         except Exception as e:
+#             try:
+#                 response.code = 500
+#                 await self.handle_error(request, response, e, **kwargs)
+#                 sent_response = await send_response_body(
+#                     response,
+#                     sent_response
+#                 )
+# 
+#             except Exception:
+#                 # we've got to give up and just return something, or in this
+#                 # case nothing
+#                 raise
+# 
+#         finally:
+#             if not sent_response:
+#                 await self.start_response(kwargs["send"], response)
+#                 sent_response = True
+# 
+#             await kwargs["send"]({
+#                 "type": "http.response.body",
+#                 "body": b"",
+#                 "more_body": False,
+#             })
 
     def is_websocket_recv(self, data, **kwargs):
         return data["type"] == "websocket.receive"
