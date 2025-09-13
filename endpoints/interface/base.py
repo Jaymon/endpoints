@@ -334,166 +334,6 @@ class BaseApplication(ApplicationABC):
         request.raw_request = raw_request
         return request
 
-#     def get_request_urlencoded(self, request, body, **kwargs):
-#         """Parse a form encoded body
-# 
-#         A form encoded body has a content-type of:
-# 
-#             application/x-www-form-urlencoded
-# 
-#         :param request: Request
-#         :param body: str|bytes
-#         :returns: dict
-#         """
-#         return request._parse_query_str(body)
-
-#     def get_request_json(self, request, body, **kwargs):
-#         """Parse a json encoded body
-# 
-#         A json encoded body has a content-type of:
-# 
-#             application/json
-# 
-#         :param request: Request
-#         :param body: str|bytes
-#         :returns: dict|list|Any
-#         """
-#         return self.load_json(body)
-
-#     def get_request_multipart(self, request, body, **kwargs):
-#         """Parse a multipart form encoded body, this usually means the body
-#         contains an uploaded file
-# 
-#         A form encoded body has a content-type of:
-# 
-#             multipart/form-data
-# 
-#         :param request: Request
-#         :param body: str|bytes
-#         :returns: dict
-#         """
-#         fields, files = Multipart.decode(request.headers, body)
-#         fields.update(files)
-#         return fields
-
-#     def get_request_plain(self, request, body, **kwargs):
-#         """Parse a plain encoded body
-# 
-#         A plain encoded body has a content-type of:
-# 
-#             text/plain
-# 
-#         :param request: Request
-#         :param body: str|bytes
-#         :returns: str
-#         """
-#         return String(body, encoding=request.encoding)
-
-#     def get_request_chunked(self, request, body, **kwargs):
-#         """Do something with a chunked body, right now this just fails
-# 
-#         A body is chunked if the Transfer-Encoding header has a value of
-#         chunked
-# 
-#         :param request: Request
-#         :param body: str|bytes
-#         :returns: str, if this actually returned something it should be the
-#             raw body that can be processed further
-#         """
-#         raise IOError("Chunked bodies are not supported")
-
-#     def get_request_file(self, request, body, **kwargs):
-#         """Read the body into memory since it's a file pointer
-# 
-#         :param request: Request
-#         :param body: IOBase
-#         :returns: str, the raw body that can be processed further
-#         """
-#         length = int(request.get_header(
-#             "Content-Length",
-#             -1,
-#             allow_empty=False
-#         ))
-#         if length > 0:
-#             body = body.read(length)
-# 
-#         else:
-#             # since there is no content length we can conclude that we
-#             # don't actually have a body
-#             body = None
-# 
-#         return body
-
-#     def get_request_bodies(
-#         self,
-#         request,
-#         body,
-#         **kwargs
-#     ) -> Iterable[tuple[Mapping, bytes]]|None:
-#         if request.headers.is_chunked():
-#             body = self.get_request_chunked(request, body, **kwargs)
-# 
-#         if isinstance(body, io.IOBase):
-#             body = self.get_request_file(request, body, **kwargs)
-# 
-#         if body:
-#             if request.headers.is_multipart():
-#                 body = Multipart.decode(request.headers, body)
-#                 bodies = [(p.headers, p.body) for p in body]
-# 
-#             else:
-#                 bodies = [(request.headers, body)]
-# 
-#         else:
-#             bodies = None
-# 
-#         return bodies
-
-#     def set_request_body(self, request, body, **kwargs):
-#         """
-#         :returns: tuple[Any, list, dict], returns raw_body, body_args, and
-#             body_kwargs
-#         """
-#         if request.headers.is_chunked():
-#             body = self.get_request_chunked(request, body, **kwargs)
-# 
-#         if isinstance(body, io.IOBase):
-#             body = self.get_request_file(request, body, **kwargs)
-# 
-#         args = []
-#         kwargs = {}
-# 
-#         if body:
-#             if isinstance(body, dict):
-#                 kwargs = body
-# 
-#             elif isinstance(body, list):
-#                 args = body
-# 
-#             elif request.headers.is_json():
-#                 jb = self.get_request_json(request, body, **kwargs)
-# 
-#                 if isinstance(jb, dict):
-#                     kwargs = jb
-# 
-#                 elif isinstance(jb, list):
-#                     args = jb
-# 
-#                 else:
-#                     args = [jb]
-# 
-#             elif request.headers.is_urlencoded():
-#                 kwargs = self.get_request_urlencoded(request, body, **kwargs)
-# 
-#             elif request.headers.is_multipart():
-#                 kwargs = self.get_request_multipart(request, body, **kwargs)
-# 
-#             elif request.headers.is_plain():
-#                 body = String(body, encoding=request.encoding)
-#                 args = [body]
-# 
-#         request.set_body(body, args, kwargs)
-
     def create_response(self, **kwargs):
         """create the endpoints understandable response instance that is used
         to return output to the client"""
@@ -586,12 +426,19 @@ class BaseApplication(ApplicationABC):
         :returns: Controller, this Controller instance should be able to
             handle the request
         """
-        request.controller_info = self.router.find_controller_info(
-            request,
-            **kwargs
-        )
+        if "controller_class" in kwargs:
+            controller_class = kwargs["controller_class"]
 
-        controller = request.controller_info["reflect_class"].get_target()(
+        else:
+            request.controller_info = self.router.find_controller_info(
+                request,
+                **kwargs
+            )
+
+            rc = request.controller_info["reflect_class"]
+            controller_class = rc.get_target()
+
+        controller = controller_class(
             request,
             response,
             **kwargs
@@ -600,17 +447,33 @@ class BaseApplication(ApplicationABC):
         controller.application = self
         return controller
 
+    def create_error_controller(self, request, response, **kwargs):
+        if "controller_class" not in kwargs:
+            controller_info = request.controller_info or {}
+            if rc := controller_info.get("reflect_class", None):
+                kwargs["controller_class"] = rc.get_target()
+
+            else:
+                kwargs["controller_class"] = self.controller_class
+
+        return self.create_controller(request, response, **kwargs)
+
     async def handle(self, request, response, **kwargs):
         """Called from the interface to actually handle the request."""
         response.start = time.time()
         self.log_start(request, response)
+        controller = None
 
         try:
             controller = self.create_controller(request, response)
             await controller.handle()
 
         except Exception as e:
-            await self.handle_error(request, response, e, **kwargs)
+            if controller is None:
+                controller = self.create_error_controller(request, response)
+
+            await controller.handle_error(e)
+            #await self.handle_error(request, response, e, **kwargs)
 
         finally:
             if response.code is None:
@@ -647,21 +510,21 @@ class BaseApplication(ApplicationABC):
 
         self.log_stop(request, response)
 
-    async def handle_error(self, request, response, e, **kwargs):
-        """Create a controller and handle an error for a request that failed
-        outside of a valid controller path, this is for things like 404 and 500
-        that happen before a valid Controller instance is created
-
-        :param request: Request
-        :param response: Response
-        """
-        controller = kwargs.get("controller_class", self.controller_class)(
-            request,
-            response,
-            **kwargs
-        )
-        controller.application = self
-        await controller.handle_error(e)
+#     async def handle_error(self, request, response, e, **kwargs):
+#         """Create a controller and handle an error for a request that failed
+#         outside of a valid controller path, this is for things like 404 and 500
+#         that happen before a valid Controller instance is created
+# 
+#         :param request: Request
+#         :param response: Response
+#         """
+#         controller = kwargs.get("controller_class", self.controller_class)(
+#             request,
+#             response,
+#             **kwargs
+#         )
+#         controller.application = self
+#         await controller.handle_error(e)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):

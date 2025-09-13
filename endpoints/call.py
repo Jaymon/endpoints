@@ -1094,14 +1094,6 @@ class Request(Call):
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
 
-#     bodies: Iterable[tuple[Mapping, bytes]]|None = None
-    """Holds the bodies for this request, if this isn't a multipart request
-    then this will still be an iterator with one item
-
-    Each tuple in the iterator will have index 0 be the headers and
-    index 1 will be the bytes of the body
-    """
-
     @cachedproperty(cached="_uuid")
     def uuid(self):
         # if there is an X-uuid header then set uuid and send it down
@@ -1415,25 +1407,8 @@ class Request(Call):
         """Return True if the request is a POST request"""
         return self.is_method("POST")
 
-#     def set_body(self, body, body_args=None, body_kwargs=None):
-#         """Set the body onto this instance
-# 
-#         Interfaces are responsible for parsing the body so should always pass
-#         body_args and body_kwargs
-# 
-#         :param body: Any, the raw body for the request
-#         :param body_args: list, any parsed positional arguments from `body`
-#         :param body_kwargs: dict, any parsed keyword arguments from `body`
-#         """
-#         self.body = body
-#         self.body_args = body_args or []
-#         self.body_kwargs = body_kwargs or {}
-
     def has_body(self):
         return self.body is not None
-        #return self.bodies is not None
-        #return self.body or self.body_args or self.body_kwargs
-        #return True if self.body else False
 
     def should_have_body(self):
         """Returns True if the request should normally have a body"""
