@@ -1,5 +1,7 @@
 # -*- coding: utf-8 -*-
 import asyncio
+from typing import Callable
+from collections.abc import Iterable
 
 from datatypes import (
     Host,
@@ -9,6 +11,7 @@ from datatypes import (
 
 from ..compat import *
 from ..config import environ
+from ..call import Response
 from .base import BaseApplication
 
 
@@ -37,18 +40,49 @@ class Application(BaseApplication):
             "start_response": start_response,
         }
 
-    async def handle_http(self, environ, start_response):
-        request = self.create_request(environ)
-        response = self.create_response()
-        await self.handle(request, response)
-
-        start_response(
+    async def start_response(self, callback: Callable, response: Response):
+        callback(
             '{} {}'.format(response.code, response.status),
             list(response.headers.items())
         )
 
+    async def handle_http(self, environ, start_response) -> Iterable[bytes]:
+        # we return a list because if we try to yield it will get messed
+        # up in BaseApplication because it awaits this method, so it has
+        # to return something that doesn't also need to be awaited, like
+        # and AsyncGenerator
+        bodies = []
+
+        request = self.create_request(environ)
+        response = self.create_response()
+        controller = await self.handle(request, response)
+
+#         start_response(
+#             '{} {}'.format(response.code, response.status),
+#             list(response.headers.items())
+#         )
+
+        sent_response = False
+
+
+        try:
+            # https://peps.python.org/pep-0525/
+            # https://stackoverflow.com/a/37550568
+            async for body in controller:
+                if not sent_response:
+                    await self.start_response(start_response, response)
+                    sent_response = True
+
+                bodies.append(body)
+                #yield body
+
+        finally:
+            if not sent_response:
+                await self.start_response(start_response, response)
+
+        return bodies
         # https://peps.python.org/pep-0530/
-        return [body async for body in self.get_response_body(response)]
+        #return [body async for body in self.get_response_body(response)]
 
     def create_request(self, raw_request, **kwargs):
         r = self.request_class()

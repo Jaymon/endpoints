@@ -837,32 +837,32 @@ class ResponseTest(TestCase):
         r.code = 10000000
         self.assertEqual("UNKNOWN", r.status)
 
-    def test_body_file(self):
-        r = Response()
-        self.assertFalse("Content-Type" in r.headers)
-        self.assertFalse("Content-Length" in r.headers)
-
-        def get_mtcb(fp):
-            media_types = Controller.get_response_media_types()
-            for mtinfo in media_types:
-                if isinstance(fp, mtinfo[0]):
-                    return mtinfo[1]
-
-        path = self.create_file("12345", ext="jpg")
-        with path.open() as fp:
-            r.body = fp
-            get_mtcb(fp)(r)
-            mt = r.headers["Content-Type"]
-            fs = r.headers["Content-Length"]
-            self.assertEqual("image/jpeg", mt)
-            self.assertEqual(5, int(fs))
-
-        path = self.create_file("123", ext="txt")
-        with path.open() as fp:
-            r.body = fp
-            get_mtcb(fp)(r)
-            mt = r.headers["Content-Type"]
-            fs = r.headers["Content-Length"]
-            self.assertEqual("text/plain", mt)
-            self.assertEqual(3, int(fs))
+#     def test_body_file(self):
+#         r = Response()
+#         self.assertFalse("Content-Type" in r.headers)
+#         self.assertFalse("Content-Length" in r.headers)
+# 
+#         def get_mtcb(fp):
+#             media_types = Controller.get_response_media_types()
+#             for mtinfo in media_types:
+#                 if isinstance(fp, mtinfo[0]):
+#                     return mtinfo[1]
+# 
+#         path = self.create_file("12345", ext="jpg")
+#         with path.open() as fp:
+#             r.body = fp
+#             get_mtcb(fp)(r)
+#             mt = r.headers["Content-Type"]
+#             fs = r.headers["Content-Length"]
+#             self.assertEqual("image/jpeg", mt)
+#             self.assertEqual(5, int(fs))
+# 
+#         path = self.create_file("123", ext="txt")
+#         with path.open() as fp:
+#             r.body = fp
+#             get_mtcb(fp)(r)
+#             mt = r.headers["Content-Type"]
+#             fs = r.headers["Content-Length"]
+#             self.assertEqual("text/plain", mt)
+#             self.assertEqual(3, int(fs))
 

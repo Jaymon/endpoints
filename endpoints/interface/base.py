@@ -189,6 +189,9 @@ class BaseApplication(ApplicationABC):
 
     async def __call__(self, *args, **kwargs):
         """this is what will be called for each request that the server handles
+
+        This can return something (WSGI needs a `list[bytes]` returned while
+        ASGI handles the sending on its own and returns None
         """
         try:
             call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
@@ -339,78 +342,6 @@ class BaseApplication(ApplicationABC):
         to return output to the client"""
         return self.response_class()
 
-#     async def get_response_body(self, response, **kwargs):
-#         """usually when iterating this object it means we are returning the
-#         response of a wsgi request, so this will iterate the body and make sure
-#         it is a bytes string because wsgiref requires an actual bytes instance,
-#         a child class won't work
-# 
-#         This will call one of three internal methods:
-# 
-#             * get_response_file - if response body is a file
-#             * get_response_json - if response body is a jsonable object
-#             * get_response_value - catchall for any other response bodies
-# 
-#         :param **kwargs: passed through to one of the three internal methods
-#         :returns: generator[bytes], a generator that yields bytes strings
-#         """
-#         if response.has_body():
-#             if response.is_file():
-#                 chunks = self.get_response_file(response, **kwargs)
-# 
-#             elif response.is_json():
-#                 chunks = self.get_response_json(response, **kwargs)
-# 
-#             else:
-#                 chunks = self.get_response_value(response, **kwargs)
-# 
-#             async for chunk in chunks:
-#                 yield chunk
-
-#     async def get_response_file(self, response, **kwargs):
-#         """Internal method called when response body is a file
-# 
-#         :returns: generator[bytes], a generator that yields bytes strings
-#         """
-#         body = response.body
-# 
-#         if body.closed:
-#             raise IOError(
-#                 "cannot read streaming body because pointer is closed"
-#             )
-# 
-#         body_iterator = functools.partial(body.read, 8192)
-#         try:
-#             if response.is_binary_file():
-#                 for chunk in iter(body_iterator, b""):
-#                     yield chunk
-# 
-#             else:
-#                 # http://stackoverflow.com/questions/15599639/
-#                 for chunk in iter(body_iterator, ""):
-#                     yield bytes(chunk, response.encoding)
-# 
-#         finally:
-#             # close the pointer since we've consumed it
-#             body.close()
-
-#     async def get_response_json(self, response, **kwargs):
-#         """Internal method called when response body should be dumped to
-#         json
-# 
-#         :returns: generator[bytes], a generator that yields bytes strings
-#         """
-#         yield self.dump_json(response.body, **kwargs)
-
-#     async def get_response_value(self, response, **kwargs):
-#         """Internal method called when response body is unknown, it will be
-#         treated like a string by default but child classes could customize
-#         this method if they want to
-# 
-#         :returns: generator[bytes], a generator that yields bytes strings
-#         """
-#         yield bytes(str(response.body), response.encoding)
-
     def create_router(self):
         return self.router_class(
             controller_prefixes=self.controller_prefixes,
@@ -475,58 +406,9 @@ class BaseApplication(ApplicationABC):
             await controller.handle_error(e)
             #await self.handle_error(request, response, e, **kwargs)
 
-#         finally:
-#             if response.code is None:
-#                 # set the http status code to return to the client, by default,
-#                 # 200 if a body is present otherwise 204
-#                 if response.body is None:
-#                     response.code = 204
-# 
-#                 else:
-#                     response.code = 200
-# 
-#             if response.encoding is None:
-#                 if encoding := request.accept_encoding:
-#                     response.encoding = encoding
-# 
-#                 else:
-#                     response.encoding = environ.ENCODING
-# 
-#             if response.is_binary_file():
-#                 response.encoding = None
-# 
-#             if response.media_type and not response.has_header("Content-Type"):
-#                 if response.encoding:
-#                     response.set_header(
-#                         "Content-Type",
-#                         "{};charset={}".format(
-#                             response.media_type,
-#                             response.encoding
-#                         )
-#                     )
-# 
-#                 else:
-#                     response.set_header("Content-Type", response.media_type)
-
         self.log_stop(request, response)
 
         return controller
-
-#     async def handle_error(self, request, response, e, **kwargs):
-#         """Create a controller and handle an error for a request that failed
-#         outside of a valid controller path, this is for things like 404 and 500
-#         that happen before a valid Controller instance is created
-# 
-#         :param request: Request
-#         :param response: Response
-#         """
-#         controller = kwargs.get("controller_class", self.controller_class)(
-#             request,
-#             response,
-#             **kwargs
-#         )
-#         controller.application = self
-#         await controller.handle_error(e)
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):

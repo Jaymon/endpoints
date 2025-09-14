@@ -1083,23 +1083,30 @@ class Controller(object):
         response = self.response
 
         if response.has_body():
-            if response.is_file():
-                chunks = self.encode_attachment(
-                    response.body,
-                    response.encoding,
-                )
+            try:
+                if response.is_file():
+                    chunks = self.encode_attachment(
+                        response.body,
+                        response.encoding,
+                    )
 
-            elif response.is_json():
-                chunks = self.encode_json(response.body)
+                elif response.is_json():
+                    chunks = self.encode_json(response.body)
 
-            else:
-                chunks = self.encode_value(
-                    response.body,
-                    response.encoding,
-                )
+                else:
+                    chunks = self.encode_value(
+                        response.body,
+                        response.encoding,
+                    )
 
-            async for chunk in chunks:
-                yield chunk
+                async for chunk in chunks:
+                    yield chunk
+
+
+            except Exception as e:
+                await self.handle_error(e)
+                async for chunk in self:
+                    yield chunk
 
     def log_error_warning(self, e):
         #logger = self.logger
@@ -1639,6 +1646,9 @@ class Response(Call):
 
     media_type = None
     """Set this to the media type to return to the client"""
+
+    body = None
+    """The body that will be returned to the client"""
 
     @property
     def status_code(self):
