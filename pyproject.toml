@@ -57,6 +57,9 @@ openapi = [
   "jsonschema",
   "pyyaml"
 ]
+orjson = [
+  "orjson"
+]
 
 [project.scripts]
 endpoints = "endpoints.__main__:EntryPoint.handle"

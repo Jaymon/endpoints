@@ -258,14 +258,14 @@ class Application(BaseApplication):
             await self.send_websocket_disconnect(request, response, **kwargs)
 
     async def send_websocket_disconnect(self, request, response, **kwargs):
-        body = b""
-        async for part in self.get_response_body(response):
-            body += part
+#         body = b""
+#         async for part in self.get_response_body(response):
+#             body += part
 
         r = await kwargs["send"]({
             "type": "websocket.close",
             "code": response.code,
-            "reason": String(body),
+#             "reason": String(body),
         })
 
     def create_request(self, **kwargs):

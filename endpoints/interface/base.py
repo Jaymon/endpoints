@@ -137,36 +137,6 @@ class BaseApplication(ApplicationABC):
     pathfinder_class = Pathfinder
     """Used by router, handles finding and reflecting controllers"""
 
-#     @classmethod
-#     def dump_json(cls, body, **kwargs):
-#         """Internal method. Used by .get_response_json and
-#         .get_websocket_dumps. This exists so there is one place to customize
-#         json dumping
-# 
-#         :param body: Any, it just has to be json encodable
-#         :keyword json_encoder: Optional[JSONEncoder]
-#         :keyword encoding: Optional[str], defaults to `environ.ENCODING` 
-#             because python's builtin json makes everything ascii by default so
-#             the encoding used for encoding text to bytes doesn't really matter
-#         :returns: bytes
-#         """
-#         json_encoder = kwargs.get("json_encoder", JSONEncoder)
-#         return bytes(
-#             json.dumps(body, cls=json_encoder),
-#             kwargs.get("encoding", environ.ENCODING)
-#         )
-# 
-#     @classmethod
-#     def load_json(cls, body, **kwargs):
-#         """Internal method. Used by .get_request_json and
-#         .get_websocket_loads. This exists so there is one place to customize
-#         json loading
-# 
-#         :param body: str|bytes
-#         :returns: str
-#         """
-#         return json.loads(body)
-
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             if isinstance(controller_prefixes, str):

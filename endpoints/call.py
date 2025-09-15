@@ -9,6 +9,12 @@ from collections.abc import AsyncGenerator
 from types import NoneType
 import json
 
+try:
+    import orjson
+
+except ImportError:
+    orjson = None
+
 from datatypes import (
     HTTPHeaders,
     property as cachedproperty,
@@ -403,7 +409,11 @@ class Controller(object):
         :param body: str|bytes
         :returns: str
         """
-        return json.loads(body)
+        if orjson:
+            return orjson.loads(body)
+
+        else:
+            return json.loads(body)
 
     @classmethod
     def decode_json(cls, headers: HTTPHeaders, body: bytes) -> object:
@@ -533,10 +543,26 @@ class Controller(object):
         :returns: bytes
         """
         json_encoder = kwargs.get("json_encoder", JSONEncoder)
-        return bytes(
-            json.dumps(body, cls=json_encoder),
-            kwargs.get("encoding", environ.ENCODING)
-        )
+
+        if orjson:
+            # https://github.com/ijl/orjson
+            # Evidently keys can't be child classes of str either unless this
+            # option is set. From the docs:
+            #    "raises JSONEncodeError if a dict has a key of a type
+            #    other than str, unless OPT_NON_STR_KEYS is specified"
+            encoder = json_encoder()
+
+            return orjson.dumps(
+                body,
+                option=orjson.OPT_NON_STR_KEYS,
+                default=encoder.default,
+            )
+
+        else:
+            return bytes(
+                json.dumps(body, cls=json_encoder),
+                kwargs.get("encoding", environ.ENCODING)
+            )
 
     @classmethod
     async def encode_json(cls, body) -> AsyncGenerator[bytes]:
