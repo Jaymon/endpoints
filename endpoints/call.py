@@ -169,6 +169,9 @@ class Router(object):
                 node = None
 
         if rc_classes:
+            request.path_positionals = leftover_path_args
+            request.reflect_class = rc_classes[-1]
+
             ret["leftover_path_args"] = leftover_path_args
             ret["reflect_class"] = rc_classes[-1]
             #ret["reflect_classes"] = rc_classes
@@ -183,7 +186,196 @@ class Router(object):
         return ret
 
 
-class Controller(object):
+class ETL(object):
+    """Contains Extract, Transform, and Load methods that Controller uses"""
+    @classmethod
+    def load_json(cls, body, **kwargs):
+        """Internal method. Used by .decode_json and
+        .get_websocket_loads. This exists so there is one place to customize
+        json loading
+
+        :param body: str|bytes
+        :returns: str
+        """
+        if orjson:
+            return orjson.loads(body)
+
+        else:
+            return json.loads(body)
+
+    @classmethod
+    def decode_json(cls, headers: HTTPHeaders, body: bytes) -> object:
+        """Parse a json encoded body
+
+        A json encoded body has a content-type of:
+
+            application/json
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict|list|Any
+        """
+        return cls.load_json(body)
+
+    @classmethod
+    def decode_urlencoded(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        """Parse a form encoded body
+
+        A form encoded body has a content-type of:
+
+            application/x-www-form-urlencoded
+
+        :param request: Request
+        :param body: str|bytes
+        :returns: dict
+        """
+        u = Url(query=body)
+        return u.query_kwargs
+
+    @classmethod
+    def decode_bytes(cls, headers: HTTPHeaders, body: bytes) -> str:
+        return String(body, encoding=headers.get_content_encoding())
+
+    @classmethod
+    def decode_io(cls, headers: HTTPHeaders, body: io.IOBase) -> bytes:
+        """Read the body into memory since it's a file pointer
+
+        :param headers: HTTPHeaders
+        :param body: IOBase
+        :returns: bytes, the raw body that can be processed further
+        """
+        length = int(headers.get("Content-Length", -1) or -1)
+        if length > 0:
+            body = body.read(length)
+
+        else:
+            # since there is no content length we can conclude that we
+            # don't actually have a body
+            body = None
+
+        return body
+
+    @classmethod
+    def decode_form_data(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        value, params = headers.parse("Content-Disposition")
+        if "name" not in params:
+            raise ValueError("Bad field data")
+
+        if "filename" in params:
+            return cls.decode_attachment(headers, body)
+
+        else:
+            return {
+                params["name"]: cls.decode_bytes(headers, body)
+            }
+
+    @classmethod
+    def decode_attachment(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
+        value, params = headers.parse("Content-Disposition")
+        fp = io.BytesIO(body)
+
+        if "filename" in params:
+            fp.filename = params["filename"]
+            fp.name = params["filename"]
+
+        if "name" in params:
+            #d[params["name"]] = fp
+            return {params["name"]: fp}
+
+        else:
+            #d[""] = fp
+            return {"": fp}
+
+
+    @classmethod
+    async def encode_attachment(
+        cls,
+        body: io.IOBase,
+        encoding: str|None = None,
+    ) -> AsyncGenerator[bytes]:
+        """Internal method called when response body is a file
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        if body.closed:
+            raise IOError(
+                "cannot read streaming body because pointer is closed"
+            )
+
+        try:
+            while True:
+                chunk = body.read(8192)
+                if chunk:
+                    if not isinstance(chunk, bytes):
+                        chunk = bytes(chunk, encoding)
+
+                    yield chunk
+
+                else:
+                    break
+
+        finally:
+            # close the pointer since we've consumed it
+            body.close()
+
+    @classmethod
+    def dump_json(cls, body, **kwargs):
+        """Internal method. Used by .encode_json. This exists so there is one
+        place to customize json dumping
+
+        :param body: Any, it just has to be json encodable
+        :keyword json_encoder: Optional[JSONEncoder]
+        :keyword encoding: Optional[str], defaults to `environ.ENCODING` 
+            because python's builtin json makes everything ascii by default so
+            the encoding used for encoding text to bytes doesn't really matter
+        :returns: bytes
+        """
+        json_encoder = kwargs.get("json_encoder", JSONEncoder)
+
+        if orjson:
+            # https://github.com/ijl/orjson
+            # Evidently keys can't be child classes of str either unless this
+            # option is set. From the docs:
+            #    "raises JSONEncodeError if a dict has a key of a type
+            #    other than str, unless OPT_NON_STR_KEYS is specified"
+            encoder = json_encoder()
+
+            return orjson.dumps(
+                body,
+                option=orjson.OPT_NON_STR_KEYS,
+                default=encoder.default,
+            )
+
+        else:
+            return bytes(
+                json.dumps(body, cls=json_encoder),
+                kwargs.get("encoding", environ.ENCODING)
+            )
+
+    @classmethod
+    async def encode_json(cls, body) -> AsyncGenerator[bytes]:
+        """Internal method called when response body should be dumped to
+        json
+
+        :returns: generator[bytes], a generator that yields bytes strings
+        """
+        yield cls.dump_json(body)
+
+    @classmethod
+    async def encode_value(
+        cls,
+        body,
+        encoding: str|None = None
+    ) -> AsyncGenerator[bytes]:
+        """Internal method called when response body is unknown, it will be
+        treated like a string by default but child classes could customize
+        this method if they want to
+        """
+        yield String(body, encoding=encoding).encode()
+        #yield bytes(str(response.body), response.encoding)
+
+
+class Controller(ETL):
     """This is the interface for a Controller sub class
 
     All your controllers MUST extend this base class, since it ensures a proper
@@ -401,192 +593,6 @@ class Controller(object):
             (object, kwargs.get("any_media_type", media_type))
         ]
 
-    @classmethod
-    def load_json(cls, body, **kwargs):
-        """Internal method. Used by .decode_json and
-        .get_websocket_loads. This exists so there is one place to customize
-        json loading
-
-        :param body: str|bytes
-        :returns: str
-        """
-        if orjson:
-            return orjson.loads(body)
-
-        else:
-            return json.loads(body)
-
-    @classmethod
-    def decode_json(cls, headers: HTTPHeaders, body: bytes) -> object:
-        """Parse a json encoded body
-
-        A json encoded body has a content-type of:
-
-            application/json
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: dict|list|Any
-        """
-        return cls.load_json(body)
-
-    @classmethod
-    def decode_urlencoded(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
-        """Parse a form encoded body
-
-        A form encoded body has a content-type of:
-
-            application/x-www-form-urlencoded
-
-        :param request: Request
-        :param body: str|bytes
-        :returns: dict
-        """
-        u = Url(query=body)
-        return u.query_kwargs
-
-    @classmethod
-    def decode_bytes(cls, headers: HTTPHeaders, body: bytes) -> str:
-        return String(body, encoding=headers.get_content_encoding())
-
-    @classmethod
-    def decode_io(cls, headers: HTTPHeaders, body: io.IOBase) -> bytes:
-        """Read the body into memory since it's a file pointer
-
-        :param headers: HTTPHeaders
-        :param body: IOBase
-        :returns: bytes, the raw body that can be processed further
-        """
-        length = int(headers.get("Content-Length", -1) or -1)
-        if length > 0:
-            body = body.read(length)
-
-        else:
-            # since there is no content length we can conclude that we
-            # don't actually have a body
-            body = None
-
-        return body
-
-    @classmethod
-    def decode_form_data(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
-        value, params = headers.parse("Content-Disposition")
-        if "name" not in params:
-            raise ValueError("Bad field data")
-
-        if "filename" in params:
-            return cls.decode_attachment(headers, body)
-
-        else:
-            return {
-                params["name"]: cls.decode_bytes(headers, body)
-            }
-
-    @classmethod
-    def decode_attachment(cls, headers: HTTPHeaders, body: bytes) -> Mapping:
-        value, params = headers.parse("Content-Disposition")
-        fp = io.BytesIO(body)
-
-        if "filename" in params:
-            fp.filename = params["filename"]
-            fp.name = params["filename"]
-
-        if "name" in params:
-            #d[params["name"]] = fp
-            return {params["name"]: fp}
-
-        else:
-            #d[""] = fp
-            return {"": fp}
-
-
-    @classmethod
-    async def encode_attachment(
-        cls,
-        body: io.IOBase,
-        encoding: str|None = None,
-    ) -> AsyncGenerator[bytes]:
-        """Internal method called when response body is a file
-
-        :returns: generator[bytes], a generator that yields bytes strings
-        """
-        if body.closed:
-            raise IOError(
-                "cannot read streaming body because pointer is closed"
-            )
-
-        try:
-            while True:
-                chunk = body.read(8192)
-                if chunk:
-                    if not isinstance(chunk, bytes):
-                        chunk = bytes(chunk, encoding)
-
-                    yield chunk
-
-                else:
-                    break
-
-        finally:
-            # close the pointer since we've consumed it
-            body.close()
-
-    @classmethod
-    def dump_json(cls, body, **kwargs):
-        """Internal method. Used by .encode_json. This exists so there is one
-        place to customize json dumping
-
-        :param body: Any, it just has to be json encodable
-        :keyword json_encoder: Optional[JSONEncoder]
-        :keyword encoding: Optional[str], defaults to `environ.ENCODING` 
-            because python's builtin json makes everything ascii by default so
-            the encoding used for encoding text to bytes doesn't really matter
-        :returns: bytes
-        """
-        json_encoder = kwargs.get("json_encoder", JSONEncoder)
-
-        if orjson:
-            # https://github.com/ijl/orjson
-            # Evidently keys can't be child classes of str either unless this
-            # option is set. From the docs:
-            #    "raises JSONEncodeError if a dict has a key of a type
-            #    other than str, unless OPT_NON_STR_KEYS is specified"
-            encoder = json_encoder()
-
-            return orjson.dumps(
-                body,
-                option=orjson.OPT_NON_STR_KEYS,
-                default=encoder.default,
-            )
-
-        else:
-            return bytes(
-                json.dumps(body, cls=json_encoder),
-                kwargs.get("encoding", environ.ENCODING)
-            )
-
-    @classmethod
-    async def encode_json(cls, body) -> AsyncGenerator[bytes]:
-        """Internal method called when response body should be dumped to
-        json
-
-        :returns: generator[bytes], a generator that yields bytes strings
-        """
-        yield cls.dump_json(body)
-
-    @classmethod
-    async def encode_value(
-        cls,
-        body,
-        encoding: str|None = None
-    ) -> AsyncGenerator[bytes]:
-        """Internal method called when response body is unknown, it will be
-        treated like a string by default but child classes could customize
-        this method if they want to
-        """
-        yield String(body, encoding=encoding).encode()
-        #yield bytes(str(response.body), response.encoding)
-
     def __init__(self, request, response, **kwargs):
         self.request = request
         self.response = response
@@ -686,28 +692,18 @@ class Controller(object):
 
         return positionals, keywords
 
-    async def get_method_params(
-        self,
-        reflect_method,
-        *controller_args,
-        **controller_kwargs,
-    ):
-        """Convert controller positionals and keywords to the actual arguments
+    async def get_method_params(self) -> tuple[Iterable, Mapping]:
+        """Convert request positionals and keywords to the actual arguments
         that will be passed to the http handler method
 
-        :param reflect_method: ReflectMethod
-        :argument *controller_args: The positionals returned from
-            `self.get_controller_params`
-        :keyword **controller_kwargs: The keywords returned from
-            `self.get_controller_params`
-        :returns: tuple[Sequence[Any, ...], Mapping[str, Any]]
+        :returns: tuple[Iterable[Any, ...], Mapping[str, Any]]
         """
         method_args = []
         method_kwargs = {}
 
-        ras = reflect_method.reflect_arguments(
-            *controller_args,
-            **controller_kwargs,
+        ras = self.request.reflect_method.reflect_arguments(
+            *self.request.positionals,
+            **self.request.keywords,
         )
 
         for ra in ras:
@@ -715,8 +711,8 @@ class Controller(object):
                 if ra.has_multiple_values():
                     # method call is going to fail anyway so short-circuit
                     # processing
-                    method_args = controller_args
-                    method_kwargs = controller_kwargs
+                    method_args = self.request.positionals
+                    method_kwargs = self.request.keywords
                     break
 
                 else:
@@ -756,12 +752,12 @@ class Controller(object):
 
         request = self.request
 
-        leftover_path_args = request.controller_info.get(
-            "leftover_path_args",
-            [],
-        )
-        if leftover_path_args:
-            request.path_positionals = leftover_path_args
+#         leftover_path_args = request.controller_info.get(
+#             "leftover_path_args",
+#             [],
+#         )
+#         if leftover_path_args:
+#             request.path_positionals = leftover_path_args
 
         if request.query:
             request.query_keywords = self.decode_urlencoded(
@@ -827,6 +823,7 @@ class Controller(object):
 
         request.body_positionals = body_positionals
         request.body_keywords = body_keywords
+        request.positionals, request.keywords = await self.get_request_params()
 
     async def handle(self):
         """handles the request and sets the response
@@ -845,13 +842,11 @@ class Controller(object):
         await self.handle_cors()
         await self.handle_request()
 
-        controller_args, controller_kwargs = await self.get_request_params()
-
-        rc = request.controller_info["reflect_class"]
+        rc = request.reflect_class
 
         reflect_methods = rc.reflect_http_handler_methods(request.method)
         if not reflect_methods:
-            if len(request.controller_info["leftover_path_args"]) > 0:
+            if request.path_positionals:
                 # if we have leftover path args and we don't have a method to
                 # even answer the request it should be NOT FOUND since the
                 # path is invalid
@@ -876,24 +871,20 @@ class Controller(object):
                 )
 
         for rm in reflect_methods:
-            # we pull the method from self because rm is unbounded since it was
-            # created from the reflect Controller class and not the reflected
-            # instance
-            http_method = getattr(self, rm.name)
-
             # we update the controller info so other handlers know what
             # method succeeded/failed
             request.controller_info["reflect_method"] = rm
+            request.reflect_method = rm
 
             try:
                 logger.debug(f"Request Controller method: {rm.callpath}")
 
-                method_args, method_kwargs = await self.get_method_params(
-                    rm,
-                    *controller_args,
-                    **controller_kwargs,
-                )
-                body = http_method(*method_args, **method_kwargs)
+                method_args, method_kwargs = await self.get_method_params()
+
+                # we pull the method from self because rm is unbounded since it
+                # was created from the reflect Controller class and not the
+                # reflected instance
+                body = getattr(self, rm.name)(*method_args, **method_kwargs)
 
                 while inspect.iscoroutine(body):
                     body = await body
@@ -987,9 +978,7 @@ class Controller(object):
 
         elif isinstance(e, TypeError):
             e_msg = String(e)
-            if controller_info := request.controller_info:
-                rm = controller_info["reflect_method"]
-
+            if rm := request.reflect_method:
                 # filter out TypeErrors raised from non handler methods
                 if rm.name in e_msg and "argument" in e_msg:
                     if "positional" in e_msg:
@@ -1078,21 +1067,20 @@ class Controller(object):
         :returns: the media type for the body
         """
         media_type = self.response.media_type
-        if controller_info := self.request.controller_info:
-            if not media_type:
-                if rm := controller_info.get("reflect_method", None):
-                    info = rm.get_method_info()
-                    for t in info.get("response_media_types", []):
-                        body_object_type, body_media_type = t
-                        if isinstance(body, body_object_type):
-                            if callable(body_media_type):
-                                body_media_type(self.response)
-                                media_type = self.response.media_type
+        if not media_type:
+            if rm := self.request.reflect_method:
+                info = rm.get_method_info()
+                for t in info.get("response_media_types", []):
+                    body_object_type, body_media_type = t
+                    if isinstance(body, body_object_type):
+                        if callable(body_media_type):
+                            body_media_type(self.response)
+                            media_type = self.response.media_type
 
-                            else:
-                                media_type = body_media_type
+                        else:
+                            media_type = body_media_type
 
-                            break
+                        break
 
         if not media_type:
             for t in self.get_response_media_types():
@@ -1298,6 +1286,22 @@ class Request(Call):
 
     path_positionals: Sequence|None = None
     """Holds any path parts after the controller path"""
+
+    positionals: Sequence|None = None
+    """Holds the positionals for the request that will be used as the base
+    for each HTTP method that is called while trying to answer the request"""
+
+    keywords: Mapping|None = None
+    """Holds the keywords for the request that will be used as the base
+    for each HTTP method that is called while trying to answer the request"""
+
+    reflect_class: object|None = None
+    """Holds the reflect class instance for the controller that is going to
+    answer the request"""
+
+    reflect_method: object|None = None
+    """Holds the reflect method instance for the method that is currently
+    attempting to answer the request. This is set in `Controller.handle`"""
 
     @cachedproperty(cached="_uuid")
     def uuid(self):
