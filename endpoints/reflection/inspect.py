@@ -449,8 +449,10 @@ class ReflectMethod(ReflectCallable):
         media_types = []
         for t in self.get_class().get_response_media_types():
             body_types, body_media_type = t
+
             if not isinstance(body_types, tuple):
                 body_types = (body_types,)
+
             for body_type in body_types:
                 if issubclass(body_type, Exception):
                     media_types.append(t)
@@ -480,7 +482,7 @@ class ReflectMethod(ReflectCallable):
                 non_files = counts["optional_files"] == counts["files"]
 
             if non_files:
-                primary_media_type = environ.RESPONSE_MEDIA_TYPE
+                primary_media_type = environ.REQUEST_MEDIA_TYPE
                 default_media_type = "application/x-www-form-urlencoded"
 
                 if primary_media_type:

@@ -1149,7 +1149,7 @@ class Response(OpenABC):
 
     https://en.wikipedia.org/wiki/List_of_HTTP_status_codes
 
-    .. Example:
+    :example:
         # customize 401
         class CustomResponse(Response):
             def set_404_code(self):
@@ -1159,7 +1159,7 @@ class Response(OpenABC):
     a .merge_<FIELD-NAME>_key method to customize the merging, it falls back
     to .merge_key
 
-    .. Example:
+    :example:
         # customize merging the content key
         class CustomResponse(Response):
             def merge_content_key(self, key, content):

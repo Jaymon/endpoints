@@ -149,7 +149,8 @@ class Router(object):
         ))
 
         rc_classes = []
-        leftover_path_args = list(request.path_args)
+        leftover_path_args = list(filter(None, request.path.split('/')))
+#         leftover_path_args = request.path.split("/")
         node = self.pathfinder
 
         while node is not None:
@@ -601,37 +602,27 @@ class Controller(object):
         k = f"{cls.__module__}:{cls.__qualname__}"
         cls.controller_classes[k] = cls
 
-    def handle_origin(self, origin):
-        """Check the origin and decide if it is valid
-
-        :param origin: str, this can be empty or None, so you'll need to
-            handle the empty case if you are overriding this
-        :returns: bool, True if the origin is acceptable, False otherwise
-        """
-        return True
-
-    def handle_cors(self):
+    async def handle_cors(self):
         """This will set the headers that are needed for any cors request
-        (OPTIONS or real) """
-        req = self.request
-        origin = req.get_header('origin')
-        if self.handle_origin(origin):
-            if origin:
-                # your server must read the value of the request's Origin
-                # header and use that value to set Access-Control-Allow-Origin,
-                # and must also set a Vary: Origin header to indicate that some
-                # headers are being set dynamically depending on the origin.
-                # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
-                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-                self.response.set_header('Access-Control-Allow-Origin', origin)
-                self.response.set_header('Vary', "Origin")
+        (OPTIONS or real)
 
-        else:
-            # RFC6455 - If the origin indicated is unacceptable to the server,
-            # then it SHOULD respond to the WebSocket handshake with a reply
-            # containing HTTP 403 Forbidden status code.
-            # https://stackoverflow.com/q/28553580/5006
-            raise CallError(403)
+        RFC6455 says if the origin indicated is unacceptable to the server,
+        then it SHOULD respond to the WebSocket handshake with a reply
+        containing HTTP 403 Forbidden status code.
+        https://stackoverflow.com/q/28553580/5006
+        """
+        if not self.cors:
+            return
+
+        if origin := self.request.get_header("origin"):
+            # your server must read the value of the request's Origin
+            # header and use that value to set Access-Control-Allow-Origin,
+            # and must also set a Vary: Origin header to indicate that some
+            # headers are being set dynamically depending on the origin.
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+            self.response.set_header("Access-Control-Allow-Origin", origin)
+            self.response.set_header("Vary", "Origin")
 
     async def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
@@ -666,7 +657,7 @@ class Controller(object):
         }
         self.response.add_headers(other_headers)
 
-    async def get_controller_params(self) -> tuple[Iterable, Mapping]:
+    async def get_request_params(self) -> tuple[Iterable, Mapping]:
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
         customize the arguments that are passed into the method
@@ -676,74 +667,24 @@ class Controller(object):
         :returns: whatever is returned from this method is passed into the
             controller request method as *args, **kwargs
         """
-        controller_args = []
-        controller_kwargs = {}
+        positionals = []
+        keywords = {}
 
         request = self.request
-        body = request.body
 
-        controller_args.extend(self.request.controller_info.get(
-            "leftover_path_args",
-            [],
-        ))
+        if request.path_positionals:
+            positionals.extend(request.path_positionals)
 
-        controller_kwargs.update(request.query_kwargs)
+        if request.query_keywords:
+            keywords.update(request.query_keywords)
 
-        if request.headers.is_chunked():
-            raise IOError("Chunked bodies are not supported")
+        if request.body_positionals:
+            positionals.extend(request.body_positionals)
 
-        if isinstance(request.body, io.IOBase):
-            body = self.decode_io(request.headers, body)
+        if request.body_keywords:
+            keywords.update(request.body_keywords)
 
-        bodies = []
-        if body:
-            if request.headers.is_multipart():
-                body = Multipart.decode(request.headers, body)
-                bodies = ((p.headers, p.body) for p in body)
-
-            else:
-                bodies.append((request.headers, body))
-
-        for headers, body in bodies:
-            if isinstance(body, dict):
-                controller_kwargs.update(body)
-
-            elif isinstance(body, list):
-                controller_args.extend(body)
-
-            elif headers.is_json():
-                jb = self.decode_json(headers, body)
-
-                if isinstance(jb, dict):
-                    controller_kwargs.update(jb)
-
-                elif isinstance(jb, list):
-                    controller_args.extend(jb)
-
-                else:
-                    controller_args.append(jb)
-
-            elif headers.is_urlencoded():
-                controller_kwargs.update(
-                    self.decode_urlencoded(headers, body)
-                )
-
-            elif headers.is_form_data():
-                controller_kwargs.update(self.decode_form_data(headers, body))
-
-            elif headers.is_plain():
-                controller_args.append(self.decode_bytes(headers, body))
-
-            else:
-                # treat anything else like a file
-                d = self.decode_attachment(headers, body)
-                if len(d) == 1 and "" in d:
-                    controller_args.append(fp)
-
-                else:
-                    controller_kwargs.update(d)
-
-        return controller_args, controller_kwargs
+        return positionals, keywords
 
     async def get_method_params(
         self,
@@ -809,6 +750,84 @@ class Controller(object):
 
         return method_args, method_kwargs
 
+    async def handle_request(self):
+        body_positionals = []
+        body_keywords = {}
+
+        request = self.request
+
+        leftover_path_args = request.controller_info.get(
+            "leftover_path_args",
+            [],
+        )
+        if leftover_path_args:
+            request.path_positionals = leftover_path_args
+
+        if request.query:
+            request.query_keywords = self.decode_urlencoded(
+                request.headers,
+                request.query,
+            )
+
+        if request.headers.is_chunked():
+            raise IOError("Chunked bodies are not supported")
+
+        body = request.body
+
+        if isinstance(request.body, io.IOBase):
+            body = self.decode_io(request.headers, body)
+
+        bodies = []
+        if body:
+            if request.headers.is_multipart():
+                body = Multipart.decode(request.headers, body)
+                bodies = ((p.headers, p.body) for p in body)
+
+            else:
+                bodies.append((request.headers, body))
+
+        for headers, body in bodies:
+            if isinstance(body, dict):
+                body_keywords.update(body)
+
+            elif isinstance(body, list):
+                body_positionals.extend(body)
+
+            elif headers.is_json():
+                jb = self.decode_json(headers, body)
+
+                if isinstance(jb, dict):
+                    body_keywords.update(jb)
+
+                elif isinstance(jb, list):
+                    body_positionals.extend(jb)
+
+                else:
+                    body_positionals.append(jb)
+
+            elif headers.is_urlencoded():
+                body_keywords.update(
+                    self.decode_urlencoded(headers, body)
+                )
+
+            elif headers.is_form_data():
+                body_keywords.update(self.decode_form_data(headers, body))
+
+            elif headers.is_plain():
+                body_positionals.append(self.decode_bytes(headers, body))
+
+            else:
+                # treat anything else like a file
+                d = self.decode_attachment(headers, body)
+                if len(d) == 1 and "" in d:
+                    body_positionals.append(fp)
+
+                else:
+                    body_keywords.update(d)
+
+        request.body_positionals = body_positionals
+        request.body_keywords = body_keywords
+
     async def handle(self):
         """handles the request and sets the response
 
@@ -819,14 +838,14 @@ class Controller(object):
         .. note:: This method relies on `.request.controller_info` being
             populated
         """
-        if self.cors:
-            self.handle_cors()
-
         request = self.request
         response = self.response
         exceptions = defaultdict(list)
 
-        controller_args, controller_kwargs = await self.get_controller_params()
+        await self.handle_cors()
+        await self.handle_request()
+
+        controller_args, controller_kwargs = await self.get_request_params()
 
         rc = request.controller_info["reflect_class"]
 
@@ -910,45 +929,6 @@ class Controller(object):
 
         else:
             await self.handle_response()
-
-    async def handle_response(self):
-        request = self.request
-        response = self.response
-
-        response.media_type = await self.get_response_media_type(response.body)
-        response.body = await self.get_response_body(response.body)
-
-        if response.code is None:
-            # set the http status code to return to the client, by default,
-            # 200 if a body is present otherwise 204
-            if response.body is None:
-                response.code = 204
-
-            else:
-                response.code = 200
-
-        if response.encoding is None:
-            if encoding := request.accept_encoding:
-                response.encoding = encoding
-
-            else:
-                response.encoding = environ.ENCODING
-
-        if response.is_binary_file():
-            response.encoding = None
-
-        if response.media_type and not response.has_header("Content-Type"):
-            if response.encoding:
-                response.set_header(
-                    "Content-Type",
-                    "{};charset={}".format(
-                        response.media_type,
-                        response.encoding
-                    )
-                )
-
-            else:
-                response.set_header("Content-Type", response.media_type)
 
     async def handle_error(self, e, **kwargs):
         """Handles responses for error states. All raised exceptions will go
@@ -1051,6 +1031,45 @@ class Controller(object):
 
         await self.handle_response()
 
+    async def handle_response(self):
+        request = self.request
+        response = self.response
+
+        response.media_type = await self.get_response_media_type(response.body)
+        response.body = await self.get_response_body(response.body)
+
+        if response.code is None:
+            # set the http status code to return to the client, by default,
+            # 200 if a body is present otherwise 204
+            if response.body is None:
+                response.code = 204
+
+            else:
+                response.code = 200
+
+        if response.encoding is None:
+            if encoding := request.accept_encoding:
+                response.encoding = encoding
+
+            else:
+                response.encoding = environ.ENCODING
+
+        if response.is_binary_file():
+            response.encoding = None
+
+        if response.media_type and not response.has_header("Content-Type"):
+            if response.encoding:
+                response.set_header(
+                    "Content-Type",
+                    "{};charset={}".format(
+                        response.media_type,
+                        response.encoding
+                    )
+                )
+
+            else:
+                response.set_header("Content-Type", response.media_type)
+
     async def get_response_media_type(self, body) -> str|None:
         """Get the media type for this response based on `body`
 
@@ -1104,7 +1123,6 @@ class Controller(object):
         return body
 
     async def __aiter__(self) -> AsyncGenerator[bytes]:
-        #async def get_controller_response(self) -> AsyncGenerator[bytes]:
         request = self.request
         response = self.response
 
@@ -1127,7 +1145,6 @@ class Controller(object):
 
                 async for chunk in chunks:
                     yield chunk
-
 
             except Exception as e:
                 await self.handle_error(e)
@@ -1264,6 +1281,24 @@ class Request(Call):
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
 
+    body_positionals: Sequence|None = None
+    """Holds the body positionals pulled from `.body`"""
+
+    body_keywords: Mapping|None = None
+    """Holds the body keywords that were pulled out of `.body`"""
+
+    query: str|None = None
+    """Holds the raw query (everything after the ? in the url"""
+
+    query_keywords: Mapping|None = None
+    """Holds the body keywords that were pulled out of `.query`"""
+
+    path: str|None = None
+    """Holds the full path"""
+
+    path_positionals: Sequence|None = None
+    """Holds any path parts after the controller path"""
+
     @cachedproperty(cached="_uuid")
     def uuid(self):
         # if there is an X-uuid header then set uuid and send it down
@@ -1273,9 +1308,11 @@ class Request(Call):
 
         # first try and get the uuid from the body since javascript has limited
         # capability of setting headers for websockets
-        kwargs = self.kwargs
-        if "uuid" in kwargs:
-            uuid = kwargs["uuid"]
+        if self.body_keywords and "uuid" in self.body_keywords:
+            uuid = self.body_keywords["uuid"]
+
+        elif self.query_keywords and "uuid" in self.query_keywords:
+            uuid = self.query_keywords["uuid"]
 
         # next use X-UUID header, then the websocket key
         if not uuid:
@@ -1440,46 +1477,46 @@ class Request(Call):
 
         return uri
 
-    @cachedproperty(cached="_path")
-    def path(self):
-        """path part of a url (eg, http://host.com/path?query=string)"""
-        self._path = ''
-        path_args = self.path_args
-        path = "/{}".format("/".join(path_args))
-        return path
+#     @cachedproperty(cached="_path")
+#     def path(self):
+#         """path part of a url (eg, http://host.com/path?query=string)"""
+#         self._path = ''
+#         path_args = self.path_args
+#         path = "/{}".format("/".join(path_args))
+#         return path
+# 
+#     @cachedproperty(cached="_path_args")
+#     def path_args(self):
+#         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
+#         self._path_args = []
+#         path = self.path
+#         path_args = list(filter(None, path.split('/')))
+#         return path_args
 
-    @cachedproperty(cached="_path_args")
-    def path_args(self):
-        """the path converted to list (eg /foo/bar becomes [foo, bar])"""
-        self._path_args = []
-        path = self.path
-        path_args = list(filter(None, path.split('/')))
-        return path_args
+#     @cachedproperty(cached="_query")
+#     def query(self):
+#         """query_string part of a url (eg, http://host.com/path?query=string)
+#         """
+#         self._query = query = ""
+# 
+#         query_kwargs = self.query_kwargs
+#         if query_kwargs: query = urlencode(query_kwargs, doseq=True)
+#         return query
+# 
+#     @cachedproperty(cached="_query_kwargs")
+#     def query_kwargs(self):
+#         """{foo: bar, baz: che}"""
+#         self._query_kwargs = query_kwargs = {}
+#         query = self.query
+#         if query: query_kwargs = self._parse_query_str(query)
+#         return query_kwargs
 
-    @cachedproperty(cached="_query")
-    def query(self):
-        """query_string part of a url (eg, http://host.com/path?query=string)
-        """
-        self._query = query = ""
-
-        query_kwargs = self.query_kwargs
-        if query_kwargs: query = urlencode(query_kwargs, doseq=True)
-        return query
-
-    @cachedproperty(cached="_query_kwargs")
-    def query_kwargs(self):
-        """{foo: bar, baz: che}"""
-        self._query_kwargs = query_kwargs = {}
-        query = self.query
-        if query: query_kwargs = self._parse_query_str(query)
-        return query_kwargs
-
-    @property
-    def kwargs(self):
-        """combine GET and POST params to be passed to the controller"""
-        kwargs = dict(self.query_kwargs)
-        kwargs.update(self.body_kwargs or {})
-        return kwargs
+#     @property
+#     def kwargs(self):
+#         """combine GET and POST params to be passed to the controller"""
+#         kwargs = dict(self.query_kwargs)
+#         kwargs.update(self.body_kwargs or {})
+#         return kwargs
 
     def __init__(self):
         # Holds the parsed positional arguments parsed from .body

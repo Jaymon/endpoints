@@ -240,36 +240,44 @@ class BaseApplication(ApplicationABC):
         this is separate from log_start so it can be easily overridden in
         children
         """
-        pass
+        if not logger.isEnabledFor(logging.DEBUG):
+            return
 
-#         if not logger.isEnabledFor(logging.DEBUG):
-#             return
-# 
-#         if uuid := getattr(request, "uuid", ""):
-#             uuid += " "
-# 
-#         try:
-#             if request.has_body():
-#                 if isinstance(request.body, io.IOBase):
-# 
-# 
-#                 logger.debug(
-#                     "Request {}bodies: {}".format(
-#                         uuid,
-#                         [p[1] for p in request.bodies],
-#                     )
-#                 )
-# 
-#             elif request.should_have_body():
-#                 logger.debug(
-#                     "Request {}bodies: <EMPTY>".format(uuid)
-#                 )
-# 
-#         except Exception as e:
-# #             logger.debug(
-# #                 "Request {}body raw: {}".format(uuid, request.body)
-# #             )
-#             logger.exception(e)
+        if uuid := getattr(request, "uuid", ""):
+            uuid += " "
+
+        try:
+            if request.has_body():
+                if isinstance(request.body, io.IOBase):
+                    if request.body.seekable():
+                        offset = request.body.tell()
+                        body = request.body.read()
+                        request.body.seek(offset)
+
+                    else:
+                        body = "Unseekable io.IOBase body"
+
+                else:
+                    body = request.body
+
+                logger.debug(
+                    "Request {}body: {}".format(
+                        uuid,
+                        body,
+                        #repr(body) if isinstance(body, bytes) else body
+                    )
+                )
+
+            elif request.should_have_body():
+                logger.debug(
+                    "Request {}bodies: <EMPTY>".format(uuid)
+                )
+
+        except Exception as e:
+            logger.debug(
+                "Request {}body raw: {}".format(uuid, request.body),
+            )
+            logger.exception(e)
 
     def log_stop(self, request, response):
         """log a summary line on how the request went"""

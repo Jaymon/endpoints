@@ -53,6 +53,12 @@ class Server(object):
         d = dict(kwargs)
         d.setdefault("host", "endpoints.fake")
         for k, v in d.items():
+            if k == "query_kwargs":
+                k = "query_keywords"
+
+            elif k == "body_kwargs":
+                k = "body_keywords"
+
             setattr(req, k, v)
 
         return req
@@ -92,7 +98,7 @@ class Server(object):
         return self.handle(
             path,
             method="GET",
-            query_kwargs=query_kwargs or {},
+            query_keywords=query_kwargs or {},
             **kwargs
         )
 

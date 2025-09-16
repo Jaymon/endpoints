@@ -125,16 +125,16 @@ class BaseApplicationTest(TestCase):
             "    def GET(self, foo, **kwargs):",
             "        pass",
         ])
-        res = c.handle("/foo/bar", query_kwargs=dict(foo=1, bar=2))
+        res = c.get("/foo/bar", query_kwargs=dict(foo=1, bar=2))
         self.assertEqual(400, res.code)
 
     def test_routing_error_no_args(self):
         c = self.create_server(contents=[
             "class Default(Controller):",
             "    def GET(self):",
-            "        return kwargs",
+            "        pass",
         ])
-        res = c.handle("/", query_kwargs=dict(foo=1, bar=2))
+        res = c.get("/", query_kwargs=dict(foo=1, bar=2))
         self.assertEqual(400, res.code)
 
         c = self.create_server(contents=[
