@@ -675,7 +675,7 @@ class RequestTest(TestCase):
         r = Request()
         r.set_header("content-type", "application/json;charset=UTF-8")
         charset = r.encoding
-        self.assertEqual("UTF-8", charset)
+        self.assertEqual("UTF-8", charset.upper())
 
         r = Request()
         r.set_header("content-type", "application/json")

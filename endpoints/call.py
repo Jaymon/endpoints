@@ -1048,7 +1048,7 @@ class Controller(object):
                 response.code = 200
 
         if response.encoding is None:
-            if encoding := request.accept_encoding:
+            if encoding := request.response_encoding:
                 response.encoding = encoding
 
             else:
@@ -1343,30 +1343,28 @@ class Request(Call):
 
         return v
 
-    @cachedproperty(cached="_accept_encoding")
-    def accept_encoding(self):
-        """The encoding the client requested the response to use"""
-        # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Accept-Charset
+    @cachedproperty(cached="_response_encoding")
+    def response_encoding(self) -> str:
+        """The encoding the client requested the response to use
+
+        https://www.rfc-editor.org/rfc/rfc9110#name-accept-charset
+            Note: Accept-Charset is deprecated because UTF-8 has become nearly
+            ubiquitous and sending a detailed list of user-preferred charsets
+            wastes bandwidth, increases latency, and makes passive
+            fingerprinting far too easy (Section 17.13). Most general-purpose
+            user agents do not send Accept-Charset unless specifically
+            configured to do so.
+        """
         ret = ""
-        accept_encoding = self.get_header("Accept-Charset", "")
-        if accept_encoding:
-            bits = re.split(r"\s+", accept_encoding)
-            bits = bits[0].split(";")
-            ret = bits[0]
+        if charsets := self.headers.parse_weighted("Accept-Charset"):
+            ret = charsets[0][0]
         return ret
 
     @cachedproperty(cached="_encoding")
     def encoding(self):
         """the character encoding of the request, usually only set in POST type
         requests"""
-        encoding = None
-        ct = self.get_header('content-type')
-        if ct:
-            ah = AcceptHeader(ct)
-            if ah.media_types:
-                encoding = ah.media_types[0][2].get("charset", None)
-
-        return encoding
+        return self.headers.get_content_encoding()
 
     @cachedproperty(read_only="_ips")
     def ips(self):
@@ -1476,47 +1474,6 @@ class Request(Call):
             uri += "?" + String(query)
 
         return uri
-
-#     @cachedproperty(cached="_path")
-#     def path(self):
-#         """path part of a url (eg, http://host.com/path?query=string)"""
-#         self._path = ''
-#         path_args = self.path_args
-#         path = "/{}".format("/".join(path_args))
-#         return path
-# 
-#     @cachedproperty(cached="_path_args")
-#     def path_args(self):
-#         """the path converted to list (eg /foo/bar becomes [foo, bar])"""
-#         self._path_args = []
-#         path = self.path
-#         path_args = list(filter(None, path.split('/')))
-#         return path_args
-
-#     @cachedproperty(cached="_query")
-#     def query(self):
-#         """query_string part of a url (eg, http://host.com/path?query=string)
-#         """
-#         self._query = query = ""
-# 
-#         query_kwargs = self.query_kwargs
-#         if query_kwargs: query = urlencode(query_kwargs, doseq=True)
-#         return query
-# 
-#     @cachedproperty(cached="_query_kwargs")
-#     def query_kwargs(self):
-#         """{foo: bar, baz: che}"""
-#         self._query_kwargs = query_kwargs = {}
-#         query = self.query
-#         if query: query_kwargs = self._parse_query_str(query)
-#         return query_kwargs
-
-#     @property
-#     def kwargs(self):
-#         """combine GET and POST params to be passed to the controller"""
-#         kwargs = dict(self.query_kwargs)
-#         kwargs.update(self.body_kwargs or {})
-#         return kwargs
 
     def __init__(self):
         # Holds the parsed positional arguments parsed from .body

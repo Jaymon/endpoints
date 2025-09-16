@@ -163,6 +163,8 @@ class AcceptHeader(object):
     wraps the Accept header to allow easier versioning
 
     provides methods to return the accept media types in the correct order
+
+    https://www.rfc-editor.org/rfc/rfc9110#name-accept
     """
     def __init__(self, header):
         self.header = header

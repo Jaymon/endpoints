@@ -50,20 +50,14 @@ class Application(BaseApplication):
         # we return a list because if we try to yield it will get messed
         # up in BaseApplication because it awaits this method, so it has
         # to return something that doesn't also need to be awaited, like
-        # and AsyncGenerator
-        bodies = []
+        # an AsyncGenerator
+        chunks = []
 
         request = self.create_request(environ)
         response = self.create_response()
         controller = await self.handle(request, response)
 
-#         start_response(
-#             '{} {}'.format(response.code, response.status),
-#             list(response.headers.items())
-#         )
-
         sent_response = False
-
 
         try:
             # https://peps.python.org/pep-0525/
@@ -73,16 +67,14 @@ class Application(BaseApplication):
                     await self.start_response(start_response, response)
                     sent_response = True
 
-                bodies.append(body)
-                #yield body
+                chunks.append(body)
 
         finally:
             if not sent_response:
                 await self.start_response(start_response, response)
 
-        return bodies
         # https://peps.python.org/pep-0530/
-        #return [body async for body in self.get_response_body(response)]
+        return chunks
 
     def create_request(self, raw_request, **kwargs):
         r = self.request_class()
@@ -100,12 +92,6 @@ class Application(BaseApplication):
         r.host = raw_request["HTTP_HOST"]
 
         r.body = raw_request.get('wsgi.input', None)
-        #r.bodies = self.get_request_bodies(r, r.body)
-        #self.set_request_body(
-        #    r,
-        #    raw_request.get('wsgi.input', None)
-        #)
-
         r.raw_request = raw_request
         return r
 
