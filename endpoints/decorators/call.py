@@ -57,11 +57,13 @@ class httpcache(ControllerDecorator):
     """
     sets the cache headers so the response can be cached by the client
 
-    link -- https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching
+    https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching
 
-    ttl -- integer -- how many seconds to have the client cache the request
     """
-    def definition(self, ttl, **kwargs):
+    def definition(self, ttl: int, **kwargs):
+        """
+        :param ttl: how many seconds to have the client cache the request
+        """
         self.ttl = int(ttl)
         super().definition(**kwargs)
 

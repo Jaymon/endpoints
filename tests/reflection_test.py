@@ -46,7 +46,7 @@ class TestCase(TestCase):
 class ReflectControllerTest(TestCase):
     def test_reflect_url_paths_1(self):
         rc = self.create_reflect_controllers("""
-            class Foo(Controller):
+            class Foo(Controller, CORSMixin):
                 cors = True
                 def GET(self, bar, che, /):
                     pass
@@ -917,7 +917,7 @@ class OpenapiOpenAPITest(TestCase):
 class OpenapiPathItemTest(TestCase):
     def test_multiple_path_with_options(self):
         oa = self.create_openapi("""
-            class Foo(Controller):
+            class Foo(Controller, CORSMixin):
                 cors = True
                 def GET(self, bar, che, /):
                     pass

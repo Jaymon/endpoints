@@ -396,16 +396,24 @@ class Controller(ETL):
     Controller's have a specific lifecycle to answer a request:
 
         1. `.handle`
-            a. `.handle_cors`
-            b. `.handle_request`
-            c. `.get_request_params`
-            d. called for each matching request/HTTP method (eg, GET_1, GET_2)
+            a. `.handle_request`
+            b. `.get_request_params`
+            c. called for each matching request/HTTP method (eg, GET_1, GET_2)
                 1. `.get_method_params`
                 2. matching request method
+            d. `.handle_error` (optional)
             e. `.handle_response`
                 1. `.get_response_media_type`
                 2. `.get_response_body`
-            f. `.handle_error` (optional)
+        2. `.__aiter__`
+
+    If the controller was created solely to handle an error outside of
+    the controller's normal lifecycle, then the controller's lifecycle is:
+
+        1. `.handle_error`
+            a. `.handle_response`
+                1. `.get_response_media_type`
+                2. `.get_response_body`
         2. `.__aiter__`
 
     To activate a new endpoint, just add a module on your PYTHONPATH
@@ -436,21 +444,19 @@ class Controller(ETL):
     separated by dashes. See the `.get_name` docblock for examples.
     """
     request = None
-    """holds a Request() instance"""
+    """holds a Request instance"""
 
     response = None
-    """holds a Response() instance"""
+    """holds a Response instance"""
 
     private = False
-    """set this to True if the controller is not designed to be requested"""
-
-    cors = True
-    """Activates CORS support, http://www.w3.org/TR/cors/"""
+    """set this to True if the controller is not designed to be requested.
+    See `.is_private`"""
 
     controller_classes = {}
     """Holds all the controller classes that have been loaded into memory, the
     classpath is the key and the class object is the value, see
-    __init_subclass__"""
+    `.__init_subclass__`"""
 
     @classmethod
     def is_private(cls):
@@ -635,61 +641,6 @@ class Controller(ETL):
         k = f"{cls.__module__}:{cls.__qualname__}"
         cls.controller_classes[k] = cls
 
-    async def handle_cors(self):
-        """This will set the headers that are needed for any cors request
-        (OPTIONS or real)
-
-        RFC6455 says if the origin indicated is unacceptable to the server,
-        then it SHOULD respond to the WebSocket handshake with a reply
-        containing HTTP 403 Forbidden status code.
-        https://stackoverflow.com/q/28553580/5006
-        """
-        if not self.cors:
-            return
-
-        if origin := self.request.get_header("origin"):
-            # your server must read the value of the request's Origin
-            # header and use that value to set Access-Control-Allow-Origin,
-            # and must also set a Vary: Origin header to indicate that some
-            # headers are being set dynamically depending on the origin.
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-            self.response.set_header("Access-Control-Allow-Origin", origin)
-            self.response.set_header("Vary", "Origin")
-
-    async def OPTIONS(self, *args, **kwargs):
-        """Handles CORS requests for this controller
-
-        if self.cors is False then this will raise a 405, otherwise it sets
-        everything necessary to satisfy the request in self.response
-        """
-        if not self.cors:
-            raise CallError(405)
-
-        req = self.request
-
-        origin = req.get_header('origin')
-        if not origin:
-            raise CallError(400, 'Need Origin header') 
-
-        call_headers = [
-            ('Access-Control-Request-Headers', 'Access-Control-Allow-Headers'),
-            ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
-        ]
-        for req_header, res_header in call_headers:
-            v = req.get_header(req_header)
-            if v:
-                self.response.set_header(res_header, v)
-
-            else:
-                raise CallError(400, 'Need {} header'.format(req_header))
-
-        other_headers = {
-            'Access-Control-Allow-Credentials': 'true',
-            'Access-Control-Max-Age': 3600
-        }
-        self.response.add_headers(other_headers)
-
     async def get_request_params(self) -> tuple[Iterable, Mapping]:
         """Called right before the controller's requested method is called
         (eg GET, POST). It's meant for children controllers to be able to
@@ -861,7 +812,6 @@ class Controller(ETL):
         response = self.response
         exceptions = defaultdict(list)
 
-        await self.handle_cors()
         await self.handle_request()
 
         rc = request.reflect_class
@@ -1180,6 +1130,80 @@ class Controller(ETL):
 
         else:
             logger.warning(e)
+
+
+class CORSMixin(object):
+    """Add this mixin to a child Controller class to activate CORS support
+
+    :example:
+        from endpoints import Controller, CORSMixin
+
+        class CORSController(Controller, CORSMixin):
+            # This controller has CORS support
+            pass
+
+    http://www.w3.org/TR/cors/
+    https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
+    """
+    cors = True
+    """Activates CORS support, http://www.w3.org/TR/cors/"""
+
+    async def handle_request(self):
+        if self.cors:
+            await self.handle_cors()
+        return await super().handle_request()
+
+    async def handle_cors(self):
+        """This will set the headers that are needed for any cors request
+        (OPTIONS or real)
+
+        RFC6455 says if the origin indicated is unacceptable to the server,
+        then it SHOULD respond to the WebSocket handshake with a reply
+        containing HTTP 403 Forbidden status code.
+        https://stackoverflow.com/q/28553580/5006
+        """
+        if origin := self.request.get_header("origin"):
+            # your server must read the value of the request's Origin
+            # header and use that value to set Access-Control-Allow-Origin,
+            # and must also set a Vary: Origin header to indicate that some
+            # headers are being set dynamically depending on the origin.
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+            self.response.set_header("Access-Control-Allow-Origin", origin)
+            self.response.set_header("Vary", "Origin")
+
+    async def OPTIONS(self, *args, **kwargs):
+        """Handles CORS requests for this controller
+
+        if self.cors is False then this will raise a 405, otherwise it sets
+        everything necessary to satisfy the request in self.response
+        """
+        if not self.cors:
+            raise CallError(405)
+
+        req = self.request
+
+        origin = req.get_header('origin')
+        if not origin:
+            raise CallError(400, 'Need Origin header') 
+
+        call_headers = [
+            ('Access-Control-Request-Headers', 'Access-Control-Allow-Headers'),
+            ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
+        ]
+        for req_header, res_header in call_headers:
+            v = req.get_header(req_header)
+            if v:
+                self.response.set_header(res_header, v)
+
+            else:
+                raise CallError(400, 'Need {} header'.format(req_header))
+
+        other_headers = {
+            'Access-Control-Allow-Credentials': 'true',
+            'Access-Control-Max-Age': 3600
+        }
+        self.response.add_headers(other_headers)
 
 
 class Call(object):

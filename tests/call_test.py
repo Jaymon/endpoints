@@ -3,6 +3,7 @@
 from endpoints.compat import *
 from endpoints.call import (
     Controller,
+    CORSMixin,
     Request,
     Response,
     Router,
@@ -61,51 +62,6 @@ class ControllerTest(TestCase):
 
         res = c.handle("/")
         self.assertEqual(501, res.code)
-
-    async def test_cors(self):
-        class Cors(Controller):
-            def POST(self): pass
-
-        res = Response()
-        req = Request()
-        c = Cors(req, res)
-        await c.handle_cors()
-        self.assertTrue(c.OPTIONS)
-        self.assertFalse('Access-Control-Allow-Origin' in c.response.headers)
-
-        req.set_header('Origin', 'http://example.com')
-        c = Cors(req, res)
-        await c.handle_cors()
-        self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
-        ) 
-
-        req.set_header('Access-Control-Request-Method', 'POST')
-        req.set_header('Access-Control-Request-Headers', 'xone, xtwo')
-        c = Cors(req, res)
-        await c.handle_cors()
-        await c.OPTIONS()
-        self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
-        )
-        self.assertEqual(
-            req.get_header('Access-Control-Request-Method'),
-            c.response.get_header('Access-Control-Allow-Methods')
-        ) 
-        self.assertEqual(
-            req.get_header('Access-Control-Request-Headers'),
-            c.response.get_header('Access-Control-Allow-Headers')
-        ) 
-
-        c = Cors(req, res)
-        await c.handle_cors()
-        c.POST()
-        self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
-        ) 
 
     def test_bad_typeerror(self):
         """There is a bug that is making the controller method throw a 404 when
@@ -204,6 +160,53 @@ class ControllerTest(TestCase):
 
         res = c.handle("/")
         self.assertTrue("plain/text" in res.headers.get("Content-Type"))
+
+
+class CORSMixinTest(TestCase):
+    async def test_cors(self):
+        class Cors(Controller, CORSMixin):
+            def POST(self): pass
+
+        res = Response()
+        req = Request()
+        c = Cors(req, res)
+        await c.handle_cors()
+        self.assertTrue(c.OPTIONS)
+        self.assertFalse('Access-Control-Allow-Origin' in c.response.headers)
+
+        req.set_header('Origin', 'http://example.com')
+        c = Cors(req, res)
+        await c.handle_cors()
+        self.assertEqual(
+            req.get_header('Origin'),
+            c.response.get_header('Access-Control-Allow-Origin')
+        ) 
+
+        req.set_header('Access-Control-Request-Method', 'POST')
+        req.set_header('Access-Control-Request-Headers', 'xone, xtwo')
+        c = Cors(req, res)
+        await c.handle_cors()
+        await c.OPTIONS()
+        self.assertEqual(
+            req.get_header('Origin'),
+            c.response.get_header('Access-Control-Allow-Origin')
+        )
+        self.assertEqual(
+            req.get_header('Access-Control-Request-Method'),
+            c.response.get_header('Access-Control-Allow-Methods')
+        ) 
+        self.assertEqual(
+            req.get_header('Access-Control-Request-Headers'),
+            c.response.get_header('Access-Control-Allow-Headers')
+        ) 
+
+        c = Cors(req, res)
+        await c.handle_cors()
+        c.POST()
+        self.assertEqual(
+            req.get_header('Origin'),
+            c.response.get_header('Access-Control-Allow-Origin')
+        ) 
 
 
 class RouterTest(TestCase):

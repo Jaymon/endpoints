@@ -9,7 +9,12 @@ from .exception import (
     CloseConnection,
 )
 from .utils import AcceptHeader, Url
-from .call import Controller, Request, Response
+from .call import (
+    Controller,
+    CORSMixin,
+    Request,
+    Response,
+)
 from . import decorators
 
 
