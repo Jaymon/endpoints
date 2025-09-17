@@ -20,6 +20,18 @@ class ControllerDecorator(FuncDecorator):
 
     A controller decorator has a specific lifecycle:
 
+        1. `.definition`
+        2. `.get_params`
+            a. `.get_decorator_params`
+            b. `.get_method_params`
+        3. `.handle_decorator`
+            a. `.handle`
+        4. `.handle_method`
+        5. `.handle_body`
+            a. `.get_response_body`
+        6. `.handle_error` (optional)
+
+
         1. .definition() is called with any arguments that were passed in when
             the decorator is first created, by default, the instance properties
             .definition_args and .definition_kwargs will be set
@@ -42,25 +54,8 @@ class ControllerDecorator(FuncDecorator):
             returns a body then that body will be used instead of what was
             returned from the controller method
     """
-    def get_wrapped_method(self, func):
-        """Find the original wrapped function. This takes advantage of
-        functool.supdate_wrapper's automatic setting of the __wrapped__
-        variable and assumes the original func is the one that doesn't have the
-        variable
-
-        :param func: callable, the wrapped function
-        :returns: callable, the original wrapped controller method, this can
-            mess up if the controller is wrapped with a decorator that doesn't
-            set __wrapped__ on the function
-        """
-        wrapped = getattr(func, "__wrapped__", None)
-        if wrapped:
-            func = self.get_wrapped_method(wrapped)
-
-        return func
-
-    def decorate(self, func, *args, **kwargs):
-        """decorate the passed in func calling target when func is called
+    def decorate(self, method, *args, **kwargs):
+        """decorate the passed in Callable calling target when func is called
 
         You should never override this method unless you know what you are
         doing
@@ -74,18 +69,24 @@ class ControllerDecorator(FuncDecorator):
         """
         self.definition(*args, **kwargs)
 
-        async def decorated(controller, *controller_args, **controller_kwargs):
-            await self.handle_handle(
+        async def decorated(controller, *method_args, **method_kwargs):
+            decorator_params, method_params = await self.get_params(
                 controller,
-                controller_args,
-                controller_kwargs
+                method_args,
+                method_kwargs,
             )
 
-            return await self.handle_controller(
-                func,
+            await self.handle_decorator(
                 controller,
-                controller_args,
-                controller_kwargs,
+                decorator_params[0],
+                decorator_params[1],
+            )
+
+            return await self.handle_method(
+                method,
+                controller,
+                method_params[0],
+                method_params[1],
             )
 
         return decorated
@@ -97,7 +98,7 @@ class ControllerDecorator(FuncDecorator):
         This can be overridden by child classes but this cannot be made async
         and it should avoid doing any IO because of that
 
-        :Example:
+        :example:
             a decorator like:
 
                 @foo("bar", "che", baz=1)
@@ -107,42 +108,48 @@ class ControllerDecorator(FuncDecorator):
 
                 definition(*("bar", "che"), **{"baz": 1})
 
-
         :param *args: these are the positional arguments passed into the
             decorator __init__ method
-        :param **kwargs: these are the named arguments passed into the decorator
-            __init__ method
+        :param **kwargs: these are the named arguments passed into the
+            decorator __init__ method
         """
         self.definition_args = args
         self.definition_kwargs = kwargs
 
-    async def handle_handle(self, controller, controller_args, controller_kwargs):
-        """Internal method for this class, this handles calling
-        .handle_kwargs() and .handle() for this decorator
-
-        handles normalizing the passed in values from the decorator using
-        .handle_kwargs() and then passes them to .handle()
-        """
+    async def get_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs,
+    ) -> tuple[tuple[Iterable, Mapping], tuple[Iterable, Mapping]]:
         try:
-            handle_kwargs = await self.handle_kwargs(
-                controller=controller,
-                controller_args=controller_args,
-                controller_kwargs=controller_kwargs
+            decorator_params = await self.get_decorator_params(
+                controller,
+                method_args,
+                method_kwargs,
             )
 
-            ret = self.handle(**handle_kwargs)
-            while inspect.iscoroutine(ret):
-                ret = await ret
+        except Exception as e:
+            await self.handle_decorator_error(controller, e)
 
-            if ret is not None and not ret:
-                raise ValueError(
-                    "{} check failed".format(self.__class__.__name__)
-                )
+        try:
+            method_params = await self.get_method_params(
+                controller,
+                method_args,
+                method_kwargs,
+            )
 
         except Exception as e:
-            return await self.handle_handle_error(controller, e)
+            await self.handle_method_error(controller, e)
 
-    async def handle_kwargs(self, controller, controller_args, controller_kwargs):
+        return decorator_params, method_params
+
+    async def get_decorator_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs,
+    ) -> tuple[Iterable, Mapping]:
         """Returns the **kwargs part that will be passed into the .handle()
         method
 
@@ -153,73 +160,14 @@ class ControllerDecorator(FuncDecorator):
             passed to func
         :returns: dict, this will be passed to .handle() as **kwargs
         """
-        return {
-            "controller": controller,
-            "controller_args": controller_args,
-            "controller_kwargs": controller_kwargs,
-        }
+        return [controller, *method_args], method_kwargs
 
-    async def handle(self, *args, **kwargs):
-        """The meat of the decorator, this is where all the functionality
-        should go in the child class, this is meant to be extended in
-        decorators that want to check something and interrupt the request if
-        some condition fails
-
-        if this raises an error it will be passed to .handle_error()
-
-        :param **kwargs: dict, whatever returned from
-            .normalize_handle_kwargs()
-        :returns: bool, if this method returns False then it will cause a
-            ValueError to be raised signalling the input failed this decorator,
-            if this returns None then it's return value is ignored
-        """
-        return True
-
-    async def handle_controller(self, func, controller, controller_args, controller_kwargs):
-        """Internal method that handles actually runnning the controller
-        function and returns whatever the function returned
-
-        :param func: callable, the controller method
-        :param controller: Controller, the controller instance
-        :param controller_args: list|tuple, the positional arguments that will
-            be passed to func
-        :param controller_kwargs: dict, the keyword arguments that will be
-            passed to func
-        :returns: Any, whatever the func returns
-        """
-        try:
-            params = await self.get_controller_params(
-                controller,
-                *controller_args,
-                **controller_kwargs
-            )
-
-            if params is not None:
-                controller_args = params[0]
-                controller_kwargs = params[1]
-
-            body = func(
-                controller,
-                *controller_args,
-                **controller_kwargs
-            )
-            while inspect.iscoroutine(body):
-                body = await body
-
-            cbody = await self.get_response_body(
-                controller,
-                body,
-            )
-
-            if cbody is not None:
-                body = cbody
-
-            return body
-
-        except Exception as e:
-            return await self.handle_controller_error(controller, e)
-
-    async def get_controller_params(self, controller, *controller_args, **controller_kwargs):
+    async def get_method_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs,
+    ) -> tuple[Iterable, Mapping]:
         """This is called right before the controller method is called, this is
         for decorators that want to normalize the controller method request in
         some way
@@ -241,7 +189,156 @@ class ControllerDecorator(FuncDecorator):
             returned then no change to the controller args and kwargs will be
             made
         """
-        return controller_args, controller_kwargs
+        return method_args, method_kwargs
+
+    async def handle_decorator(
+        self,
+        controller,
+        decorator_args,
+        decorator_kwargs
+    ):
+        """Internal method for this class, this handles calling
+        .handle_kwargs() and .handle() for this decorator
+
+        handles normalizing the passed in values from the decorator using
+        .handle_kwargs() and then passes them to .handle()
+        """
+        try:
+            ret = self.handle(*decorator_args, **decorator_kwargs)
+            while inspect.iscoroutine(ret):
+                ret = await ret
+
+            if ret is not None and not ret:
+                raise ValueError(
+                    "{} check failed".format(self.__class__.__name__)
+                )
+
+        except Exception as e:
+            await self.handle_decorator_error(controller, e)
+
+#     async def handle_handle(self, controller, decorator_args, decorator_kwargs):
+#         """Internal method for this class, this handles calling
+#         .handle_kwargs() and .handle() for this decorator
+# 
+#         handles normalizing the passed in values from the decorator using
+#         .handle_kwargs() and then passes them to .handle()
+#         """
+#         try:
+#             handle_kwargs = await self.handle_kwargs(
+#                 controller=controller,
+#                 controller_args=controller_args,
+#                 controller_kwargs=controller_kwargs
+#             )
+# 
+#             ret = self.handle(**handle_kwargs)
+#             while inspect.iscoroutine(ret):
+#                 ret = await ret
+# 
+#             if ret is not None and not ret:
+#                 raise ValueError(
+#                     "{} check failed".format(self.__class__.__name__)
+#                 )
+# 
+#         except Exception as e:
+#             return await self.handle_handle_error(controller, e)
+
+    async def handle(self, *args, **kwargs):
+        """The meat of the decorator, this is where all the functionality
+        should go in the child class, this is meant to be extended in
+        decorators that want to check something and interrupt the request if
+        some condition fails
+
+        if this raises an error it will be passed to .handle_error()
+
+        :param **kwargs: dict, whatever returned from
+            .normalize_handle_kwargs()
+        :returns: bool, if this method returns False then it will cause a
+            ValueError to be raised signalling the input failed this decorator,
+            if this returns None then it's return value is ignored
+        """
+        return True
+
+    async def handle_method(
+        self,
+        method,
+        controller,
+        method_args,
+        method_kwargs
+    ):
+        """Internal method that handles actually runnning the controller
+        function and returns whatever the function returned
+
+        :param func: callable, the controller method
+        :param controller: Controller, the controller instance
+        :param controller_args: list|tuple, the positional arguments that will
+            be passed to func
+        :param controller_kwargs: dict, the keyword arguments that will be
+            passed to func
+        :returns: Any, whatever the func returns
+        """
+        try:
+            body = method(controller, *method_args, **method_kwargs)
+            while inspect.iscoroutine(body):
+                body = await body
+
+            body = await self.get_response_body(controller, body)
+
+        except Exception as e:
+            await self.handle_method_error(controller, e)
+
+        return body
+
+#     async def handle_response(self, controller, body):
+#         body = await self.get_response_body(controller, body)
+#         while inspect.iscoroutine(body):
+#             body = await body
+# 
+#         return body
+
+
+#     async def handle_controller(self, func, controller, controller_args, controller_kwargs):
+#         """Internal method that handles actually runnning the controller
+#         function and returns whatever the function returned
+# 
+#         :param func: callable, the controller method
+#         :param controller: Controller, the controller instance
+#         :param controller_args: list|tuple, the positional arguments that will
+#             be passed to func
+#         :param controller_kwargs: dict, the keyword arguments that will be
+#             passed to func
+#         :returns: Any, whatever the func returns
+#         """
+#         try:
+#             params = await self.get_controller_params(
+#                 controller,
+#                 *controller_args,
+#                 **controller_kwargs
+#             )
+# 
+#             if params is not None:
+#                 controller_args = params[0]
+#                 controller_kwargs = params[1]
+# 
+#             body = func(
+#                 controller,
+#                 *controller_args,
+#                 **controller_kwargs
+#             )
+#             while inspect.iscoroutine(body):
+#                 body = await body
+# 
+#             cbody = await self.get_response_body(
+#                 controller,
+#                 body,
+#             )
+# 
+#             if cbody is not None:
+#                 body = cbody
+# 
+#             return body
+# 
+#         except Exception as e:
+#             return await self.handle_controller_error(controller, e)
 
     async def get_response_body(self, controller, body):
         """This is called right after the controller method is called, this is
@@ -258,27 +355,27 @@ class ControllerDecorator(FuncDecorator):
         """
         return body
 
-    async def handle_handle_error(self, controller, e):
-        return await self.handle_error(controller, e)
-
-    async def handle_controller_error(self, controller, e):
-        return await self.handle_error(controller, e)
-
-    async def handle_error(self, controller, e):
-        """Any error the class isn't sure how to categorize will go through
-        this method
-
-        overriding this method allows child classes to customize responses
-        based on certain encountered errors
-
-        :param controller: the controller instance that contains the method
-        that raised e
-        :param e: the raised error
-        """
-        if not isinstance(e, CallError):
-            logger.warning(e)
-
+    async def handle_decorator_error(self, controller, e):
         raise e
+
+    async def handle_method_error(self, controller, e):
+        raise e
+
+#     async def handle_error(self, controller, e):
+#         """Any error the class isn't sure how to categorize will go through
+#         this method
+# 
+#         overriding this method allows child classes to customize responses
+#         based on certain encountered errors
+# 
+#         :param controller: the controller instance that contains the method
+#         that raised e
+#         :param e: the raised error
+#         """
+#         if not isinstance(e, CallError):
+#             logger.warning(e)
+# 
+#         raise e
 
 
 class BackendDecorator(ControllerDecorator):

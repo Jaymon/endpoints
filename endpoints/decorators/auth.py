@@ -3,6 +3,7 @@ import inspect
 
 from ..exception import CallError, AccessDenied
 from ..utils import String
+from ..compat import *
 from .base import ControllerDecorator
 
 
@@ -17,7 +18,7 @@ class AuthDecorator(ControllerDecorator):
     :example:
         # create a token auth decorator
         from endpoints import Controller
-        from endpoints.decorators.auth import auth
+        from endpoints.decorators.auth import AuthDecorator
 
         def target(controller, *args, **kwargs):
             if controller.request.get_bearer_token() != "foo":
@@ -53,9 +54,9 @@ class AuthDecorator(ControllerDecorator):
         else:
             raise NotImplementedError()
 
-    async def handle_handle_error(self, controller, e):
+    async def handle_decorator_error(self, controller, e):
         if isinstance(e, CallError):
-            await super().handle_error(controller, e)
+            raise e
 
         elif isinstance(e, NotImplementedError):
             raise CallError(
@@ -91,7 +92,12 @@ class auth_basic(AuthDecorator):
     """
     scheme = AccessDenied.SCHEME_BASIC
 
-    async def handle_kwargs(self, controller, **kwargs):
+    async def get_decorator_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs
+    ) -> tuple[Iterable, Mapping]:
         username, password = controller.request.get_auth_basic()
 
         if not username:
@@ -100,11 +106,26 @@ class auth_basic(AuthDecorator):
         if not password:
             raise ValueError("password is required")
 
-        return {
+        return [], {
             "controller": controller,
             "username": username,
             "password": password,
         }
+
+#     async def handle_kwargs(self, controller, **kwargs):
+#         username, password = controller.request.get_auth_basic()
+# 
+#         if not username:
+#             raise ValueError("username is required")
+# 
+#         if not password:
+#             raise ValueError("password is required")
+# 
+#         return {
+#             "controller": controller,
+#             "username": username,
+#             "password": password,
+#         }
 
 
 class auth_bearer(AuthDecorator):
@@ -126,13 +147,28 @@ class auth_bearer(AuthDecorator):
     """
     scheme = AccessDenied.SCHEME_BEARER
 
-    async def handle_kwargs(self, controller, **kwargs):
+    async def get_decorator_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs
+    ) -> tuple[Iterable, Mapping]:
         token = controller.request.get_auth_bearer()
         if not token:
             raise ValueError("Authorization bearer token is required")
 
-        return {
+        return [], {
             "controller": controller,
             "token": token,
         }
+
+#     async def handle_kwargs(self, controller, **kwargs):
+#         token = controller.request.get_auth_bearer()
+#         if not token:
+#             raise ValueError("Authorization bearer token is required")
+# 
+#         return {
+#             "controller": controller,
+#             "token": token,
+#         }
 

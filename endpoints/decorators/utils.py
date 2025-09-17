@@ -59,10 +59,10 @@ class code_error(ControllerDecorator):
         self.code = code
         self.exc_classes = exc_classes
 
-    async def handle_error(self, controller, e):
+    async def handle_method_error(self, controller, e):
         if isinstance(e, self.exc_classes):
             raise CallError(self.code, e) from e
 
         else:
-            return await super().handle_error(controller, e)
+            return await super().handle_method_error(controller, e)
 

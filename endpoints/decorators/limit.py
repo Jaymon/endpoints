@@ -109,19 +109,38 @@ class RateLimitDecorator(BackendDecorator):
         """
         raise NotImplementedError()
 
-    async def handle_kwargs(self, controller, **kwargs):
+    async def get_decorator_params(
+        self,
+        controller,
+        method_args,
+        method_kwargs
+    ) -> tuple[Iterable, Mapping]:
         """These arguments will be passed to the .handle() method"""
         key = await self.normalize_key(
             controller,
-            **kwargs
+            **method_kwargs
         )
 
-        return {
+        return [], {
             "controller": controller,
             "key": key,
             "limit": self.limit,
             "ttl": self.ttl,
         }
+
+#     async def handle_kwargs(self, controller, **kwargs):
+#         """These arguments will be passed to the .handle() method"""
+#         key = await self.normalize_key(
+#             controller,
+#             **kwargs
+#         )
+# 
+#         return {
+#             "controller": controller,
+#             "key": key,
+#             "limit": self.limit,
+#             "ttl": self.ttl,
+#         }
 
     async def handle(self, controller, key, limit, ttl):
         """this will only run the request if the key has a value, if you want
@@ -149,7 +168,7 @@ class RateLimitDecorator(BackendDecorator):
 
         return ret
 
-    async def handle_handle_error(self, controller, e):
+    async def handle_decorator_error(self, controller, e):
         """all exceptions should generate 429 responses"""
         if isinstance(e, CallError):
             await super().handle_error(controller, e)
