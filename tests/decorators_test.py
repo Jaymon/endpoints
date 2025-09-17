@@ -15,23 +15,19 @@ from endpoints.exception import (
 from endpoints.utils import Base64, String
 from endpoints.decorators.base import (
     ControllerDecorator,
-    BackendDecorator,
+#     BackendDecorator,
 )
 from endpoints.decorators.limit import (
     RateLimitDecorator,
-    ratelimit_ip,
-    ratelimit_param,
-    ratelimit_param_ip,
 )
 from endpoints.decorators.auth import (
     AuthDecorator,
     auth_basic,
     auth_bearer,
 )
-from endpoints.decorators.utils import (
+from endpoints.decorators.call import (
     httpcache,
     nohttpcache,
-    code_error,
 )
 
 from . import (
@@ -130,38 +126,6 @@ class ControllerDecoratorTest(TestCase):
         self.assertEqual(10, count)
 
 
-class BackendDecoratorTest(TestCase):
-    async def test_async_handle(self):
-        class Backend(object):
-            async def handle(self, *args, **kwargs):
-                return True
-
-        class Dec(BackendDecorator):
-            backend_class = Backend
-
-        c = self.create_controller()
-        @Dec()
-        async def func(self):
-            return 1
-
-        self.assertEqual(1, await func(c))
-
-    async def test_sync_handle(self):
-        class Backend(object):
-            def handle(self, *args, **kwargs):
-                return True
-
-        class Dec(BackendDecorator):
-            backend_class = Backend
-
-        c = self.create_controller()
-        @Dec()
-        async def func(self):
-            return 1
-
-        self.assertEqual(1, await func(c))
-
-
 class RateLimitTest(TestCase):
     def rollback_now(self, method, ttl):
         """Rolls back the "date" time on the decorator so expiration can be
@@ -171,25 +135,21 @@ class RateLimitTest(TestCase):
         :param ttl: int, the amount to rollback, so if you passed in 1 then
             it would rollback 1 second
         """
-        for call in method.__orig_decorator__.backend._calls.values():
+        for call in method.__orig_decorator__._calls.values():
             call["date"] -= ttl
 
-    async def test_throttle(self):
+    async def test_lifecycle(self):
+        class limit(RateLimitDecorator):
+            async def get_key(self, controller, method_args, method_kwargs):
+                return "bar"
+
         class MockObject(object):
-            @ratelimit_ip(limit=3, ttl=1)
-            def foo(self):
+            @limit(limit=3, ttl=1)
+            async def foo(self):
                 return 1
 
-            @ratelimit_ip(limit=10, ttl=1)
-            def bar(self):
-                return 2
-
-
-        r_foo = Request()
-        r_foo.set_header("X_FORWARDED_FOR", "276.0.0.1")
-        r_foo.path = "/foo"
         c = MockObject()
-        c.request = r_foo
+        #c.request = Request()
 
         for x in range(3):
             r = await c.foo()
@@ -198,20 +158,6 @@ class RateLimitTest(TestCase):
         for x in range(2):
             with self.assertRaises(CallError):
                 await c.foo()
-
-        # make sure another path isn't messed with by foo
-        r_bar = Request()
-        r_bar.set_header("X_FORWARDED_FOR", "276.0.0.1")
-        r_bar.path = "/bar"
-        c.request = r_bar
-        for x in range(10):
-            r = await c.bar()
-            self.assertEqual(2, r)
-
-        with self.assertRaises(CallError):
-            await c.bar()
-
-        c.request = r_foo
 
         self.rollback_now(c.foo, 1)
 
@@ -222,163 +168,6 @@ class RateLimitTest(TestCase):
         for x in range(2):
             with self.assertRaises(CallError):
                 await c.foo()
-
-    async def test_ratelimit_ip(self):
-        class MockObject(object):
-            @ratelimit_ip(limit=3, ttl=1)
-            def foo(self):
-                return 1
-
-        o = MockObject()
-        o.request = Request()
-        o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
-        o.request.path = "/fooip"
-
-        for _ in range(3):
-            await o.foo()
-
-        with self.assertRaises(CallError) as cm:
-            await o.foo()
-        self.assertEqual(429, cm.exception.code)
-
-        # make sure another request gets through just fine
-        orig_r = o.request
-        o.request = Request()
-        o.request.path = "/fooip"
-        o.request.set_header("X_FORWARDED_FOR", "100.1.1.2")
-        await o.foo()
-        o.request = orig_r
-
-        self.rollback_now(o.foo, 1)
-        o.request.set_header("X_FORWARDED_FOR", "100.1.1.1")
-        r = await o.foo()
-        self.assertEqual(1, r)
-
-    async def test_ratelimit_param_only(self):
-        class MockObject(object):
-            @ratelimit_param("bar", limit=2, ttl=1)
-            def foo(self, **kwargs):
-                return 1
-
-        o = MockObject()
-        o.request = Request()
-        self.set_bearer_auth_header(o.request, "footoken")
-        o.request.path = "/fooparam"
-
-        await o.foo(bar="che")
-        await o.foo(bar="che")
-
-        with self.assertRaises(CallError) as cm:
-            await o.foo(bar="che")
-        self.assertEqual(429, cm.exception.code)
-
-        # make sure bar not existing is not a problem
-        for x in range(5):
-            self.assertEqual(1, await o.foo())
-
-        # just make sure something else goes through just fine
-        orig_r = o.request
-        o.request = Request()
-        o.request.path = "/fooparam"
-        await o.foo(bar="baz")
-        o.request = orig_r
-
-        self.rollback_now(o.foo, 1)
-        r = await o.foo(bar="che")
-        self.assertEqual(1, r)
-
-    async def test_ratelimit_param_ip(self):
-        def create_request(ip):
-            r = Request()
-            r.path = "/fooparam"
-            r.set_header("X_FORWARDED_FOR", ip)
-            self.set_bearer_auth_header(r, "footoken")
-            return r
-
-        class MockObject(object):
-            @ratelimit_param_ip("bar", limit=1, ttl=1)
-            def foo(self, **kwargs):
-                return 1
-
-        o = MockObject()
-        o.request = create_request("200.1.1.1")
-        await o.foo(bar="che")
-
-        with self.assertRaises(CallError) as cm:
-            await o.foo(bar="che")
-        self.assertEqual(429, cm.exception.code)
-
-        # now make sure another ip address can get through
-        o.request = create_request("200.1.1.2")
-        await o.foo(bar="che")
-
-        with self.assertRaises(CallError) as cm:
-            await o.foo(bar="che")
-        self.assertEqual(429, cm.exception.code)
-
-        # now make sure another value makes it through
-        await o.foo(bar="baz")
-        with self.assertRaises(CallError):
-            await o.foo(bar="baz")
-
-        # make sure bar not existing is not a problem
-        for x in range(5):
-            self.assertEqual(1, await o.foo())
-
-    async def test_backend(self):
-        class Backend(object):
-            def handle(self, request, key, limit, ttl):
-                return False
-
-        with testdata.environment(RateLimitDecorator, backend_class=Backend):
-            class MockObject(object):
-                request = Request()
-
-                @ratelimit_ip()
-                def rl_ip(self):
-                    return 2
-
-                @ratelimit_param_ip("bar")
-                def rl_param_ip(self, **kwargs):
-                    return 3
-
-                @ratelimit_param("bar")
-                def rl_param(self, **kwargs):
-                    return 4
-
-            o = MockObject()
-
-            with self.assertRaises(CallError):
-                await o.rl_param_ip(bar=1)
-
-            with self.assertRaises(CallError):
-                await o.rl_ip()
-
-            with self.assertRaises(CallError):
-                await o.rl_param(bar=1)
-
-    async def test_async(self):
-        @ratelimit_ip()
-        async def rl_ip(self):
-            return 2
-
-        @ratelimit_param_ip("bar")
-        async def rl_param_ip(self, **kwargs):
-            return 3
-
-        @ratelimit_param("bar")
-        async def rl_param(self, **kwargs):
-            return 4
-
-        o = self.create_controller(
-            rl_ip,
-            rl_param_ip,
-            rl_param,
-        )
-
-        self.assertEqual(2, await o.rl_ip())
-        self.assertEqual(3, await o.rl_param_ip(bar=1))
-        self.assertEqual(4, await o.rl_param(bar=1))
 
 
 class AuthDecoratorTest(TestCase):
@@ -605,41 +394,6 @@ class CacheTest(TestCase):
 
         h = c.response.get_header("Pragma")
         self.assertTrue("no-cache" in h)
-
-
-class CodeErrorTest(TestCase):
-    async def test_code_error(self):
-        c = self.create_controller()
-
-        @code_error(413, IOError)
-        async def func(self):
-            raise IOError()
-
-        with self.assertRaises(CallError) as e:
-            await func(c)
-            self.assertEqual(413, e.code)
-
-    def test_raise(self):
-        c = self.create_server([
-            "class Foo(Controller):",
-            "    @code_error(330, ValueError, IndexError)",
-            "    def GET(self, error_type, /):",
-            "        if error_type.startswith('value'):",
-            "            raise ValueError()",
-            "        elif error_type.startswith('index'):",
-            "            raise IndexError()",
-            "        else:",
-            "            raise RuntimeError()",
-        ])
-
-        res = c.handle("/foo/value")
-        self.assertEqual(330, res.code)
-
-        res = c.handle("/foo/index")
-        self.assertEqual(330, res.code)
-
-        res = c.handle("/foo/another")
-        self.assertEqual(500, res.code)
 
 
 class VersionTest(TestCase):

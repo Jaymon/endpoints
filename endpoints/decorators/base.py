@@ -216,32 +216,6 @@ class ControllerDecorator(FuncDecorator):
         except Exception as e:
             await self.handle_decorator_error(controller, e)
 
-#     async def handle_handle(self, controller, decorator_args, decorator_kwargs):
-#         """Internal method for this class, this handles calling
-#         .handle_kwargs() and .handle() for this decorator
-# 
-#         handles normalizing the passed in values from the decorator using
-#         .handle_kwargs() and then passes them to .handle()
-#         """
-#         try:
-#             handle_kwargs = await self.handle_kwargs(
-#                 controller=controller,
-#                 controller_args=controller_args,
-#                 controller_kwargs=controller_kwargs
-#             )
-# 
-#             ret = self.handle(**handle_kwargs)
-#             while inspect.iscoroutine(ret):
-#                 ret = await ret
-# 
-#             if ret is not None and not ret:
-#                 raise ValueError(
-#                     "{} check failed".format(self.__class__.__name__)
-#                 )
-# 
-#         except Exception as e:
-#             return await self.handle_handle_error(controller, e)
-
     async def handle(self, *args, **kwargs):
         """The meat of the decorator, this is where all the functionality
         should go in the child class, this is meant to be extended in
@@ -288,58 +262,6 @@ class ControllerDecorator(FuncDecorator):
 
         return body
 
-#     async def handle_response(self, controller, body):
-#         body = await self.get_response_body(controller, body)
-#         while inspect.iscoroutine(body):
-#             body = await body
-# 
-#         return body
-
-
-#     async def handle_controller(self, func, controller, controller_args, controller_kwargs):
-#         """Internal method that handles actually runnning the controller
-#         function and returns whatever the function returned
-# 
-#         :param func: callable, the controller method
-#         :param controller: Controller, the controller instance
-#         :param controller_args: list|tuple, the positional arguments that will
-#             be passed to func
-#         :param controller_kwargs: dict, the keyword arguments that will be
-#             passed to func
-#         :returns: Any, whatever the func returns
-#         """
-#         try:
-#             params = await self.get_controller_params(
-#                 controller,
-#                 *controller_args,
-#                 **controller_kwargs
-#             )
-# 
-#             if params is not None:
-#                 controller_args = params[0]
-#                 controller_kwargs = params[1]
-# 
-#             body = func(
-#                 controller,
-#                 *controller_args,
-#                 **controller_kwargs
-#             )
-#             while inspect.iscoroutine(body):
-#                 body = await body
-# 
-#             cbody = await self.get_response_body(
-#                 controller,
-#                 body,
-#             )
-# 
-#             if cbody is not None:
-#                 body = cbody
-# 
-#             return body
-# 
-#         except Exception as e:
-#             return await self.handle_controller_error(controller, e)
-
     async def get_response_body(self, controller, body):
         """This is called right after the controller method is called, this is
         for decorators that want to normalize the controller method return
@@ -360,60 +282,4 @@ class ControllerDecorator(FuncDecorator):
 
     async def handle_method_error(self, controller, e):
         raise e
-
-#     async def handle_error(self, controller, e):
-#         """Any error the class isn't sure how to categorize will go through
-#         this method
-# 
-#         overriding this method allows child classes to customize responses
-#         based on certain encountered errors
-# 
-#         :param controller: the controller instance that contains the method
-#         that raised e
-#         :param e: the raised error
-#         """
-#         if not isinstance(e, CallError):
-#             logger.warning(e)
-# 
-#         raise e
-
-
-class BackendDecorator(ControllerDecorator):
-    """Create decorators that depend on a backend
-
-    You can set the .backend_class class variable on a child decorator or you
-    could also pass `backend_class` to the decorator to be able to use your
-    backend, .create_backend is where the backend_class is found and an
-    instance is created
-    """
-    backend_class = None
-
-    async def get_backend(self, *args, **kwargs):
-        backend = getattr(self, "backend", None)
-        if backend is None:
-            self.backend = backend = await self.create_backend(*args, **kwargs)
-
-        return backend
-
-    async def create_backend(self, *args, **kwargs):
-        backend = kwargs.pop("backend", None)
-
-        if not backend:
-            backend_class = kwargs.pop("backend_class", self.backend_class)
-
-            if not backend_class:
-                raise ValueError(
-                    "You are using a BackendDecorator with no backend class"
-                )
-
-            backend = backend_class(*args, **kwargs)
-
-        return backend
-
-    async def handle(self, *args, **kwargs):
-        backend = await self.get_backend(
-            *self.definition_args,
-            **self.definition_kwargs,
-        )
-        return backend.handle(*args, **kwargs)
 

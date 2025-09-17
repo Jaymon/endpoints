@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 
 from ..compat import *
-from ..exception import VersionError
+from ..exception import VersionError, CallError
 from .base import ControllerDecorator
 
 
@@ -51,4 +51,39 @@ class version(ControllerDecorator):
             code=self.error_code,
             msg=e_msg
         ) from e
+
+
+class httpcache(ControllerDecorator):
+    """
+    sets the cache headers so the response can be cached by the client
+
+    link -- https://developers.google.com/web/fundamentals/performance/optimizing-content-efficiency/http-caching
+
+    ttl -- integer -- how many seconds to have the client cache the request
+    """
+    def definition(self, ttl, **kwargs):
+        self.ttl = int(ttl)
+        super().definition(**kwargs)
+
+    async def handle(self, controller, **kwargs):
+        controller.response.add_headers({
+            "Cache-Control": "max-age={}".format(self.ttl),
+        })
+        # TODO -- figure out how to set ETag
+        #if not self.response.has_header('ETag')
+
+
+class nohttpcache(ControllerDecorator):
+    """
+    sets all the no cache headers so the response won't be cached by the client
+
+    https://devcenter.heroku.com/articles/increasing-application-performance-with-http-cache-headers#cache-prevention
+    """
+    async def handle(self, controller, **kwargs):
+        controller.response.add_headers({
+            "Cache-Control": "no-cache, no-store, must-revalidate",
+            "Pragma": "no-cache", 
+            "Expires": "0"
+        })
+
 
