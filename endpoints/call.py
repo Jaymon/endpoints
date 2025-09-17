@@ -187,7 +187,19 @@ class Router(object):
 
 
 class ETL(object):
-    """Contains Extract, Transform, and Load methods that Controller uses"""
+    """Contains Extract, Transform, and Load methods that Controller uses
+
+    These are in a separate parent class just for clarity when looking at
+    the code
+
+    An Application receives the request and creates Request, Response, and
+    Controller instances. The Controller instance then takes over the
+    request and converts the request body into something the Controller's
+    request/http methods can understand, using the decode class methods
+    defined in this class. Then it takes the return value and uses the encode
+    methods defined in this class to translate it into something the
+    Application can send back down to the client
+    """
     @classmethod
     def load_json(cls, body, **kwargs):
         """Internal method. Used by .decode_json and
@@ -381,13 +393,28 @@ class Controller(ETL):
     All your controllers MUST extend this base class, since it ensures a proper
     interface :)
 
+    Controller's have a specific lifecycle to answer a request:
+
+        1. `.handle`
+            a. `.handle_cors`
+            b. `.handle_request`
+            c. `.get_request_params`
+            d. called for each matching request/HTTP method (eg, GET_1, GET_2)
+                1. `.get_method_params`
+                2. matching request method
+            e. `.handle_response`
+                1. `.get_response_media_type`
+                2. `.get_response_body`
+            f. `.handle_error` (optional)
+        2. `.__aiter__`
+
     To activate a new endpoint, just add a module on your PYTHONPATH
     controller_prefix that has a class that extends this class, and then
     defines at least one http method (like GET or POST), so if you wanted to
     create the endpoint `/foo/bar` (with controller_prefix `che`), you would
     just need to:
 
-    :Example:
+    :example:
         # che/foo.py
         import endpoints
 
@@ -395,18 +422,18 @@ class Controller(ETL):
             def GET(self, *args, **kwargs):
                 return "you just made a GET request to /foo/bar"
 
-    As you support more methods, like POST and PUT, you can just add POST() and
-    PUT() methods to your `Bar` class and `Bar` will support those http
+    As you support more methods, like POST and PUT, you can just add POST()
+    and PUT() methods to your `Bar` class and `Bar` will support those http
     methods.
 
     If you would like to create a base controller that other controllers will
     extend and don't want that controller to be picked up by reflection, just
     start the classname with an underscore (eg `_Foo`) or end it with a
-    "Controller" suffix (eg, `FooController`). See .is_private docblock for
-    examples.
+    "Controller" suffix (eg, `FooController`). See the `.is_private` docblock
+    for examples.
 
     The default routing converts underscores and camelcase names to be
-    separated by dashes. See .get_name docblock for examples.
+    separated by dashes. See the `.get_name` docblock for examples.
     """
     request = None
     """holds a Request() instance"""
@@ -747,17 +774,12 @@ class Controller(ETL):
         return method_args, method_kwargs
 
     async def handle_request(self):
+        """Internal method. Called by `.handle` to get the request ready
+        to be consumed by the controller's request/http methods."""
         body_positionals = []
         body_keywords = {}
 
         request = self.request
-
-#         leftover_path_args = request.controller_info.get(
-#             "leftover_path_args",
-#             [],
-#         )
-#         if leftover_path_args:
-#             request.path_positionals = leftover_path_args
 
         if request.query:
             request.query_keywords = self.decode_urlencoded(
@@ -1021,6 +1043,9 @@ class Controller(ETL):
         await self.handle_response()
 
     async def handle_response(self):
+        """Internal method. Called from `.handle` on success or
+        `.handle_error` on failure. This gets the response ready for
+        Application to return it back to the client"""
         request = self.request
         response = self.response
 
@@ -1111,6 +1136,8 @@ class Controller(ETL):
         return body
 
     async def __aiter__(self) -> AsyncGenerator[bytes]:
+        """To return a response to the client the Controller instance is
+        iterated and the body chunks are sent to the client"""
         request = self.request
         response = self.response
 

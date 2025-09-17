@@ -14,9 +14,12 @@ logger = logging.getLogger(__name__)
 
 class RateLimitDecorator(ControllerDecorator):
     """Base decorator providing common functionality to rate limit a given
-    controller method
+    controller method.
+
+    Child decorators should override `.get_key` and/or `.is_valid` to provide
+    custom functionality
     """
-    def definition(self, limit=0, ttl=0, path_in_key=True, *args, **kwargs):
+    def definition(self, limit=0, ttl=0, *args, **kwargs):
         """The definition of the decorator, this is called from the decorator's
         __init__ method and is responsible for validating the passed in
         arguments for the decorator
@@ -24,29 +27,28 @@ class RateLimitDecorator(ControllerDecorator):
         :param limit: int, max requests that can be received in ttl
         :param ttl: int, how many seconds the request should be throttled
             (eg, 3600 = 1 hour)
-        :param path_in_key: bool, True if you would like to include the request
-            path in the key, if False then the path will not be included so the
-            paths will be more global
         """
         self.limit = int(limit)
         self.ttl = int(ttl)
-        self.path_in_key = path_in_key
 
         super().definition(*args, **kwargs)
 
     async def get_key(self, controller, method_args, method_kwargs) -> str:
-        """Decide what key this request should have
-
-        :example:
-            # return ip.path
-            return "{}.{}".format(request.ip, request.path)
+        """Decide what key this request should have to decide about rate
+        limiting
 
         :param controller: Controller, the controller handling the request
-        :returns: int, the desired ttl for the request
+        :param method_args: the positionals that will be passed to the
+            wrapped controller method
+        :param method_kwargs: the keywords that will be passed to the
+            wrapped controller method
+        :returns: the desired key
         """
         raise NotImplementedError()
 
-    async def is_valid(self, controller, key, limit, ttl):
+    async def is_valid(self, controller, key, limit, ttl) -> bool:
+        """This returns True if the request is valid, False if the request
+        isn't valid, any errors raised are also considered failures"""
         now = Datetime()
         count = 1
 
@@ -98,12 +100,11 @@ class RateLimitDecorator(ControllerDecorator):
 
     async def handle(self, controller, key, limit, ttl):
         """this will only run the request if the key has a value, if you want
-        to fail if the key doesn't have a value, then normalize_key() should
+        to fail if the key doesn't have a value, then `.get_key` should
         raise an exception
 
-        :param request: Request, the request instance
         :param key: string, the unique key for the endpoint, this is generated
-            using self.normalize_key, so override that method to customize the
+            using `.get_key`, so override that method to customize the
             key
         :param limit: int, max requests can be received in ttl
         :param ttl: int, how many seconds the request should be throttled

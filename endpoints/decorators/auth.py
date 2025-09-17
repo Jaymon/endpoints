@@ -112,27 +112,10 @@ class auth_basic(AuthDecorator):
             "password": password,
         }
 
-#     async def handle_kwargs(self, controller, **kwargs):
-#         username, password = controller.request.get_auth_basic()
-# 
-#         if not username:
-#             raise ValueError("username is required")
-# 
-#         if not password:
-#             raise ValueError("password is required")
-# 
-#         return {
-#             "controller": controller,
-#             "username": username,
-#             "password": password,
-#         }
-
-
 class auth_bearer(AuthDecorator):
     """Auth decorator that checks for token in an authorization Bearer header
 
     :example:
-
         # create a token auth decorator
         from endpoints import Controller
         from endpoints.decorators.auth import auth_token
@@ -161,14 +144,4 @@ class auth_bearer(AuthDecorator):
             "controller": controller,
             "token": token,
         }
-
-#     async def handle_kwargs(self, controller, **kwargs):
-#         token = controller.request.get_auth_bearer()
-#         if not token:
-#             raise ValueError("Authorization bearer token is required")
-# 
-#         return {
-#             "controller": controller,
-#             "token": token,
-#         }
 
