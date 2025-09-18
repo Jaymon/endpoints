@@ -705,9 +705,38 @@ class Schema(OpenABC):
         customizing and extending the request schema for child projects"""
         self.reflect_method = reflect_method
 
+        file_params = []
+        body_params = []
+
         for reflect_param in reflect_method.reflect_body_params():
+            if reflect_param.is_file():
+                file_params.append(reflect_param)
+
+            else:
+                body_params.append(reflect_param)
+
+        if file_params:
+            if body_params:
+                # ignore files if there are body params and we're not in a
+                # multipart request
+                if media_range.startswith("multipart/"):
+                    self.set_object_keys()
+                    for reflect_param in file_params:
+                        self.add_param(reflect_param)
+
+            else:
+                self.set_object_keys()
+                for reflect_param in file_params:
+                    self.add_param(reflect_param)
+
+        if body_params:
             self.set_object_keys()
-            self.add_param(reflect_param)
+            for reflect_param in body_params:
+                self.add_param(reflect_param)
+
+#         for reflect_param in reflect_method.reflect_body_params():
+#             self.set_object_keys()
+#             self.add_param(reflect_param)
 
 
 #     def set_request_method(self, reflect_method):
@@ -1120,22 +1149,22 @@ class Header(OpenABC):
     def set_param(self, reflect_param):
         self.reflect_param = reflect_param
 
-        schema = self.create_schema_instance()
-        schema["type"] = "string"
-
-        form_data_schema = self.create_schema_instance()
-        form_data_schema["pattern"] = "^form-data;"
-
-        name_schema = self.create_schema_instance()
-        name_schema["pattern"] = f"name=\"{reflect_param.name}\""
-
-        schema["allOf"] = [
-            form_data_schema,
-            name_schema,
-        ]
-
-        self["schema"] = schema
-        self["required"] = True
+#         schema = self.create_schema_instance()
+#         schema["type"] = "string"
+# 
+#         form_data_schema = self.create_schema_instance()
+#         form_data_schema["pattern"] = "^form-data;"
+# 
+#         name_schema = self.create_schema_instance()
+#         name_schema["pattern"] = f"name=\"{reflect_param.name}\""
+# 
+#         schema["allOf"] = [
+#             form_data_schema,
+#             name_schema,
+#         ]
+# 
+#         self["schema"] = schema
+#         self["required"] = True
 
 
 class Encoding(OpenABC):
@@ -1153,10 +1182,12 @@ class Encoding(OpenABC):
         media_range = reflect_param.flags.get("media_range", None)
         if media_range:
             self["contentType"] = media_range
+
             header = self.create_instance("header_class")
             header.set_param(reflect_param)
-            self.setdefault("headers", {})
-            self["headers"]["Content-Disposition"] = header
+            if header:
+                self.setdefault("headers", {})
+                self["headers"]["Content-Disposition"] = header
 
 
 class MediaType(OpenABC):
@@ -1189,8 +1220,7 @@ class MediaType(OpenABC):
             self["schema"] = schema
 
             for reflect_param in reflect_method.reflect_body_params():
-                if reflect_param.is_file():
-                    self.add_encoding_param(reflect_param)
+                self.add_encoding_param(reflect_param)
 
 
 #         if media_range.startswith("multipart/"):

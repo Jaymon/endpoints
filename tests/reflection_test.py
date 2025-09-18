@@ -1176,21 +1176,23 @@ class OpenapiRequestBodyTest(TestCase):
         self.assertEqual("string", schema["properties"]["foo"]["type"])
         self.assertEqual("binary", schema["properties"]["foo"]["format"])
 
-#     def test_multipart_2(self):
-#         oa = self.create_openapi("""
-#             class Default(Controller):
-#                 def POST(
-#                     self,
-#                     foo: io.BytesIO,
-#                     bar: list[io.BytesIO],
-#                     che: str
-#                 ) -> None:
-#                     return None
-#         """)
-# 
-#         content = oa.paths["/"]["post"]["requestBody"]["content"]
-#         mt = content["multipart/form-data"]
-#         pout.v(mt)
+    def test_multipart_2(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def POST(
+                    self,
+                    bar: str,
+                    foo: io.BytesIO|None = None,
+                ) -> None:
+                    return None
+        """)
+
+        content = oa.paths["/"]["post"]["requestBody"]["content"]
+        for media_range, mt in content.items():
+            if media_range.startswith("multipart/"):
+                self.assertTrue("foo" in mt["schema"]["properties"])
+
+            self.assertTrue("bar" in mt["schema"]["properties"])
 
     def test_multipart_3(self):
         oa = self.create_openapi("""
@@ -1207,10 +1209,9 @@ class OpenapiRequestBodyTest(TestCase):
         mt = content["multipart/form-data"]
         encoding = mt["encoding"]
         self.assertTrue("image/*", encoding["foo"]["contentType"])
-        headers = encoding["foo"]["headers"]
-        for s in headers["Content-Disposition"]["schema"]["allOf"]:
-            #self.assertRegex(s["pattern"], "form-data; name=\"foo\"")
-            self.assertRegex("form-data; name=\"foo\"", s["pattern"])
+#         headers = encoding["foo"]["headers"]
+#         for s in headers["Content-Disposition"]["schema"]["allOf"]:
+#             self.assertRegex("form-data; name=\"foo\"", s["pattern"])
 
 
 class OpenapiResponseTest(TestCase):
