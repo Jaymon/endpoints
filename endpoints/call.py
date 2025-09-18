@@ -1139,38 +1139,69 @@ class CORSMixin(object):
         from endpoints import Controller, CORSMixin
 
         class CORSController(Controller, CORSMixin):
-            # This controller has CORS support
+            # any children of this controller have CORS support
             pass
 
     http://www.w3.org/TR/cors/
     https://developer.mozilla.org/en-US/docs/Web/HTTP/Guides/CORS
     """
     cors = True
-    """Activates CORS support, http://www.w3.org/TR/cors/"""
+    """Activates CORS support"""
 
-    async def handle_request(self):
+    async def handle(self):
         if self.cors:
             await self.handle_cors()
-        return await super().handle_request()
+        return await super().handle()
+
+    async def is_valid_origin(self, origin) -> bool:
+        """Check the origin and decide if it is valid
+
+        :param origin: str, this can be empty or None, so you'll need to
+            handle the empty case if you are overriding this
+        :returns: bool, True if the origin is acceptable, False otherwise
+        """
+        return True
 
     async def handle_cors(self):
         """This will set the headers that are needed for any cors request
-        (OPTIONS or real)
+        (OPTIONS or real) """
+        origin = self.request.get_header('origin')
+        if await self.is_valid_origin(origin):
+            if origin:
+                # your server must read the value of the request's Origin
+                # header and use that value to set Access-Control-Allow-Origin,
+                # and must also set a Vary: Origin header to indicate that some
+                # headers are being set dynamically depending on the origin.
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+                # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+                self.response.set_header('Access-Control-Allow-Origin', origin)
+                self.response.set_header('Vary', "Origin")
 
-        RFC6455 says if the origin indicated is unacceptable to the server,
-        then it SHOULD respond to the WebSocket handshake with a reply
-        containing HTTP 403 Forbidden status code.
-        https://stackoverflow.com/q/28553580/5006
-        """
-        if origin := self.request.get_header("origin"):
-            # your server must read the value of the request's Origin
-            # header and use that value to set Access-Control-Allow-Origin,
-            # and must also set a Vary: Origin header to indicate that some
-            # headers are being set dynamically depending on the origin.
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
-            # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-            self.response.set_header("Access-Control-Allow-Origin", origin)
-            self.response.set_header("Vary", "Origin")
+        else:
+            # RFC6455 - If the origin indicated is unacceptable to the server,
+            # then it SHOULD respond to the WebSocket handshake with a reply
+            # containing HTTP 403 Forbidden status code.
+            # https://stackoverflow.com/q/28553580/5006
+            raise CallError(403)
+
+#     async def handle_cors(self):
+#         """This will set the headers that are needed for any cors request
+#         (OPTIONS or real)
+# 
+#         RFC6455 says if the origin indicated is unacceptable to the server,
+#         then it SHOULD respond to the WebSocket handshake with a reply
+#         containing HTTP 403 Forbidden status code.
+#         https://stackoverflow.com/q/28553580/5006
+#         """
+#         if origin := self.request.get_header("origin"):
+#             # your server must read the value of the request's Origin
+#             # header and use that value to set Access-Control-Allow-Origin,
+#             # and must also set a Vary: Origin header to indicate that some
+#             # headers are being set dynamically depending on the origin.
+#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
+#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
+#             self.response.set_header("Access-Control-Allow-Origin", origin)
+#             self.response.set_header("Vary", "Origin")
 
     async def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
