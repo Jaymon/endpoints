@@ -1088,6 +1088,18 @@ class OpenapiSchemaTest(TestCase):
         for media_type, mt in content.items():
             self.assertEqual(0, len(mt))
 
+#     def test_set_request_method_files(self):
+#         oa = self.create_openapi("""
+#             class Default(Controller):
+#                 def POST(self, f: io.IOBase, bar: str, che: dict[str, str]):
+#                     pass
+#         """)
+# 
+#         content = oa["paths"]["/"]["post"]["requestBody"]["content"]
+#         for mt in content.values():
+#             self.assertTrue("files" in mt["schema"]["properties"])
+#             self.assertTrue("body" in mt["schema"]["properties"])
+
 
 class OpenapiComponentsTest(TestCase):
     def test_get_security_schemes_value(self):
@@ -1149,7 +1161,7 @@ class OpenapiComponentsTest(TestCase):
 
 
 class OpenapiRequestBodyTest(TestCase):
-    def test_file_upload(self):
+    def test_multipart_1(self):
         oa = self.create_openapi("""
             class Default(Controller):
                 def POST(self, foo: io.BytesIO) -> None:
@@ -1159,9 +1171,46 @@ class OpenapiRequestBodyTest(TestCase):
         op = oa.paths["/"]["post"]
         content = op["requestBody"]["content"]
         mt = content["multipart/form-data"]
+
         schema = mt["schema"]
         self.assertEqual("string", schema["properties"]["foo"]["type"])
         self.assertEqual("binary", schema["properties"]["foo"]["format"])
+
+#     def test_multipart_2(self):
+#         oa = self.create_openapi("""
+#             class Default(Controller):
+#                 def POST(
+#                     self,
+#                     foo: io.BytesIO,
+#                     bar: list[io.BytesIO],
+#                     che: str
+#                 ) -> None:
+#                     return None
+#         """)
+# 
+#         content = oa.paths["/"]["post"]["requestBody"]["content"]
+#         mt = content["multipart/form-data"]
+#         pout.v(mt)
+
+    def test_multipart_3(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def POST(
+                    self,
+                    foo: Annotated[io.BytesIO, "image/*"],
+                    che: str
+                ) -> None:
+                    return None
+        """)
+
+        content = oa.paths["/"]["post"]["requestBody"]["content"]
+        mt = content["multipart/form-data"]
+        encoding = mt["encoding"]
+        self.assertTrue("image/*", encoding["foo"]["contentType"])
+        headers = encoding["foo"]["headers"]
+        for s in headers["Content-Disposition"]["schema"]["allOf"]:
+            #self.assertRegex(s["pattern"], "form-data; name=\"foo\"")
+            self.assertRegex("form-data; name=\"foo\"", s["pattern"])
 
 
 class OpenapiResponseTest(TestCase):

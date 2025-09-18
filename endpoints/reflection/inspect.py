@@ -460,7 +460,7 @@ class ReflectMethod(ReflectCallable):
         return media_types
 
     def get_request_media_types(self) -> list[str]:
-        """Get the request response media types for this method
+        """Get the top-level request response media types for this method
 
         Annoyingly, this returns a different format than the other media_types
         methods
@@ -492,6 +492,9 @@ class ReflectMethod(ReflectCallable):
                     media_types.append(default_media_type)
 
         return media_types
+
+    def get_param_media_types(self) -> dict[str, str]:
+        pass
 
     @functools.cache
     def get_method_info(self):
@@ -584,7 +587,11 @@ class ReflectParam(ReflectObject):
             rt = self.create_reflect_type(flags["type"])
             if rt.is_annotated():
                 for metadata in rt.get_metadata():
-                    flags.update(metadata)
+                    if isinstance(metadata, Mapping):
+                        flags.update(metadata)
+
+                    else:
+                        flags["media_range"] = metadata
 
         flags.setdefault("aliases", [])
         flags["aliases"].extend(flags.pop("names", []))

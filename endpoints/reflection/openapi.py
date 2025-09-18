@@ -700,7 +700,7 @@ class Schema(OpenABC):
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
 
-    def set_request_method(self, reflect_method):
+    def set_request_method(self, reflect_method, media_range):
         """This is called from RequestBody and is the main hook into
         customizing and extending the request schema for child projects"""
         self.reflect_method = reflect_method
@@ -709,11 +709,59 @@ class Schema(OpenABC):
             self.set_object_keys()
             self.add_param(reflect_param)
 
-#         for reflect_param in reflect_method.reflect_url_params():
-#             self.set_object_keys()
-#             self.add_param(reflect_param)
 
-    def set_response_method(self, reflect_method):
+#     def set_request_method(self, reflect_method):
+#         """This is called from RequestBody and is the main hook into
+#         customizing and extending the request schema for child projects"""
+#         self.reflect_method = reflect_method
+# 
+#         file_params = []
+#         body_params = []
+# 
+#         for reflect_param in reflect_method.reflect_body_params():
+#             if reflect_param.is_file():
+#                 file_params.append(reflect_param)
+# 
+#             else:
+#                 body_params.append(reflect_param)
+# 
+#         if file_params:
+#             self.set_object_keys()
+# 
+#             schema = self.create_object_schema_instance()
+#             schema.add_file_params(file_params)
+#             self.add_property_schema(
+#                 "files",
+#                 schema,
+#                 required=bool(schema["required"])
+#             )
+# 
+#         if body_params:
+#             self.set_object_keys()
+# 
+#             if file_params:
+#                 schema = self.create_object_schema_instance()
+#                 schema.add_body_params(body_params)
+#                 self.add_property_schema(
+#                     "body",
+#                     schema,
+#                     required=bool(schema["required"])
+#                 )
+# 
+#             else:
+#                 self.add_body_params(body_params)
+# 
+# #             self.set_object_keys()
+# #             self.add_param(reflect_param)
+# 
+# 
+#     def add_file_params(self, reflect_params: list):
+#         self.add_params(reflect_params)
+# 
+#     def add_body_params(self, reflect_params: list):
+#         self.add_params(reflect_params)
+
+    def set_response_method(self, reflect_method, media_range):
         """Called from Response and is the main hook into customizing and
         extending the response schema for child projects"""
         self.reflect_method = reflect_method
@@ -733,7 +781,7 @@ class Schema(OpenABC):
                     self.clear()
                     self["oneOf"] = schemas
 
-    def set_error_method(self, reflect_method):
+    def set_error_method(self, reflect_method, media_range):
         self.reflect_method = reflect_method
 
     def set_schema(self, schema):
@@ -745,6 +793,11 @@ class Schema(OpenABC):
         """Set this schema as this type"""
         self.reflect_type = reflect_type
         self.update(self.get_type_fields(reflect_type))
+
+    def add_params(self, reflect_params: list):
+        self.set_object_keys()
+        for reflect_param in reflect_params:
+            self.add_param(reflect_param)
 
     def add_param(self, reflect_param):
         """Internal method. Children might override .add_param for custom
@@ -1049,39 +1102,141 @@ class Schema(OpenABC):
         return True
 
 
+class Header(OpenABC):
+    """Header is found in `Encoding`
+
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#header-object
+    """
+    _description = Field(str)
+
+    _required = Field(bool)
+
+    _deprecated = Field(bool)
+
+    _schema = Field(Schema)
+
+    _examples = Field(dict[str, Example|Reference])
+
+    def set_param(self, reflect_param):
+        self.reflect_param = reflect_param
+
+        schema = self.create_schema_instance()
+        schema["type"] = "string"
+
+        form_data_schema = self.create_schema_instance()
+        form_data_schema["pattern"] = "^form-data;"
+
+        name_schema = self.create_schema_instance()
+        name_schema["pattern"] = f"name=\"{reflect_param.name}\""
+
+        schema["allOf"] = [
+            form_data_schema,
+            name_schema,
+        ]
+
+        self["schema"] = schema
+        self["required"] = True
+
+
+class Encoding(OpenABC):
+    """Encoding is found in `MediaType`
+
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#encoding-object
+    """
+    _contentType = Field(str)
+
+    _headers = Field(dict[str, Header|Reference])
+
+    def set_param(self, reflect_param):
+        self.reflect_param = reflect_param
+
+        media_range = reflect_param.flags.get("media_range", None)
+        if media_range:
+            self["contentType"] = media_range
+            header = self.create_instance("header_class")
+            header.set_param(reflect_param)
+            self.setdefault("headers", {})
+            self["headers"]["Content-Disposition"] = header
+
+
 class MediaType(OpenABC):
     """Media type is found in both RequestBody and Response
 
-    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.0.md#media-type-object
+    https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#media-type-object
     """
     _schema = Field(Schema)
 
     _examples = Field(dict[str, Example|Reference])
 
     # this one has some strange requirements so I'm ignoring it right now
-    #_encoding = Field(dict[str, Encoding])
+    _encoding = Field(dict[str, Encoding])
 
-    def set_request_method(self, reflect_method):
+    def add_encoding_param(self, reflect_param):
+        if reflect_param.is_file():
+            encoding = self.create_instance("encoding_class")
+            encoding.set_param(reflect_param)
+            if encoding:
+                self.setdefault("encoding", {})
+                self["encoding"][reflect_param.name] = encoding
+
+    def set_request_method(self, reflect_method, media_range):
         """Called from RequestBody"""
         self.reflect_method = reflect_method
+
         schema = self.create_schema_instance()
-        schema.set_request_method(reflect_method)
+        schema.set_request_method(reflect_method, media_range)
         if schema:
             self["schema"] = schema
 
-    def set_response_method(self, reflect_method):
+            for reflect_param in reflect_method.reflect_body_params():
+                if reflect_param.is_file():
+                    self.add_encoding_param(reflect_param)
+
+
+#         if media_range.startswith("multipart/"):
+#             for reflect_param in reflect_method.reflect_body_params():
+#                 if reflect_param.is_file():
+#                     self.add_encoding_param(reflect_param)
+# 
+# #                     encoding = self.create_instance("encoding_class")
+# #                     encoding.set_param(reflect_param)
+# #                     if encoding:
+# #                         self.setdefault("encoding", {})
+# 
+# #                     media_range = reflect_param.flags.get("media_range", None)
+# #                     if media_range:
+# #                         encoding = self.create_instance("encoding_class")
+# #                         encoding.set_param(reflect_param)
+# 
+# 
+#             # schema.set_multipart_request_method(reflect_method)
+#             # TODO - need to add encoding with header objects
+#             pass
+# 
+#         else:
+#             # schema.set_request_method(reflect_method)
+#             pass
+
+
+
+#         schema = self.create_schema_instance()
+#         schema.set_request_method(reflect_method)
+#         if schema:
+#             self["schema"] = schema
+
+    def set_response_method(self, reflect_method, media_range):
         """Called from Response"""
         self.reflect_method = reflect_method
         schema = self.create_schema_instance()
-        schema.set_response_method(reflect_method)
+        schema.set_response_method(reflect_method, media_range)
         if schema:
             self["schema"] = schema
 
-    def set_error_method(self, reflect_method):
+    def set_error_method(self, reflect_method, media_range):
         """Called from Response"""
         self.reflect_method = reflect_method
         schema = self.create_schema_instance()
-        schema.set_error_method(reflect_method)
+        schema.set_error_method(reflect_method, media_range)
         if schema:
             self["schema"] = schema
 
@@ -1102,8 +1257,10 @@ class RequestBody(OpenABC):
         content = {}
 
         for media_range in self.get_media_ranges(reflect_method):
-            content[media_range] = self.create_instance("media_type_class")
-            content[media_range].set_request_method(reflect_method)
+            media_type = self.create_instance("media_type_class")
+            media_type.set_request_method(reflect_method, media_range)
+            if media_type:
+                content[media_range] = media_type
 
         self["content"] = content
 
@@ -1195,7 +1352,7 @@ class Response(OpenABC):
 
         for media_range in self.get_success_media_ranges():
             media_type = self.create_instance("media_type_class")
-            media_type.set_response_method(self.reflect_method)
+            media_type.set_response_method(self.reflect_method, media_range)
             if media_type:
                 content[media_range] = media_type
 
@@ -1206,7 +1363,7 @@ class Response(OpenABC):
 
         for media_range in self.get_error_media_ranges():
             media_type = self.create_instance("media_type_class")
-            media_type.set_error_method(self.reflect_method)
+            media_type.set_error_method(self.reflect_method, media_range)
             if media_type:
                 content[media_range] = media_type
 
@@ -1350,10 +1507,6 @@ class Parameter(OpenABC):
         """
         self.reflect_param = reflect_param
         self.update(self.get_param_fields(reflect_param))
-
-#     def set_param(self, reflect_param):
-#         self.reflect_param = reflect_param
-#         self.update(self.get_param_fields(reflect_param))
 
     def get_param_fields(self, reflect_param):
         """Internal method. Converts a param into a format openapi
