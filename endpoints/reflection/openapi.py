@@ -734,62 +734,6 @@ class Schema(OpenABC):
             for reflect_param in body_params:
                 self.add_param(reflect_param)
 
-#         for reflect_param in reflect_method.reflect_body_params():
-#             self.set_object_keys()
-#             self.add_param(reflect_param)
-
-
-#     def set_request_method(self, reflect_method):
-#         """This is called from RequestBody and is the main hook into
-#         customizing and extending the request schema for child projects"""
-#         self.reflect_method = reflect_method
-# 
-#         file_params = []
-#         body_params = []
-# 
-#         for reflect_param in reflect_method.reflect_body_params():
-#             if reflect_param.is_file():
-#                 file_params.append(reflect_param)
-# 
-#             else:
-#                 body_params.append(reflect_param)
-# 
-#         if file_params:
-#             self.set_object_keys()
-# 
-#             schema = self.create_object_schema_instance()
-#             schema.add_file_params(file_params)
-#             self.add_property_schema(
-#                 "files",
-#                 schema,
-#                 required=bool(schema["required"])
-#             )
-# 
-#         if body_params:
-#             self.set_object_keys()
-# 
-#             if file_params:
-#                 schema = self.create_object_schema_instance()
-#                 schema.add_body_params(body_params)
-#                 self.add_property_schema(
-#                     "body",
-#                     schema,
-#                     required=bool(schema["required"])
-#                 )
-# 
-#             else:
-#                 self.add_body_params(body_params)
-# 
-# #             self.set_object_keys()
-# #             self.add_param(reflect_param)
-# 
-# 
-#     def add_file_params(self, reflect_params: list):
-#         self.add_params(reflect_params)
-# 
-#     def add_body_params(self, reflect_params: list):
-#         self.add_params(reflect_params)
-
     def set_response_method(self, reflect_method, media_range):
         """Called from Response and is the main hook into customizing and
         extending the response schema for child projects"""
@@ -1146,26 +1090,6 @@ class Header(OpenABC):
 
     _examples = Field(dict[str, Example|Reference])
 
-    def set_param(self, reflect_param):
-        self.reflect_param = reflect_param
-
-#         schema = self.create_schema_instance()
-#         schema["type"] = "string"
-# 
-#         form_data_schema = self.create_schema_instance()
-#         form_data_schema["pattern"] = "^form-data;"
-# 
-#         name_schema = self.create_schema_instance()
-#         name_schema["pattern"] = f"name=\"{reflect_param.name}\""
-# 
-#         schema["allOf"] = [
-#             form_data_schema,
-#             name_schema,
-#         ]
-# 
-#         self["schema"] = schema
-#         self["required"] = True
-
 
 class Encoding(OpenABC):
     """Encoding is found in `MediaType`
@@ -1183,11 +1107,8 @@ class Encoding(OpenABC):
         if media_range:
             self["contentType"] = media_range
 
-            header = self.create_instance("header_class")
-            header.set_param(reflect_param)
-            if header:
-                self.setdefault("headers", {})
-                self["headers"]["Content-Disposition"] = header
+        #self.setdefault("headers", {})
+        #header = self.create_instance("header_class")
 
 
 class MediaType(OpenABC):
@@ -1221,38 +1142,6 @@ class MediaType(OpenABC):
 
             for reflect_param in reflect_method.reflect_body_params():
                 self.add_encoding_param(reflect_param)
-
-
-#         if media_range.startswith("multipart/"):
-#             for reflect_param in reflect_method.reflect_body_params():
-#                 if reflect_param.is_file():
-#                     self.add_encoding_param(reflect_param)
-# 
-# #                     encoding = self.create_instance("encoding_class")
-# #                     encoding.set_param(reflect_param)
-# #                     if encoding:
-# #                         self.setdefault("encoding", {})
-# 
-# #                     media_range = reflect_param.flags.get("media_range", None)
-# #                     if media_range:
-# #                         encoding = self.create_instance("encoding_class")
-# #                         encoding.set_param(reflect_param)
-# 
-# 
-#             # schema.set_multipart_request_method(reflect_method)
-#             # TODO - need to add encoding with header objects
-#             pass
-# 
-#         else:
-#             # schema.set_request_method(reflect_method)
-#             pass
-
-
-
-#         schema = self.create_schema_instance()
-#         schema.set_request_method(reflect_method)
-#         if schema:
-#             self["schema"] = schema
 
     def set_response_method(self, reflect_method, media_range):
         """Called from Response"""

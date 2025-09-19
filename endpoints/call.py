@@ -7,6 +7,7 @@ import io
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from types import NoneType
+from typing import Annotated
 import json
 
 try:
@@ -1184,25 +1185,6 @@ class CORSMixin(object):
             # https://stackoverflow.com/q/28553580/5006
             raise CallError(403)
 
-#     async def handle_cors(self):
-#         """This will set the headers that are needed for any cors request
-#         (OPTIONS or real)
-# 
-#         RFC6455 says if the origin indicated is unacceptable to the server,
-#         then it SHOULD respond to the WebSocket handshake with a reply
-#         containing HTTP 403 Forbidden status code.
-#         https://stackoverflow.com/q/28553580/5006
-#         """
-#         if origin := self.request.get_header("origin"):
-#             # your server must read the value of the request's Origin
-#             # header and use that value to set Access-Control-Allow-Origin,
-#             # and must also set a Vary: Origin header to indicate that some
-#             # headers are being set dynamically depending on the origin.
-#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
-#             # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-#             self.response.set_header("Access-Control-Allow-Origin", origin)
-#             self.response.set_header("Vary", "Origin")
-
     async def OPTIONS(self, *args, **kwargs):
         """Handles CORS requests for this controller
 
@@ -1235,6 +1217,34 @@ class CORSMixin(object):
             'Access-Control-Max-Age': 3600
         }
         self.response.add_headers(other_headers)
+
+
+class TRACEMixin(object):
+    """Add this mixin to a child Controller class to activate TRACE support
+
+    :example:
+        from endpoints import Controller, TRACEMixin
+
+        class CORSController(Controller, TRACEMixin):
+            # any children of this controller have TRACE http method support
+            pass
+
+    https://http.dev/trace
+    https://developer.mozilla.org/en-US/docs/Web/HTTP/Reference/Methods/TRACE
+    """
+    trace = True
+    """Activate TRACE support"""
+
+    async def TRACE(self, *args, **kwargs) -> Annotated[str, "message/http"]:
+        if not self.trace:
+            raise CallError(405)
+
+        request = self.request
+        body = [
+            f"{request.method} {request.uri} {request.protocol}",
+            *request.headers.tolist()
+        ]
+        return "\n".join(body)
 
 
 class Call(object):
@@ -1384,6 +1394,9 @@ class Request(Call):
     reflect_method: object|None = None
     """Holds the reflect method instance for the method that is currently
     attempting to answer the request. This is set in `Controller.handle`"""
+
+    protocol: str|None = None
+    """The HTTP protocol (eg, HTTP/1.1)"""
 
     @cachedproperty(cached="_uuid")
     def uuid(self):

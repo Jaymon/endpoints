@@ -12,6 +12,7 @@ from .utils import AcceptHeader, Url
 from .call import (
     Controller,
     CORSMixin,
+    TRACEMixin,
     Request,
     Response,
 )

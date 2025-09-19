@@ -395,6 +395,17 @@ class _HTTPTestCase(TestCase):
         res = c.get("/")
         self.assertEqual(200, res.code)
 
+    def test_trace(self):
+        server = self.create_server("""
+            class Default(Controller, TRACEMixin):
+                pass
+        """)
+
+        c = self.create_client()
+        res = c.trace("/")
+        self.assertEqual(200, res.code)
+        self.assertTrue("TRACE /" in res.body)
+
 
 class _WebSocketTestCase(TestCase):
     """Base class for the actual interfaces, this contains common tests for

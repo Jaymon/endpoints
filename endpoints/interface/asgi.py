@@ -178,6 +178,10 @@ class Application(BaseApplication):
         if self.is_http_call(raw_request):
             request.method = raw_request['method']
             request.scheme = raw_request.get("scheme", "http")
+            request.protocol = "{}/{}".format(
+                raw_request["type"].upper(),
+                raw_request["http_version"],
+            )
 
         elif self.is_websocket_call(raw_request):
             request.scheme = raw_request.get("scheme", "ws")

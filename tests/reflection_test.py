@@ -1209,9 +1209,6 @@ class OpenapiRequestBodyTest(TestCase):
         mt = content["multipart/form-data"]
         encoding = mt["encoding"]
         self.assertTrue("image/*", encoding["foo"]["contentType"])
-#         headers = encoding["foo"]["headers"]
-#         for s in headers["Content-Disposition"]["schema"]["allOf"]:
-#             self.assertRegex("form-data; name=\"foo\"", s["pattern"])
 
 
 class OpenapiResponseTest(TestCase):

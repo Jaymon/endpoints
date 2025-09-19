@@ -90,6 +90,7 @@ class Application(BaseApplication):
         r.query = raw_request['QUERY_STRING']
         r.scheme = raw_request.get('wsgi.url_scheme', "http")
         r.host = raw_request["HTTP_HOST"]
+        r.protocol = raw_request.get("SERVER_PROTOCOL", None) # eg, HTTP/1.1
 
         r.body = raw_request.get('wsgi.input', None)
         r.raw_request = raw_request
