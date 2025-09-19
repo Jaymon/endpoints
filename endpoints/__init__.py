@@ -19,5 +19,5 @@ from .call import (
 from . import decorators
 
 
-__version__ = "8.1.1"
+__version__ = "9.0.0"
 
