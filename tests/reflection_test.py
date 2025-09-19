@@ -1,4 +1,5 @@
 # -*- coding: utf-8 -*-
+from typing import TypedDict
 
 from datatypes.reflection.inspect import ReflectType
 
@@ -1088,17 +1089,17 @@ class OpenapiSchemaTest(TestCase):
         for media_type, mt in content.items():
             self.assertEqual(0, len(mt))
 
-#     def test_set_request_method_files(self):
-#         oa = self.create_openapi("""
-#             class Default(Controller):
-#                 def POST(self, f: io.IOBase, bar: str, che: dict[str, str]):
-#                     pass
-#         """)
-# 
-#         content = oa["paths"]["/"]["post"]["requestBody"]["content"]
-#         for mt in content.values():
-#             self.assertTrue("files" in mt["schema"]["properties"])
-#             self.assertTrue("body" in mt["schema"]["properties"])
+    def test_set_type_typed_dict(self):
+        class TD(TypedDict):
+            foo: str
+            bar: int
+            che: dict[str, str]
+
+        rt = ReflectType(TD)
+        s = Schema(None)
+        s.set_type(rt)
+        for k in ["foo", "bar", "che"]:
+            self.assertTrue(k in s["properties"])
 
 
 class OpenapiComponentsTest(TestCase):
@@ -1209,6 +1210,21 @@ class OpenapiRequestBodyTest(TestCase):
         mt = content["multipart/form-data"]
         encoding = mt["encoding"]
         self.assertTrue("image/*", encoding["foo"]["contentType"])
+
+    def test_multipart_catchall(self):
+        oa = self.create_openapi("""
+            class Default(Controller):
+                def POST(
+                    self,
+                    foo: io.BytesIO,
+                    **kwargs
+                ) -> None:
+                    return None
+        """)
+
+        content = oa.paths["/"]["post"]["requestBody"]["content"]
+        mt = content["multipart/form-data"]
+        self.assertEqual(1, len(mt["schema"]["properties"]))
 
 
 class OpenapiResponseTest(TestCase):

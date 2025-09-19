@@ -21,6 +21,7 @@ from datatypes import (
     property as cachedproperty,
     NamingConvention,
     Dirpath,
+    ReflectType,
 )
 from datatypes.http import Multipart
 
@@ -44,7 +45,6 @@ from .utils import (
     JSONEncoder,
 )
 from .reflection.inspect import Pathfinder
-
 
 logger = logging.getLogger(__name__)
 
@@ -1048,7 +1048,8 @@ class Controller(ETL):
                 info = rm.get_method_info()
                 for t in info.get("response_media_types", []):
                     body_object_type, body_media_type = t
-                    if isinstance(body, body_object_type):
+                    rt = ReflectType(body_object_type)
+                    if rt.is_type(body):
                         if callable(body_media_type):
                             body_media_type(self.response)
                             media_type = self.response.media_type

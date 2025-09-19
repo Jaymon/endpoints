@@ -270,7 +270,7 @@ class BaseApplication(ApplicationABC):
 
             elif request.should_have_body():
                 logger.debug(
-                    "Request {}bodies: <EMPTY>".format(uuid)
+                    "Request {}body: <EMPTY>".format(uuid)
                 )
 
         except Exception as e:

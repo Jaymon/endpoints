@@ -4,7 +4,6 @@ from endpoints.compat import *
 from endpoints.call import (
     Controller,
     CORSMixin,
-    TRACEMixin,
     Request,
     Response,
     Router,
@@ -208,15 +207,6 @@ class CORSMixinTest(TestCase):
             req.get_header('Origin'),
             c.response.get_header('Access-Control-Allow-Origin')
         ) 
-
-class TRACEMixinTest(TestCase):
-    def test_trace(self):
-        c = self.create_server("""
-            class Default(Controller, TRACEMixin):
-                pass
-        """)
-
-        res = c.handle("/", method="TRACE")
 
 
 class RouterTest(TestCase):

@@ -903,6 +903,14 @@ class Schema(OpenABC):
                 else:
                     ret["additionalProperties"] = values[0]
 
+            if th := reflect_type.reflect_type_hints():
+                ret["properties"] = {}
+
+                for n, rt in th.items():
+                    s = self.create_schema_instance()
+                    s.set_type(rt)
+                    ret["properties"][n] = s
+
         elif rt.is_listish():
             ret["type"] = "array"
 
@@ -2003,8 +2011,12 @@ class Info(OpenABC):
             if version := rc.get("version", ""):
                 self["version"] = version
 
-            if summary := self.get("summary", ""):
-                self["title"] = summary
+            if title := rc.get("title", ""):
+                self["title"] = title
+
+            else:
+                if summary := self.pop("summary", ""):
+                    self["title"] = summary
 
 
 class OpenAPI(OpenABC):
@@ -2027,7 +2039,7 @@ class OpenAPI(OpenABC):
 
     https://github.com/OAI/OpenAPI-Specification/blob/main/versions/3.1.1.md#openapi-object
     """
-    _openapi = Field(str, default="3.1.0", required=True)
+    _openapi = Field(str, default="3.1.1", required=True)
 
     _jsonSchemaDialect = Field(str, default=Schema.DIALECT)
 
