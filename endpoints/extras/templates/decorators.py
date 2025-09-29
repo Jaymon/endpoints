@@ -39,7 +39,7 @@ class template(ControllerDecorator):
 
         return super().definition(**kwargs)
 
-    async def handle(self, controller, **kwargs):
+    async def handle(self, controller, *args, **kwargs):
         controller.response.media_type = self.media_type
         #controller.response.set_header("Content-Type", self.content_type)
 
