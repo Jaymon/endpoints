@@ -200,8 +200,11 @@ class BaseApplication(ApplicationABC):
 
             logger.info("Request {}date: {}".format(
                 uuid,
-                datetime.datetime.utcfromtimestamp(response.start).strftime(
-                    "%Y-%m-%dT%H:%M:%S.%f"
+                datetime.datetime.fromtimestamp(
+                    response.start,
+                    datetime.timezone.utc,
+                ).strftime(
+                    "%Y-%m-%dT%H:%M:%S.%fZ"
                 ),
             ))
 
@@ -232,7 +235,7 @@ class BaseApplication(ApplicationABC):
             self.log_start_body(request, response)
 
         except Exception as e:
-            logger.warn(e, exc_info=True)
+            logger.warning(e, exc_info=True)
 
     def log_start_body(self, request, response):
         """Log the request body
