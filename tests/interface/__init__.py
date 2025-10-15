@@ -200,6 +200,23 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(200, r.code)
         self.assertEqual(filepath.name, r.body)
 
+    def test_post_body_file_wrapper(self):
+        """Make sure using the io wrapper classes work as expected"""
+        filepath = testdata.create_file("hello world")
+        server = self.create_server("""
+            class Default(Controller):
+                def POST(self, file: io.TextIOWrapper, **kwargs):
+                    return file.read()
+        """)
+
+        c = self.create_client()
+        r = c.post(
+            '/',
+            files={"file": filepath}
+        )
+        self.assertEqual(200, r.code)
+        self.assertEqual("hello world", r.body)
+
     def test_post_body_plain_with_content_type(self):
         server = self.create_server(contents=[
             "class Default(Controller):",
