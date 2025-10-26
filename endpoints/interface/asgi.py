@@ -61,8 +61,6 @@ class Application(BaseApplication):
             body += d["body"]
 
         request.body = body
-        #request.bodies = self.get_request_bodies(request, body, **kwargs)
-        #self.set_request_body(request, body, **kwargs)
 
         response = self.create_response()
 

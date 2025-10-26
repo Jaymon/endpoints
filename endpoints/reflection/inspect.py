@@ -778,11 +778,7 @@ class Pathfinder(ClasspathFinder):
             value["reflect_class"] = rc
 
             logger.debug(
-                (
-                    "Registering verbs: {}"
-                    " to path: {}"
-                    " and controller: {}"
-                ).format(
+                "Registering: {} {} -> {}".format(
                     ", ".join(rc.get_http_method_names().keys()),
                     rc.get_url_path(),
                     rc.classpath,
