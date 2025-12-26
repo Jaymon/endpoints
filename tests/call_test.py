@@ -110,6 +110,18 @@ class ControllerTest(TestCase):
         class Default_html(Controller): pass
         self.assertEqual("index.html", Default_html.get_name())
 
+    def test_ext_mediatype(self):
+        """If the endpoint has an extension try and set the media type off
+        the extension first"""
+        c = self.create_server("""
+            class Foo_xml(Controller):
+                async def ANY(self) -> str:
+                    return ""
+        """)
+        res = c.handle("/foo.xml")
+        self.assertEqual(200, res.code)
+        self.assertTrue("application/xml" in res.headers["Content-Type"])
+
     def test_coroutine_unwind(self):
         """Make sure multiple coroutine unwinds work as expected"""
         c = self.create_server([
