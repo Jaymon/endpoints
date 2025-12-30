@@ -742,6 +742,10 @@ class ReflectParam(ReflectObject):
 class Pathfinder(ClasspathFinder):
     """Internal class used by Router. This holds the tree of all the
     controllers so Router can resolve the path"""
+    def __init__(self, prefixes=None, **kwargs):
+        super().__init__(prefixes, **kwargs)
+        self.find_keys = {}
+
     def _get_node_module_info(self, key, **kwargs):
         """Handle normalizing each module key to kebabcase"""
         key = NamingConvention(key).kebabcase()
@@ -786,4 +790,23 @@ class Pathfinder(ClasspathFinder):
             )
 
         return key, value
+
+    def add_node(self, key, node, value):
+        """override parent to set find keys
+
+        Whenever a new node is created this will be called, it populates
+        the .find_keys used in .normalize_key
+        """
+        super().add_node(key, node, value)
+
+        if key not in self.find_keys:
+            self.find_keys[key] = key
+
+            nc = NamingConvention(key)
+            for vk in nc.variations():
+                self.find_keys[vk] = key
+
+    def normalize_key(self, key):
+        """override parent to normalize key using .find_keys"""
+        return self.find_keys.get(key, key)
 

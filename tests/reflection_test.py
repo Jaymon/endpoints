@@ -424,6 +424,7 @@ class ReflectParamTest(TestCase):
             class Default(Controller):
                 def GET(
                     self,
+                    *,
                     foo: Annotated[int, dict(names=["foos", "foo3"])]
                 ):
                     return foo
