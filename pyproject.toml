@@ -62,7 +62,7 @@ orjson = [
 ]
 
 [project.scripts]
-endpoints = "endpoints.__main__:EntryPoint.handle"
+endpoints = "endpoints.__main__:application"
 
 [build-system]
 requires = [

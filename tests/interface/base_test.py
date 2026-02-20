@@ -1,15 +1,9 @@
-# -*- coding: utf-8 -*-
-
-from endpoints.call import Controller
-from endpoints.interface.base import BaseApplication
-
 from . import TestCase
 
 
-class BaseApplicationTest(TestCase):
+class ApplicationTest(TestCase):
     def test_routing_error_unexpected_args(self):
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -18,7 +12,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -27,7 +20,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -36,7 +28,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -45,7 +36,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(409, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -54,7 +44,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(405, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo):",
             "        pass",
@@ -63,7 +52,6 @@ class BaseApplicationTest(TestCase):
         self.assertEqual(404, res.code)
 
         c = self.create_server(contents=[
-            "from endpoints import Controller, param",
             "class Default(Controller):",
             "    def GET(self, foo, **kwargs):",
             "        pass",

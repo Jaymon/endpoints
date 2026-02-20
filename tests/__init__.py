@@ -2,10 +2,10 @@
 import asyncio
 
 import testdata
-from testdata import IsolatedAsyncioTestCase as BaseAsyncTestCase
+from testdata import IsolatedAsyncioTestCase
 
 from endpoints.config import environ
-from endpoints.interface.base import BaseApplication
+from endpoints.interface.base import Application
 from endpoints.call import Request, Controller
 
 
@@ -37,12 +37,12 @@ class Server(object):
     def __init__(self, *args, **kwargs):
         self.application = kwargs.get(
             "application_class",
-            BaseApplication
+            Application,
         )(*args, **kwargs)
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
-            req = self.application.create_request(None)
+            req = self.application.request_class()
             req.method = method.upper()
             req.path = path
 
@@ -76,7 +76,7 @@ class Server(object):
         :param path: string, full URI you are requesting (eg, /foo/bar)
         """
         request = self.create_request(path, method, **kwargs)
-        response = self.application.create_response()
+        response = self.application.response_class()
         asyncio.run(self.application.handle(request, response))
 
         # makes call.Response look more like client response
@@ -107,12 +107,12 @@ class Server(object):
         return self.application.router.find_controller_info(**kwargs)
 
 
-class TestCase(BaseAsyncTestCase):
+class TestCase(IsolatedAsyncioTestCase):
     server = None
 
     server_class = Server
 
-    application_class = BaseApplication
+    application_class = Application
 
     def setUp(self):
         Controller.controller_classes = {}
@@ -169,16 +169,38 @@ class TestCase(BaseAsyncTestCase):
                 ),
             ]
 
-        if not kwargs.get("cors", False):
-            header.extend([
-                "class Controller(Controller):",
-                "    cors = False",
-            ])
+#         if not kwargs.get("cors", False):
+#             header.extend([
+#                 "class Controller(Controller):",
+#                 "    cors = False",
+#             ])
+
+        footer = "application = Application()"
+
+#         if isinstance(contents, str):
+#             contents += "\n\napplication = Application()"
+# 
+#         else:
+#             contents.append("application = Application()")
+
+#             header.extend([
+#                 "_app = None",
+#                 "def application(*args, **kwargs):",
+#                 "    global _app",
+#                 "    if _app is None:",
+#                 "        _app = Application()",
+#                 "        return application(*args, **kwargs)",
+#                 "    else:",
+#                 "        return _app(*args, **kwargs)",
+#                 "_sc = Application._asgi_single_callable",
+#                 "application._asgi_single_callable = _sc",
+#             ])
 
         controller_prefix = testdata.create_module(
             data=contents,
             modpath=controller_prefix,
-            header=header
+            header=header,
+            footer=footer,
         )
 
         return controller_prefix

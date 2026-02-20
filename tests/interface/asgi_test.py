@@ -6,7 +6,6 @@ from datatypes import (
     Host,
 )
 
-from endpoints.interface.asgi import Application
 from endpoints.config import environ
 
 from . import _HTTPTestCase, _WebSocketTestCase
@@ -26,44 +25,63 @@ class Server(Command):
 
     def __init__(self, controller_prefix, host="", **kwargs):
         self.controller_prefix = controller_prefix
+
         if not host:
             host = environ.HOST
-        self.host = Host(host) if host else None
 
-        cmd_host = "0.0.0.0"
-        cmd_port = "4000"
-        if self.host:
+#         self.host = Host(host) if host else None
+
+        if host:
+            self.host = Host(host)
             cmd_host = self.host.hostname
             cmd_port = self.host.port
 
-        #app_path = "endpoints.interface.asgi:Application.factory"
-        app_path = f"{self.controller_prefix}:Application.factory"
+        else:
+            cmd_host = "0.0.0.0"
+            cmd_port = "4000"
+            self.host = Host(cmd_host, cmd_port).client()
+
+        app_path = f"{self.controller_prefix}:application"
         super().__init__(
-            f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
+            #f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
+            f"uvicorn --host {cmd_host} --port {cmd_port} --factory {app_path}",
             **kwargs
         )
 
     def start(self, **kwargs):
         super().start(**kwargs)
 
-        regex = re.compile(r"Listening\s+on\s+TCP\s+address\s+(([^:]+):(\d+))")
+        # daphne: Listening on TCP address 0.0.0.0:4000
+        # uvicorn: Uvicorn running on http://0.0.0.0:4000 (Press CTRL+C to quit)
+
+        regex = re.compile(r"Uvicorn\s+running")
         r = self.wait_for(regex)
 
-        m = regex.search(r)
-        if m:
-            self.host = Host(m.group(2), m.group(3)).client()
+#     def start(self, **kwargs):
+#         super().start(**kwargs):
 
-        else:
-            self.murder()
-            self.start()
+#     def start(self, **kwargs):
+#         super().start(**kwargs)
+# 
+#         # daphne: Listening on TCP address 0.0.0.0:4000
+#         # uvicorn: Uvicorn running on http://0.0.0.0:4000 (Press CTRL+C to quit)
+# 
+#         regex = re.compile(r"Listening\s+on\s+TCP\s+address\s+(([^:]+):(\d+))")
+#         r = self.wait_for(regex)
+# 
+#         m = regex.search(r)
+#         if m:
+#             self.host = Host(m.group(2), m.group(3)).client()
+# 
+#         else:
+#             self.murder()
+#             self.start()
 
 
 class HTTPTest(_HTTPTestCase):
     server_class = Server
-    application_class = Application
 
 
 class WebSocketTest(_WebSocketTestCase):
     server_class = Server
-    application_class = Application
 

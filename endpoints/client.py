@@ -19,7 +19,7 @@ from datatypes import Host, HTTPClient
 
 from .compat import *
 from .utils import String, ByteString, Base64, Url
-from .interface.base import BaseApplication
+from .interface.base import Application
 
 
 logger = logging.getLogger(__name__)
@@ -54,7 +54,7 @@ class WebSocketClient(HTTPClient):
     pretty much every method of this client can accept a timeout argument, if
     you don't include the timeout then self.timeout will be used instead
     """
-    application_class = BaseApplication
+    application_class = Application
 
     attempts = 3
     """how many times the client should attempt to connect/re-connect"""

@@ -1,11 +1,14 @@
-# -*- coding: utf-8 -*-
+from datatypes import logging
 
 from ..compat import *
-from .base import BaseApplication
+from .base import Interface
 from ..utils import String
 
 
-class Application(BaseApplication):
+logger = logging.getLogger(__name__)
+
+
+class Interface(Interface):
     """ASGI HTTP and WebSocket Interface support
 
     Good intro tutorial:
@@ -17,32 +20,70 @@ class Application(BaseApplication):
     WebSocket lifecycle:
         https://asgi.readthedocs.io/en/latest/specs/www.html#websocket-connection-scope
     """
-    @classmethod
-    async def factory(cls, *args, **kwargs):
-        """Convenience method to make it easy to call daphne, because you
-        can just do this:
+    async def __call__(self, scope, receive, send):
+        """this is what will be called for each request that the server handles
 
-            $ daphne -b 0.0.0.0 -p 4000 -v 3 endpoints.interface.asgi:Application.factory
+        This can return something (WSGI needs a `list[bytes]` returned while
+        ASGI handles the sending on its own and returns None
         """
-        application = getattr(cls, "application", None)
-        if not application:
-            cls.application = application = cls()
-
-        await application(*args, **kwargs)
-
-    def normalize_call_kwargs(self, scope, receive, send, **kwargs):
-        return {
+        call_kwargs = {
             "scope": scope,
             "receive": receive,
             "send": send,
-            **kwargs
         }
+
+        try:
+            if self.is_http_call(scope):
+                return await self.handle_http(**call_kwargs)
+
+            elif self.is_websocket_call(scope):
+                return await self.handle_websocket(**call_kwargs)
+
+            elif self.is_lifespan_call(**call_kwargs):
+                return await self.handle_lifespan(**call_kwargs)
+
+            else:
+                logger.warning(
+                    "Scope type %s was not http, websocket, or lifespan",
+                    scope["type"],
+                )
+
+        except Exception as e:
+            # this should almost never hit, but if it does we want to log the
+            # exception before re-raising it because some servers will bury
+            # uncaught exceptions and this block is only for errors raised
+            # outside of all the error handling logic
+            logger.exception(e)
+            raise e
+
+#     def normalize_call_kwargs(self, scope, receive, send, **kwargs):
+#         return {
+#             "scope": scope,
+#             "receive": receive,
+#             "send": send,
+#             **kwargs
+#         }
+
+    def is_lifespan_call(self, scope, **kwargs):
+        return scope["type"] == "lifespan"
+
+#     def is_lifespan_startup(self, data, **kwargs):
+#         return data["type"] == "lifespan.startup"
+# 
+#     def is_lifespan_shutdown(self, data, **kwargs):
+#         return data["type"] == "lifespan.shutdown"
 
     def is_http_call(self, scope, **kwargs):
         return scope["type"] == "http"
 
     def is_websocket_call(self, scope, **kwargs):
         return scope["type"] == "websocket"
+
+    def is_websocket_recv(self, data, **kwargs):
+        return data["type"] == "websocket.receive"
+
+    def is_websocket_close(self, data, **kwargs):
+        return data["type"] == "websocket.disconnect"
 
     async def start_response(self, send, response):
         await send({
@@ -64,7 +105,7 @@ class Application(BaseApplication):
 
         response = self.create_response()
 
-        controller = await self.handle(request, response)
+        controller = await self.application.handle(request, response)
 
         sent_response = False
 
@@ -92,18 +133,12 @@ class Application(BaseApplication):
                 "more_body": False,
             })
 
-    def is_websocket_recv(self, data, **kwargs):
-        return data["type"] == "websocket.receive"
-
-    def is_websocket_close(self, data, **kwargs):
-        return data["type"] == "websocket.disconnect"
-
     async def handle_websocket_recv(self, data, **kwargs):
         # https://asgi.readthedocs.io/en/latest/specs/www.html#receive-receive-event
         request = self.create_request(**kwargs)
         response = self.create_response()
 
-        d = self.get_websocket_loads(data["text"])
+        d = self.application.get_websocket_loads(data["text"])
 
         for k in ["path", "uuid", "method"]:
             if k in d:
@@ -115,16 +150,16 @@ class Application(BaseApplication):
         if d["headers"]:
             request.add_headers(d["headers"])
 
-        await self.handle(request, response, **kwargs)
+        await self.application.handle(request, response, **kwargs)
         await self.send_websocket(request, response, **kwargs)
 
-    async def recv_websocket(self, **kwargs):
-        return await kwargs["receive"]()
+    async def recv_websocket(self, receive, **kwargs):
+        return await receive()
 
     async def send_websocket(self, request, response, **kwargs):
         d = {
             "type": "websocket.send",
-            "bytes": self.get_websocket_dumps(
+            "bytes": self.application.get_websocket_dumps(
                 uuid=request.uuid,
                 code=response.code,
                 path=request.path,
@@ -164,9 +199,34 @@ class Application(BaseApplication):
 #             "reason": String(body),
         })
 
+    async def handle_lifespan(self, scope, receive, send, **kwargs):
+        d = await self.recv_websocket(receive)
+        if d["type"] == "lifespan.startup":
+            try:
+                await self.handle_lifespan_startup(scope, **kwargs)
+
+            except Exception:
+                await send({"type": "lifespan.startup.failed"})
+
+            else:
+                await send({"type": "lifespan.startup.complete"})
+
+        elif d["type"] == "lifespan.shutdown":
+            await self.handle_lifespan_shutdown(scope, **kwargs)
+            await send({"type": "lifespan.shutdown.complete"})
+
+        else:
+            raise ValueError("Unknown lifespan type: {}".format(d["type"]))
+
+    async def handle_lifespan_startup(self, scope, **kwargs):
+        return
+
+    async def handle_lifespan_shutdown(self, scope, **kwargs):
+        return
+
     def create_request(self, **kwargs):
         raw_request = kwargs["scope"]
-        request = self.request_class()
+        request = self.application.request_class()
         request.add_headers(raw_request.get("headers", []))
 
         request.path = raw_request['path']
