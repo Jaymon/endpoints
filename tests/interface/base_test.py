@@ -453,6 +453,13 @@ class ApplicationTest(TestCase):
 
 
 class RouterTest(TestCase):
+    """These were Router tests but Router functionality was merged into
+    Application on February 21, 2026 (similar to how it is in Captain) and
+    the router tests were moved here from `call_test.py` and updated to
+    work with `Application`
+
+    https://github.com/Jaymon/endpoints/issues/169
+    """
     def test_paths_depth_1(self):
         for cb in [self.create_module, self.create_package]:
             modpath = cb(
@@ -784,3 +791,4 @@ class RouterTest(TestCase):
 
                 else:
                     self.assertEqual(val, d[key], t["in"]["path"])
+

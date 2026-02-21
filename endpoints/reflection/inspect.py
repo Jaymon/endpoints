@@ -740,8 +740,8 @@ class ReflectParam(ReflectObject):
 
 
 class Pathfinder(ClasspathFinder):
-    """Internal class used by Router. This holds the tree of all the
-    controllers so Router can resolve the path"""
+    """Internal class used by Application. This holds the tree of all the
+    controllers so Application can resolve the path"""
     def __init__(self, prefixes=None, **kwargs):
         super().__init__(prefixes, **kwargs)
         self.find_keys = {}

@@ -29,7 +29,6 @@ from ..call import (
     Controller,
     Request,
     Response,
-#     Router,
 )
 from ..reflection.inspect import Pathfinder
 from ..exception import (
@@ -191,12 +190,8 @@ class Application(object):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
-#     router_class = Router
-    """Handles caching of Controllers and route finding for converting a
-    requested path into a Controller"""
-
     pathfinder_class = Pathfinder
-    """Used by router, handles finding and reflecting controllers"""
+    """Handles finding, organzing, and reflecting controllers"""
 
     interface_classes: dict[str, Interface] = {}
     """This is populated in `Interface.__init_subclass__` and should never
@@ -323,7 +318,6 @@ class Application(object):
         )
 
         self.pathfinder = self.create_pathfinder(**kwargs)
-#         self.router = self.create_router()
 
     def __call__(self, *args, **kwargs) -> Any:
         """Factory method
@@ -612,20 +606,11 @@ class Application(object):
             for cp in controller_prefixes:
                 logger.debug("Checking controller prefix: %s", cp)
 
-#         pout.v(controller_prefixes, paths)
-
         return self.pathfinder_class.find_modules(
             controller_prefixes,
             paths,
             kwargs.get("autodiscover_name", environ.AUTODISCOVER_NAME),
         )
-
-#     def create_router(self):
-#         return self.router_class(
-#             controller_prefixes=self.controller_prefixes,
-#             controller_class=self.controller_class,
-#             pathfinder_class=self.pathfinder_class,
-#         )
 
     def create_controller(self, request, response, **kwargs):
         """Create a controller to handle the request

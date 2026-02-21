@@ -14,13 +14,6 @@ testdata.basic_logging(
         "datatypes": "WARNING",
         "asyncio": "WARNING",
     },
-#     format="|".join([
-#         '[%(levelname).1s',
-#         '%(asctime)s',
-#         '%(process)d.%(thread)d',
-#         '%(name)s', # logger name
-#         '%(pathname)s:%(lineno)s] %(message)s',
-#     ]),
 )
 
 
@@ -30,11 +23,6 @@ class Server(object):
     def controller_prefix(self):
         controller_prefixes = list(self.application.controller_modules.keys())
         return controller_prefixes[0]
-#         return self.application.controller_prefixes[0]
-
-#     @property
-#     def router(self):
-#         return self.application.router
 
     def __init__(self, *args, **kwargs):
         if "controller_prefix" in kwargs:
