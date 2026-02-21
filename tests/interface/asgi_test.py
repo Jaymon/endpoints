@@ -29,8 +29,6 @@ class Server(Command):
         if not host:
             host = environ.HOST
 
-#         self.host = Host(host) if host else None
-
         if host:
             self.host = Host(host)
             cmd_host = self.host.hostname
@@ -43,8 +41,15 @@ class Server(Command):
 
         app_path = f"{self.controller_prefix}:application"
         super().__init__(
+            [
+                "uvicorn",
+                "--host", cmd_host,
+                "--port", cmd_port,
+                "--factory",
+                app_path,
+            ],
             #f"daphne -b {cmd_host} -p {cmd_port} -v 3 {app_path}",
-            f"uvicorn --host {cmd_host} --port {cmd_port} --factory {app_path}",
+            #f"uvicorn --host {cmd_host} --port {cmd_port} --factory {app_path}",
             **kwargs
         )
 
@@ -56,26 +61,6 @@ class Server(Command):
 
         regex = re.compile(r"Uvicorn\s+running")
         r = self.wait_for(regex)
-
-#     def start(self, **kwargs):
-#         super().start(**kwargs):
-
-#     def start(self, **kwargs):
-#         super().start(**kwargs)
-# 
-#         # daphne: Listening on TCP address 0.0.0.0:4000
-#         # uvicorn: Uvicorn running on http://0.0.0.0:4000 (Press CTRL+C to quit)
-# 
-#         regex = re.compile(r"Listening\s+on\s+TCP\s+address\s+(([^:]+):(\d+))")
-#         r = self.wait_for(regex)
-# 
-#         m = regex.search(r)
-#         if m:
-#             self.host = Host(m.group(2), m.group(3)).client()
-# 
-#         else:
-#             self.murder()
-#             self.start()
 
 
 class HTTPTest(_HTTPTestCase):

@@ -54,8 +54,6 @@ class _HTTPTestCase(TestCase):
         self.assertRegex(r.body, r"https?://[^/]")
 
     def test_get_list_param_decorator(self):
-        self.skip_test("TODO - FIX THIS TEST")
-
         server = self.create_server("""
             class Default(Controller):
                 def GET(

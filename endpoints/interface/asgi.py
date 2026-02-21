@@ -56,22 +56,8 @@ class Interface(Interface):
             logger.exception(e)
             raise e
 
-#     def normalize_call_kwargs(self, scope, receive, send, **kwargs):
-#         return {
-#             "scope": scope,
-#             "receive": receive,
-#             "send": send,
-#             **kwargs
-#         }
-
     def is_lifespan_call(self, scope, **kwargs):
         return scope["type"] == "lifespan"
-
-#     def is_lifespan_startup(self, data, **kwargs):
-#         return data["type"] == "lifespan.startup"
-# 
-#     def is_lifespan_shutdown(self, data, **kwargs):
-#         return data["type"] == "lifespan.shutdown"
 
     def is_http_call(self, scope, **kwargs):
         return scope["type"] == "http"
@@ -189,24 +175,30 @@ class Interface(Interface):
             await self.send_websocket_disconnect(request, response, **kwargs)
 
     async def send_websocket_disconnect(self, request, response, **kwargs):
-#         body = b""
-#         async for part in self.get_response_body(response):
-#             body += part
-
         r = await kwargs["send"]({
             "type": "websocket.close",
             "code": response.code,
-#             "reason": String(body),
         })
 
     async def handle_lifespan(self, scope, receive, send, **kwargs):
+        """Handle ASGI lifespan protocol
+
+        Daphne does not support this protocol, so if using Daphne you can't
+        use this
+
+        https://asgi.readthedocs.io/en/latest/specs/lifespan.html
+        """
         d = await self.recv_websocket(receive)
         if d["type"] == "lifespan.startup":
             try:
                 await self.handle_lifespan_startup(scope, **kwargs)
 
-            except Exception:
-                await send({"type": "lifespan.startup.failed"})
+            except Exception as e:
+                # https://asgi.readthedocs.io/en/latest/specs/lifespan.html#shutdown-failed-send-event
+                await send({
+                    "type": "lifespan.startup.failed",
+                    "message": str(e),
+                })
 
             else:
                 await send({"type": "lifespan.startup.complete"})
@@ -219,9 +211,17 @@ class Interface(Interface):
             raise ValueError("Unknown lifespan type: {}".format(d["type"]))
 
     async def handle_lifespan_startup(self, scope, **kwargs):
+        """This is called on server startup
+
+        https://asgi.readthedocs.io/en/latest/specs/lifespan.html#startup-receive-event
+        """
         return
 
     async def handle_lifespan_shutdown(self, scope, **kwargs):
+        """This is called on server shutdown
+
+        https://asgi.readthedocs.io/en/latest/specs/lifespan.html#shutdown-receive-event
+        """
         return
 
     def create_request(self, **kwargs):

@@ -89,8 +89,6 @@ class Server(object):
             path,
             method="POST",
             body=body_kwargs if body_kwargs else None,
-#             bodies=[({}, body_kwargs)] if body_kwargs else None,
-#             body_kwargs=body_kwargs or {},
             **kwargs
         )
 
@@ -169,32 +167,7 @@ class TestCase(IsolatedAsyncioTestCase):
                 ),
             ]
 
-#         if not kwargs.get("cors", False):
-#             header.extend([
-#                 "class Controller(Controller):",
-#                 "    cors = False",
-#             ])
-
         footer = "application = Application()"
-
-#         if isinstance(contents, str):
-#             contents += "\n\napplication = Application()"
-# 
-#         else:
-#             contents.append("application = Application()")
-
-#             header.extend([
-#                 "_app = None",
-#                 "def application(*args, **kwargs):",
-#                 "    global _app",
-#                 "    if _app is None:",
-#                 "        _app = Application()",
-#                 "        return application(*args, **kwargs)",
-#                 "    else:",
-#                 "        return _app(*args, **kwargs)",
-#                 "_sc = Application._asgi_single_callable",
-#                 "application._asgi_single_callable = _sc",
-#             ])
 
         controller_prefix = testdata.create_module(
             data=contents,

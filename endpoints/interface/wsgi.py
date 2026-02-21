@@ -3,11 +3,7 @@ import asyncio
 from typing import Callable
 from collections.abc import Iterable
 
-from datatypes import (
-#     Host,
-#     ThreadingWSGIServer,
-    logging,
-)
+from datatypes import logging
 
 from ..compat import *
 from ..config import environ
@@ -95,40 +91,4 @@ class Interface(Interface):
         r.body = raw_request.get('wsgi.input', None)
         r.raw_request = raw_request
         return r
-
-
-# class Server(ThreadingWSGIServer):
-#     """A simple python WSGI Server
-# 
-#     you would normally only use this with the endpoints command, if you
-#     want to use it outside of that, then look at that script for inspiration
-#     """
-#     application_class = Application
-# 
-#     def __enter__(self):
-#         logger.info("Server is listening on {}".format(
-#             self.server_address.client()
-#         ))
-#         return self
-# 
-#     def __exit__(self, exc_type, exc_value, exc_traceback):
-#         logger.info(
-#             "Server {} is shutting down".format(
-#                 self.server_address.client()
-#             )
-#         )
-#         self.server_close()
-# 
-#     def __init__(self, server_address=None, **kwargs):
-# 
-#         if not server_address:
-#             server_address = Host(kwargs.pop('host', environ.HOST))
-# 
-#         if "wsgifile" not in kwargs and "application" not in kwargs:
-#             kwargs["application"] = self.application_class(**kwargs)
-# 
-#         super().__init__(server_address, **kwargs)
-# 
-#         # we want to make sure we have a Host instance for the server address
-#         self.server_address = Host(*self.server_address)
 

@@ -8,6 +8,7 @@ import time
 import inspect
 import os
 import datetime
+from typing import Any
 
 from datatypes import (
     String,
@@ -40,66 +41,26 @@ logger = logging.getLogger(__name__)
 
 
 class InterfaceABC(object):
-    def is_http_call(self, *args, **kwargs):
-        return True
+    def __call__(self, *args, **kwargs) -> Any:
+        """The interface will want to customize this, whatever this call
+        signature is, the `.create_request` will probably want to match
+        it"""
+        raise NotImplementedError()
 
-    def is_websocket_call(self, *args, **kwargs):
-        return False
+    def create_request(self, *args, **kwargs) -> Request:
+        """Create a request
 
-    def normalize_call_kwargs(self, *args, **kwargs):
-        """This is a method for child interfaces to use to normalize their raw
-        request information into something that all the other methods can
-        understand and use.
-
-        It takes in whatever was passed to __call__ and converts it into kwargs
-        that can then be passed to the other methods
-
-        You might notice that all the methods in this class take *args and
-        **kwargs, that's because the base interface has no idea what the actual
-        child interface will receive. If you check the child interfaces you'll
-        see that the methods that they implement change the signatures to
-        something more concrete, this method helps by normalizing the received
-        arguments and converting them all to keyword arguments that can be
-        passed to the other methods
-
-        :param *args: passed into __call__ as positional arguments
-        :param **kwargs: passed into __call__ as keyword arguments
-        :returns: dict[str, Any], a dict that can be used as **kwargs to
-            further downstream methods in the child interface
+        this is the method that translates an interface request
+        to one that Endpoints can understand. The call signature will most
+        likely change to match `.__call__` in the child class, but the
+        return value **cannot** change
         """
         raise NotImplementedError()
 
-    def create_request(self, raw_request, **kwargs):
+    def is_websocket_recv(self, data: Any, **kwargs) -> bool:
         raise NotImplementedError()
 
-    def is_websocket_recv(self, data, **kwargs):
-        raise NotImplementedError()
-
-    def is_websocket_close(self, data, **kwargs):
-        raise NotImplementedError()
-
-    async def handle_http(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    async def handle_websocket_recv(self, data, **kwargs):
-        raise NotImplementedError()
-
-    async def send_websocket(self, request, response, **kwargs):
-        raise NotImplementedError()
-
-    async def handle_websocket_connect(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    async def send_websocket_connect(self, request, response, **kwargs):
-        raise NotImplementedError()
-
-    async def handle_websocket_disconnect(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    async def send_websocket_disconnect(self, *args, **kwargs):
-        raise NotImplementedError()
-
-    async def recv_websocket(self, *args, **kwargs):
+    def is_websocket_close(self, data: Any, **kwargs) -> bool:
         raise NotImplementedError()
 
 
@@ -203,17 +164,13 @@ class Interface(InterfaceABC):
                 await self.handle_websocket_disconnect(**kwargs)
 
 
-
-
-
 class Application(object):
-    """all servers should extend this and implemented the NotImplemented
-    methods, this ensures a similar interface among all the different servers
+    """Create an application that can handle ASGI and WSGI requests
 
-    A server is different from the interface because the server is actually
-    responsible for serving the requests, while the interface will translate
-    the requests to and from endpoints itself into something the server backend
-    can understand
+    :example:
+        # mymodule.py
+        application = Application()
+        # application path: mymodule:application
 
     webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
     """
@@ -239,12 +196,25 @@ class Application(object):
     pathfinder_class = Pathfinder
     """Used by router, handles finding and reflecting controllers"""
 
-    interface_classes = {}
+    interface_classes: dict[str, Interface] = {}
+    """This is populated in `Interface.__init_subclass__` and should never
+    be touched"""
 
-    interface = None
+    interface: Interface = None
+    """Holds the interface created from the interfaces found in
+    `.interface_classes`"""
 
     _asgi_single_callable = True
-    """asgiref thing"""
+    """asgiref thing. This is to make the `daphne` server a little more
+    predictable. If this is not set then `daphne` considers `.__call__` a
+    double callable and will call `.__call__` with `scope` and nothing else
+    and expected a callable, then it will call that callable with `receive`
+    and `send`.
+
+    I have no idea why it does that, since this functionality is completely
+    different than any other ASGI server. I'm guessing this is an older
+    ASGI problem. This is checked in `asgiref.compatibility.is_double_callable`
+    """
 
     @classmethod
     def get_websocket_dumps(cls, **kwargs):
@@ -320,19 +290,6 @@ class Application(object):
 
         return d
 
-#     def __new__(cls, *args, **kwargs):
-#         instance = super().__new__(cls)
-# 
-#         if (
-#             "scope" in kwargs
-#             and "receive" in kwargs
-#             and "send" in kwargs
-#         ):
-# 
-#             instance(*args, **kwargs)
-# 
-#         return instance
-
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             if isinstance(controller_prefixes, str):
@@ -353,25 +310,14 @@ class Application(object):
 
         self.router = self.create_router()
 
-    def __call__(self, *args, **kwargs):
-        """this is what will be called for each request that the server handles
+    def __call__(self, *args, **kwargs) -> Any:
+        """Factory method
 
-        This can return something (WSGI needs a `list[bytes]` returned while
-        ASGI handles the sending on its own and returns None
+        This will create the interface and can also transparently answer
+        requests using the internal interface if needed
         """
-        #pout.v(args, kwargs)
-
         if self.interface:
             return self.interface(*args, **kwargs)
-#             if (
-#                 (
-#                     "scope" in kwargs,
-#                     and "receive" in kwargs,
-#                     and "send" in kwargs,
-#                 )
-#                 or len(args) == 3
-#             ):
-#                 return self.interface(*args, **kwargs)
 
         else:
             if args:
@@ -393,22 +339,6 @@ class Application(object):
                 if kwargs:
                     # daphne single callable passes in scope, receive, and
                     # send in kwargs
-
-                    # daphne doesn't support the lifecycle protocol so we
-                    # fake it
-#                     pout.v(kwargs["scope"])
-# 
-#                     async def daphne(scope, receive, send):
-#                         scope = {
-#                             "type": "lifespan",
-#                             **kwargs["scope"]["asgi"],
-#                             #"version": kwargs["scope"]["asgi"],
-#                         }
-# 
-#                         await self.__call__(scope, kwargs["receive"], kwargs["send"])
-#                         await self.__call__(*args, **kwargs)
-# 
-#                     return daphne(*args, **kwargs)
                     return self.__call__(*args, **kwargs)
 
                 else:
@@ -416,7 +346,12 @@ class Application(object):
                     # configured correctly)
                     return self.interface
 
-    def create_asgi_interface(self):
+    def create_asgi_interface(self) -> Interface:
+        """Create an ASGI interface that can answer ASGI requests
+
+        :example:
+            application = Application().create_asgi_interface()
+        """
         interface_classes = type(self).interface_classes
 
         if "asgi" not in interface_classes:
@@ -424,33 +359,18 @@ class Application(object):
 
         return interface_classes["asgi"](self)
 
-    def create_wsgi_interface(self):
+    def create_wsgi_interface(self) -> Interface:
+        """Create a WSGI interface that can answer WSGI requests
+
+        :example:
+            application = Application().create_wsgi_interface()
+        """
         interface_classes = type(self).interface_classes
 
         if "wsgi" not in interface_classes:
             from .wsgi import Interface
 
         return interface_classes["wsgi"](self)
-
-#         try:
-#             call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
-# 
-#             if self.is_http_call(**call_kwargs):
-#                 return await self.handle_http(**call_kwargs)
-# 
-#             elif self.is_websocket_call(**call_kwargs):
-#                 return await self.handle_websocket(**call_kwargs)
-# 
-#             else:
-#                 logger.warning("Request was not HTTP or WebSocket")
-# 
-#         except Exception as e:
-#             # this should almost never hit, but if it does we want to log the
-#             # exception before re-raising it because some servers will bury
-#             # uncaught exceptions and this block is only for errors raised
-#             # outside of all the error handling logic
-#             logger.exception(e)
-#             raise e
 
     def log_start(self, request, response):
         """log all the headers and stuff at the start of the request"""
@@ -574,23 +494,6 @@ class Application(object):
                 request.uri,
             )
         )
-
-#     def create_request(self, raw_request, **kwargs):
-#         """convert the raw interface raw_request to a request that endpoints
-#         understands
-# 
-#         :params raw_request: mixed, this is the request given by backend
-#         :params **kwargs:
-#         :returns: an http.Request instance that endpoints understands
-#         """
-#         request = self.request_class()
-#         request.raw_request = raw_request
-#         return request
-# 
-#     def create_response(self, **kwargs):
-#         """create the endpoints understandable response instance that is used
-#         to return output to the client"""
-#         return self.response_class()
 
     def create_router(self):
         return self.router_class(
