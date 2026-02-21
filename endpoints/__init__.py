@@ -16,6 +16,7 @@ from .call import (
     Request,
     Response,
 )
+from .interface.base import Application
 from . import decorators
 
 

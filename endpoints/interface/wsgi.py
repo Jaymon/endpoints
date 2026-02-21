@@ -3,22 +3,18 @@ import asyncio
 from typing import Callable
 from collections.abc import Iterable
 
-from datatypes import (
-    Host,
-    ThreadingWSGIServer,
-    logging,
-)
+from datatypes import logging
 
 from ..compat import *
 from ..config import environ
 from ..call import Response
-from .base import BaseApplication
+from .base import Interface
 
 
 logger = logging.getLogger(__name__)
 
 
-class Application(BaseApplication):
+class Interface(Interface):
     """The Application that a WSGI server needs
 
     this extends Server just to make it easier on the end user, basically, all
@@ -29,24 +25,18 @@ class Application(BaseApplication):
 
     and you're good to go
     """
-    def __call__(self, environ, start_response):
+    def __init__(self, *args, **kwargs):
+        super().__init__(*args, **kwargs)
+        self._asyncioRunner = asyncio.Runner()
+
+    def __call__(self, environ, start_response) -> Iterable[bytes]:
         """this is what will be called for each request that that WSGI server
         handles"""
-        return asyncio.run(super().__call__(environ, start_response))
-
-    def normalize_call_kwargs(self, environ, start_response):
-        return {
-            "environ": environ,
-            "start_response": start_response,
-        }
-
-    async def start_response(self, callback: Callable, response: Response):
-        callback(
-            '{} {}'.format(response.code, response.status),
-            list(response.headers.items())
+        return self._asyncioRunner.run(
+            self._handle_http(environ, start_response),
         )
 
-    async def handle_http(self, environ, start_response) -> Iterable[bytes]:
+    async def _handle_http(self, environ, start_response) -> Iterable[bytes]:
         # we return a list because if we try to yield it will get messed
         # up in BaseApplication because it awaits this method, so it has
         # to return something that doesn't also need to be awaited, like
@@ -55,7 +45,7 @@ class Application(BaseApplication):
 
         request = self.create_request(environ)
         response = self.create_response()
-        controller = await self.handle(request, response)
+        controller = await self.application.handle(request, response)
 
         sent_response = False
 
@@ -64,20 +54,26 @@ class Application(BaseApplication):
             # https://stackoverflow.com/a/37550568
             async for body in controller:
                 if not sent_response:
-                    await self.start_response(start_response, response)
+                    await self._start_response(start_response, response)
                     sent_response = True
 
                 chunks.append(body)
 
         finally:
             if not sent_response:
-                await self.start_response(start_response, response)
+                await self._start_response(start_response, response)
 
         # https://peps.python.org/pep-0530/
         return chunks
 
+    async def _start_response(self, callback: Callable, response: Response):
+        callback(
+            '{} {}'.format(response.code, response.status),
+            list(response.headers.items())
+        )
+
     def create_request(self, raw_request, **kwargs):
-        r = self.request_class()
+        r = self.application.request_class()
         for k, v in raw_request.items():
             if k.startswith('HTTP_'):
                 r.set_header(k[5:], v)
@@ -95,40 +91,4 @@ class Application(BaseApplication):
         r.body = raw_request.get('wsgi.input', None)
         r.raw_request = raw_request
         return r
-
-
-class Server(ThreadingWSGIServer):
-    """A simple python WSGI Server
-
-    you would normally only use this with the endpoints command, if you
-    want to use it outside of that, then look at that script for inspiration
-    """
-    application_class = Application
-
-    def __enter__(self):
-        logger.info("Server is listening on {}".format(
-            self.server_address.client()
-        ))
-        return self
-
-    def __exit__(self, exc_type, exc_value, exc_traceback):
-        logger.info(
-            "Server {} is shutting down".format(
-                self.server_address.client()
-            )
-        )
-        self.server_close()
-
-    def __init__(self, server_address=None, **kwargs):
-
-        if not server_address:
-            server_address = Host(kwargs.pop('host', environ.HOST))
-
-        if "wsgifile" not in kwargs and "application" not in kwargs:
-            kwargs["application"] = self.application_class(**kwargs)
-
-        super().__init__(server_address, **kwargs)
-
-        # we want to make sure we have a Host instance for the server address
-        self.server_address = Host(*self.server_address)
 

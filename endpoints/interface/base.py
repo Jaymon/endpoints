@@ -8,6 +8,7 @@ import time
 import inspect
 import os
 import datetime
+from typing import Any
 
 from datatypes import (
     String,
@@ -15,6 +16,8 @@ from datatypes import (
     ReflectPath,
     Dirpath,
     Profiler,
+    ClassFinder,
+    ReflectCallable,
 )
 from datatypes.http import Multipart
 
@@ -37,81 +40,137 @@ from ..utils import ByteString, JSONEncoder
 logger = logging.getLogger(__name__)
 
 
-class ApplicationABC(object):
-    """Child classes should extend BaseApplication but this class contains
-    the methods that a child interface will most likely want to override so
-    they are all here for convenience"""
-    def is_http_call(self, *args, **kwargs):
-        return True
+class InterfaceABC(object):
+    def __call__(self, *args, **kwargs) -> Any:
+        """The interface will want to customize this, whatever this call
+        signature is, the `.create_request` will probably want to match
+        it"""
+        raise NotImplementedError()
 
-    def is_websocket_call(self, *args, **kwargs):
-        return False
+    def create_request(self, *args, **kwargs) -> Request:
+        """Create a request
 
-    def normalize_call_kwargs(self, *args, **kwargs):
-        """This is a method for child interfaces to use to normalize their raw
-        request information into something that all the other methods can
-        understand and use.
-
-        It takes in whatever was passed to __call__ and converts it into kwargs
-        that can then be passed to the other methods
-
-        You might notice that all the methods in this class take *args and
-        **kwargs, that's because the base interface has no idea what the actual
-        child interface will receive. If you check the child interfaces you'll
-        see that the methods that they implement change the signatures to
-        something more concrete, this method helps by normalizing the received
-        arguments and converting them all to keyword arguments that can be
-        passed to the other methods
-
-        :param *args: passed into __call__ as positional arguments
-        :param **kwargs: passed into __call__ as keyword arguments
-        :returns: dict[str, Any], a dict that can be used as **kwargs to
-            further downstream methods in the child interface
+        this is the method that translates an interface request
+        to one that Endpoints can understand. The call signature will most
+        likely change to match `.__call__` in the child class, but the
+        return value **cannot** change
         """
         raise NotImplementedError()
 
+    def is_websocket_recv(self, data: Any, **kwargs) -> bool:
+        raise NotImplementedError()
+
+    def is_websocket_close(self, data: Any, **kwargs) -> bool:
+        raise NotImplementedError()
+
+
+class Interface(InterfaceABC):
+    def __init__(self, application):
+        self.application = application
+
+    def __init_subclass__(cls, *args, **kwargs):
+        rc = ReflectCallable(cls.__call__)
+        sig_info = rc.get_signature_info()
+
+        if (
+            "scope" in sig_info["indexes"]
+            and "receive" in sig_info["indexes"]
+            and "send" in sig_info["indexes"]
+        ):
+            Application.interface_classes["asgi"] = cls
+
+        elif (
+            "environ" in sig_info["indexes"]
+            and "start_response" in sig_info["indexes"]
+        ):
+            Application.interface_classes["wsgi"] = cls
+
+        else:
+            raise ValueError("Unknown Interface.__call__ method")
+
     def create_request(self, raw_request, **kwargs):
-        raise NotImplementedError()
+        """convert the raw interface raw_request to a request that endpoints
+        understands
 
-    def is_websocket_recv(self, data, **kwargs):
-        raise NotImplementedError()
+        :params raw_request: mixed, this is the request given by backend
+        :params **kwargs:
+        :returns: an http.Request instance that endpoints understands
+        """
+        request = self.application.request_class()
+        request.raw_request = raw_request
+        return request
 
-    def is_websocket_close(self, data, **kwargs):
-        raise NotImplementedError()
+    def create_response(self, **kwargs):
+        """create the endpoints understandable response instance that is used
+        to return output to the client"""
+        return self.application.response_class()
 
-    async def handle_http(self, *args, **kwargs):
-        raise NotImplementedError()
+    async def handle_websocket_connect(self, **kwargs):
+        """This handles calling <FOUND CONTROLLER>.CONNECT
+        """
+        request = self.create_request(**kwargs)
+        response = self.create_response(**kwargs)
 
-    async def handle_websocket_recv(self, data, **kwargs):
-        raise NotImplementedError()
+        request.method = "CONNECT"
 
-    async def send_websocket(self, request, response, **kwargs):
-        raise NotImplementedError()
+        await self.application.handle(request, response, **kwargs)
+        await self.send_websocket_connect(request, response, **kwargs)
 
-    async def handle_websocket_connect(self, *args, **kwargs):
-        raise NotImplementedError()
+    async def handle_websocket_disconnect(self, **kwargs):
+        """This handles calling <FOUND CONTROLLER>.DISCONNECT
+        """
+        request = self.create_request(**kwargs)
+        response = self.create_response(**kwargs)
 
-    async def send_websocket_connect(self, request, response, **kwargs):
-        raise NotImplementedError()
+        response.code = kwargs.get("code", 1000)
+        request.method = "DISCONNECT"
 
-    async def handle_websocket_disconnect(self, *args, **kwargs):
-        raise NotImplementedError()
+        await self.application.handle(request, response)
+        await self.send_websocket_disconnect(request, response, **kwargs)
 
-    async def send_websocket_disconnect(self, *args, **kwargs):
-        raise NotImplementedError()
+    async def handle_websocket(self, **kwargs):
+        """Handle the lifecycle of a websocket connection. Child interfaces
+        should override methods that this calls but shouldn't override this
+        method unless they really need to
+        """
+        await self.handle_websocket_connect(**kwargs)
+        disconnect = True
 
-    async def recv_websocket(self, *args, **kwargs):
-        raise NotImplementedError()
+        try:
+            while True:
+                data = await self.recv_websocket(**kwargs)
+
+                if self.is_websocket_recv(data, **kwargs):
+                    await self.handle_websocket_recv(data, **kwargs)
+
+                elif self.is_websocket_close(data, **kwargs):
+                    disconnect = False
+                    break
+
+                else:
+                    logger.warning("Websocket data was unrecognized")
+
+        except CloseConnection as e:
+            disconnect = True
+
+        except Exception as e:
+            # daphne was burying the error and I'm not sure why, so I'm going
+            # to leave this here for right now just in case
+            logger.exception(e)
+            raise
+
+        finally:
+            if disconnect:
+                await self.handle_websocket_disconnect(**kwargs)
 
 
-class BaseApplication(ApplicationABC):
-    """all servers should extend this and implemented the NotImplemented
-    methods, this ensures a similar interface among all the different servers
+class Application(object):
+    """Create an application that can handle ASGI and WSGI requests
 
-    A server is different from the interface because the server is actually
-    responsible for serving the requests, while the interface will translate
-    the requests to and from endpoints itself into something the server backend
-    can understand
+    :example:
+        # mymodule.py
+        application = Application()
+        # application path: mymodule:application
 
     webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
     """
@@ -137,6 +196,100 @@ class BaseApplication(ApplicationABC):
     pathfinder_class = Pathfinder
     """Used by router, handles finding and reflecting controllers"""
 
+    interface_classes: dict[str, Interface] = {}
+    """This is populated in `Interface.__init_subclass__` and should never
+    be touched"""
+
+    interface: Interface = None
+    """Holds the interface created from the interfaces found in
+    `.interface_classes`"""
+
+    _asgi_single_callable = True
+    """asgiref thing. This is to make the `daphne` server a little more
+    predictable. If this is not set then `daphne` considers `.__call__` a
+    double callable and will call `.__call__` with `scope` and nothing else
+    and expected a callable, then it will call that callable with `receive`
+    and `send`.
+
+    I have no idea why it does that, since this functionality is completely
+    different than any other ASGI server. I'm guessing this is an older
+    ASGI problem. This is checked in `asgiref.compatibility.is_double_callable`
+    """
+
+    @classmethod
+    def get_websocket_dumps(cls, **kwargs):
+        """Similar to create_response_body it prepares a response to be sent
+        back down the wire
+
+        This isn't asyncronouse because it is used in ..client.WebSocketClient
+        to create websocket bodies
+
+        This is the sister method to .get_websocket_loads() and should be a
+        mirror of that method
+
+        :keyword path: Optional[str], the path (eg, `/foo/bar`)
+        :keyword code: Optional[int], the response code
+        :keyword method: Optional[str], the http method (eg, `GET`)
+        :keyword headers: Optional[dict[str, str]], headers to send
+        :keyword body: Any, the body to send
+        :raises: ValueError if both code and method are missing
+        :returns: bytes, json
+        """
+        d = {}
+
+        d["path"] = kwargs["path"]
+
+        if uuid := kwargs.get("uuid", ""):
+            d["uuid"] = uuid
+
+        if code := kwargs.get("code", 0):
+            d["code"] = code
+
+        if method := kwargs.get("method", ""):
+            d["method"] = method
+
+        if "code" not in d and "method" not in d:
+            raise ValueError("A websocket payload needs a method or code")
+
+        if headers := kwargs.get("headers", {}):
+            d["headers"] = headers
+
+        body = kwargs.get("body", None)
+        if body is not None:
+            d["body"] = body
+
+        return cls.controller_class.dump_json(d)
+
+    @classmethod
+    def get_websocket_loads(cls, body):
+        """Given a received websocket body this will convert it back into a
+        dict
+
+        This isn't asyncronouse because it is used in ..client.WebSocketClient
+        to read websocket bodies sent from the server
+
+        This is the sister method to .get_websocket_dumps() and should be a
+        mirror of that method
+
+        :param body: str
+        :returns: dict
+        """
+        d = cls.controller_class.load_json(body)
+
+        if "code" not in d and "method" not in d:
+            raise ValueError("A websocket payload needs a method or code")
+
+        if "path" not in d:
+            raise ValueError("A websocket payload must have a path")
+
+        if "body" not in d:
+            d["body"] = None
+
+        if "headers" not in d:
+            d["headers"] = {}
+
+        return d
+
     def __init__(self, controller_prefixes=None, **kwargs):
         if controller_prefixes:
             if isinstance(controller_prefixes, str):
@@ -157,31 +310,67 @@ class BaseApplication(ApplicationABC):
 
         self.router = self.create_router()
 
-    async def __call__(self, *args, **kwargs):
-        """this is what will be called for each request that the server handles
+    def __call__(self, *args, **kwargs) -> Any:
+        """Factory method
 
-        This can return something (WSGI needs a `list[bytes]` returned while
-        ASGI handles the sending on its own and returns None
+        This will create the interface and can also transparently answer
+        requests using the internal interface if needed
         """
-        try:
-            call_kwargs = self.normalize_call_kwargs(*args, **kwargs)
+        if self.interface:
+            return self.interface(*args, **kwargs)
 
-            if self.is_http_call(**call_kwargs):
-                return await self.handle_http(**call_kwargs)
+        else:
+            if args:
+                if "asgi" in args[0]:
+                    # hypercorn passes in the lifecycle right off
+                    self.interface = self.create_asgi_interface()
+                    return self.__call__(*args, **kwargs)
 
-            elif self.is_websocket_call(**call_kwargs):
-                return await self.handle_websocket(**call_kwargs)
+                elif "wsgi.version" in args[0]:
+                    self.interface = self.create_wsgi_interface()
+                    return self.__call__(*args, **kwargs)
+
+                else:
+                    raise ValueError("Unknown interface")
 
             else:
-                logger.warning("Request was not HTTP or WebSocket")
+                self.interface = self.create_asgi_interface()
 
-        except Exception as e:
-            # this should almost never hit, but if it does we want to log the
-            # exception before re-raising it because some servers will bury
-            # uncaught exceptions and this block is only for errors raised
-            # outside of all the error handling logic
-            logger.exception(e)
-            raise e
+                if kwargs:
+                    # daphne single callable passes in scope, receive, and
+                    # send in kwargs
+                    return self.__call__(*args, **kwargs)
+
+                else:
+                    # uvicorn and granian use this as a factory method (when
+                    # configured correctly)
+                    return self.interface
+
+    def create_asgi_interface(self) -> Interface:
+        """Create an ASGI interface that can answer ASGI requests
+
+        :example:
+            application = Application().create_asgi_interface()
+        """
+        interface_classes = type(self).interface_classes
+
+        if "asgi" not in interface_classes:
+            from .asgi import Interface
+
+        return interface_classes["asgi"](self)
+
+    def create_wsgi_interface(self) -> Interface:
+        """Create a WSGI interface that can answer WSGI requests
+
+        :example:
+            application = Application().create_wsgi_interface()
+        """
+        interface_classes = type(self).interface_classes
+
+        if "wsgi" not in interface_classes:
+            from .wsgi import Interface
+
+        return interface_classes["wsgi"](self)
 
     def log_start(self, request, response):
         """log all the headers and stuff at the start of the request"""
@@ -306,23 +495,6 @@ class BaseApplication(ApplicationABC):
             )
         )
 
-    def create_request(self, raw_request, **kwargs):
-        """convert the raw interface raw_request to a request that endpoints
-        understands
-
-        :params raw_request: mixed, this is the request given by backend
-        :params **kwargs:
-        :returns: an http.Request instance that endpoints understands
-        """
-        request = self.request_class()
-        request.raw_request = raw_request
-        return request
-
-    def create_response(self, **kwargs):
-        """create the endpoints understandable response instance that is used
-        to return output to the client"""
-        return self.response_class()
-
     def create_router(self):
         return self.router_class(
             controller_prefixes=self.controller_prefixes,
@@ -390,136 +562,4 @@ class BaseApplication(ApplicationABC):
         self.log_stop(request, response)
 
         return controller
-
-    @classmethod
-    def get_websocket_dumps(cls, **kwargs):
-        """Similar to create_response_body it prepares a response to be sent
-        back down the wire
-
-        This isn't asyncronouse because it is used in ..client.WebSocketClient
-        to create websocket bodies
-
-        This is the sister method to .get_websocket_loads() and should be a
-        mirror of that method
-
-        :keyword path: Optional[str], the path (eg, `/foo/bar`)
-        :keyword code: Optional[int], the response code
-        :keyword method: Optional[str], the http method (eg, `GET`)
-        :keyword headers: Optional[dict[str, str]], headers to send
-        :keyword body: Any, the body to send
-        :raises: ValueError if both code and method are missing
-        :returns: bytes, json
-        """
-        d = {}
-
-        d["path"] = kwargs["path"]
-
-        if uuid := kwargs.get("uuid", ""):
-            d["uuid"] = uuid
-
-        if code := kwargs.get("code", 0):
-            d["code"] = code
-
-        if method := kwargs.get("method", ""):
-            d["method"] = method
-
-        if "code" not in d and "method" not in d:
-            raise ValueError("A websocket payload needs a method or code")
-
-        if headers := kwargs.get("headers", {}):
-            d["headers"] = headers
-
-        body = kwargs.get("body", None)
-        if body is not None:
-            d["body"] = body
-
-        return cls.controller_class.dump_json(d)
-
-    @classmethod
-    def get_websocket_loads(cls, body):
-        """Given a received websocket body this will convert it back into a
-        dict
-
-        This isn't asyncronouse because it is used in ..client.WebSocketClient
-        to read websocket bodies sent from the server
-
-        This is the sister method to .get_websocket_dumps() and should be a
-        mirror of that method
-
-        :param body: str
-        :returns: dict
-        """
-        d = cls.controller_class.load_json(body)
-
-        if "code" not in d and "method" not in d:
-            raise ValueError("A websocket payload needs a method or code")
-
-        if "path" not in d:
-            raise ValueError("A websocket payload must have a path")
-
-        if "body" not in d:
-            d["body"] = None
-
-        if "headers" not in d:
-            d["headers"] = {}
-
-        return d
-
-    async def handle_websocket_connect(self, **kwargs):
-        """This handles calling <FOUND CONTROLLER>.CONNECT
-        """
-        request = self.create_request(**kwargs)
-        response = self.create_response(**kwargs)
-
-        request.method = "CONNECT"
-
-        await self.handle(request, response, **kwargs)
-        await self.send_websocket_connect(request, response, **kwargs)
-
-    async def handle_websocket_disconnect(self, **kwargs):
-        """This handles calling <FOUND CONTROLLER>.DISCONNECT
-        """
-        request = self.create_request(**kwargs)
-        response = self.create_response(**kwargs)
-
-        response.code = kwargs.get("code", 1000)
-        request.method = "DISCONNECT"
-
-        await self.handle(request, response)
-        await self.send_websocket_disconnect(request, response, **kwargs)
-
-    async def handle_websocket(self, **kwargs):
-        """Handle the lifecycle of a websocket connection. Child interfaces
-        should override methods that this calls but shouldn't override this
-        method unless they really need to
-        """
-        await self.handle_websocket_connect(**kwargs)
-        disconnect = True
-
-        try:
-            while True:
-                data = await self.recv_websocket(**kwargs)
-
-                if self.is_websocket_recv(data, **kwargs):
-                    await self.handle_websocket_recv(data, **kwargs)
-
-                elif self.is_websocket_close(data, **kwargs):
-                    disconnect = False
-                    break
-
-                else:
-                    logger.warning("Websocket data was unrecognized")
-
-        except CloseConnection as e:
-            disconnect = True
-
-        except Exception as e:
-            # daphne was burying the error and I'm not sure why, so I'm going
-            # to leave this here for right now just in case
-            logger.exception(e)
-            raise
-
-        finally:
-            if disconnect:
-                await self.handle_websocket_disconnect(**kwargs)
 

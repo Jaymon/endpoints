@@ -6,6 +6,9 @@ from datatypes.config import (
 
 
 class Environ(Environ):
+    """
+    https://github.com/Jaymon/datatypes/blob/master/datatypes/config/environ/base.py
+    """
     def __init__(self, *args, **kwargs):
         super().__init__(namespace="ENDPOINTS_", **kwargs)
 
@@ -31,7 +34,11 @@ class Environ(Environ):
     def set_host(self, host):
         self.set("HOST", host)
 
-    def set_controller_prefixes(self, prefixes, env_name='ENDPOINTS_PREFIX'):
+    def set_controller_prefixes(
+        self,
+        prefixes: list[str],
+        env_name: str = "ENDPOINTS_PREFIX"
+    ) -> None:
         """set the controller_prefixes found in env_name to prefixes, this will
         remove any existing found controller prefixes 
 
@@ -40,6 +47,22 @@ class Environ(Environ):
         :param env_name: string, the name of the environment variables
         """
         self.nset(env_name, prefixes)
+
+    def add_controller_prefixes(
+        self,
+        prefixes: list[str],
+        env_name: str = "ENDPOINTS_PREFIX"
+    ) -> None:
+        """add the `prefixes` to prefixes found in env_name
+
+        :param prefixes: list, the new prefixes that will replace any old
+            prefixes
+        :param env_name: string, the name of the environment variables
+        """
+        if prefixes:
+            ps = self.get_controller_prefixes(env_name=env_name)
+            ps.extend(prefixes)
+            self.nset(env_name, ps)
 
     def get_prefix_names(self, env_name):
         """This returns the actual environment variable names from * -> *_N
@@ -61,7 +84,7 @@ class Environ(Environ):
         fail on _2 and move on, so make sure your num dsns are in order (eg, 1,
         2, 3, ...)
 
-        :Example:
+        :example:
             export ENDPOINTS_PREFIX_1=foo.controllers
             export ENDPOINTS_PREFIX_2=bar.che
             $ python
