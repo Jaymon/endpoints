@@ -723,7 +723,7 @@ class Controller(ETL):
                 elif ra.is_unbound_keywords():
                     method_kwargs.update(ra.value)
 
-        pout.v(method_args, method_kwargs)
+#         pout.v(method_args, method_kwargs)
 
         return method_args, method_kwargs
 

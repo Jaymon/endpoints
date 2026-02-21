@@ -18,18 +18,18 @@ class Server(ModuleCommand):
 
     def __init__(self, controller_prefix, host="", **kwargs):
         self.controller_prefix = controller_prefix
-        if not host:
-            host = environ.HOST
-        self.host = Host(host) if host else None
+        if host:
+            self.host = Host(host)
 
-        cmd_host = "0.0.0.0:4000"
-        if self.host:
-            cmd_host = self.host.netloc
+        else:
+            self.host = Host("0.0.0.0", "4000").client()
+
+        app_path = f"{self.controller_prefix}:application"
 
         cmd = [
-            "--host", cmd_host,
+            "--host", str(self.host),
             "--prefix", self.controller_prefix,
-            "--server", "endpoints.interface.wsgi:Server",
+            app_path,
         ]
 
         super().__init__(
@@ -38,13 +38,36 @@ class Server(ModuleCommand):
             **kwargs
         )
 
+#     def __init__(self, controller_prefix, host="", **kwargs):
+#         self.controller_prefix = controller_prefix
+#         if not host:
+#             host = environ.HOST
+#         self.host = Host(host) if host else None
+# 
+#         cmd_host = "0.0.0.0:4000"
+#         if self.host:
+#             cmd_host = self.host.netloc
+# 
+#         cmd = [
+#             "--host", cmd_host,
+#             "--prefix", self.controller_prefix,
+#             "--server", "endpoints.interface.wsgi:Server",
+#         ]
+# 
+#         super().__init__(
+#             "endpoints",
+#             command=cmd,
+#             **kwargs
+#         )
+
     def start(self, **kwargs):
         super().start(**kwargs)
 
         regex = re.compile(r"Listening\s+on\s+(([^:]+):(\d+))")
         r = self.wait_for(regex)
-        m = regex.search(r)
-        self.host = Host(m.group(2), m.group(3)).client()
+
+#         m = regex.search(r)
+#         self.host = Host(m.group(2), m.group(3)).client()
 
 
 class HTTPTest(_HTTPTestCase):
