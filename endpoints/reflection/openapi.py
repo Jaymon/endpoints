@@ -2331,7 +2331,7 @@ class OpenAPI(OpenABC):
 
     def reflect_controllers(self):
         """Reflect all the controllers of this application"""
-        pathfinder = self.application.router.pathfinder
+        pathfinder = self.application.pathfinder
         for keys, value in pathfinder.get_class_items():
             yield value["reflect_class"]
 

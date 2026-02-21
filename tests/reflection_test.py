@@ -24,7 +24,7 @@ class TestCase(TestCase):
     def create_reflect_controllers(self, *args, **kwargs):
         rcs = []
         server = self.create_server(*args, **kwargs)
-        pf = server.application.router.pathfinder
+        pf = server.application.pathfinder
         for keys, value in pf.get_class_items():
             rcs.append(value["reflect_class"])
         return rcs

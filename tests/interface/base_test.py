@@ -1,3 +1,6 @@
+from endpoints.interface.base import Application
+from endpoints.call import Controller
+
 from . import TestCase
 
 
@@ -360,7 +363,7 @@ class ApplicationTest(TestCase):
     def test_routing_1(self):
         """there was a bug that caused errors raised after the yield to return
         another iteration of a body instead of raising them"""
-        contents = [
+        c = self.create_server([
             "from endpoints import Controller",
             "class Default(Controller):",
             "    def GET(self): pass",
@@ -370,13 +373,11 @@ class ApplicationTest(TestCase):
             "",
             "class Bar(Controller):",
             "    def GET(self): pass",
-        ]
-        controller_prefix = self.create_module(contents=contents)
-        c = self.create_server(controller_prefixes=[controller_prefix])
+        ])
 
         info = c.find()
         rc = info["reflect_class"]
-        self.assertEqual(controller_prefix, rc.modpath)
+        self.assertEqual(c.controller_prefix, rc.modpath)
         self.assertEqual("Default", rc.name)
 
         info = c.find("/foo/che/baz")
@@ -431,6 +432,7 @@ class ApplicationTest(TestCase):
             ])
 
     def test_callback_info(self):
+        #c = self.create_server("class Che(Controller): pass")
         c = self.create_server()
 
         request = c.create_request("/foo/bar", "GET")
@@ -449,3 +451,336 @@ class ApplicationTest(TestCase):
         # if it succeeds, then it passed the test :)
         d = c.find(request=request)
 
+
+class RouterTest(TestCase):
+    def test_paths_depth_1(self):
+        for cb in [self.create_module, self.create_package]:
+            modpath = cb(
+                [
+                    "from endpoints import Controller",
+                    "",
+                    "class Foo(Controller): pass"
+                ],
+                count=2,
+                name="controllers",
+            )
+
+            cs = Application(paths=[modpath.basedir])
+            self.assertTrue(
+                issubclass(
+                    cs.pathfinder["foo"]["class"],
+                    Controller,
+                )
+            )
+
+    def test_paths_depth_n(self):
+        for cb in [self.create_module, self.create_package]:
+            modpath = cb(
+                [
+                    "from endpoints import Controller",
+                    "",
+                    "class Foo(Controller): pass",
+                    "class Bar(Controller): pass",
+                    "class Default(Controller): pass",
+                ],
+                count=2,
+                name="controllers"
+            )
+
+            cs = Application(paths=[modpath.basedir])
+
+            for k in ["foo", "bar", []]:
+                self.assertTrue(
+                    issubclass(cs.pathfinder[k]["class"], Controller),
+                )
+
+    def test_pathfinder_1(self):
+        modpath = self.get_module_name(count=2)
+        modpath2 = self.get_module_name(count=1)
+        basedir = self.create_modules({
+            modpath: [
+                "from endpoints import Controller",
+                "",
+                "class One(Controller): pass",
+                "class Default(Controller): pass",
+            ],
+            modpath2: [
+                "from endpoints import Controller",
+                "",
+                "class Two(Controller): pass",
+            ],
+        })
+
+        # load bar so the controllers load into memory
+        m = basedir.get_module(modpath2)
+
+        cs = Application(controller_prefixes=[modpath])
+
+        self.assertEqual(1, len(cs.controller_modules))
+        self.assertTrue(modpath in cs.controller_modules)
+
+        for k in ["one", "two", []]:
+            self.assertTrue(
+                issubclass(cs.pathfinder[k]["class"], Controller),
+            )
+
+    def test_pathfinder_2(self):
+        """test a multiple submodule controller"""
+        modpath = self.create_module(
+            {
+                "bar": [
+                    "from endpoints import Controller",
+                    "",
+                    "class One(Controller): pass",
+                    "class Default(Controller): pass",
+                ],
+                "che": {
+                    "boo": [
+                        "from endpoints import Controller",
+                        "",
+                        "class Two(Controller): pass",
+                        "class Default(Controller): pass",
+                    ],
+                },
+            },
+            count=2,
+            name="controllers",
+        )
+
+        cs = Application(controller_prefixes=[modpath])
+
+        controller_path_args = [
+            ["che", "boo", "two"],
+            ["che", "boo"],
+            ["bar", "one"],
+            ["bar"],
+        ]
+
+        for path_args in controller_path_args:
+            self.assertTrue(issubclass(
+                cs.pathfinder[path_args]["class"],
+                Controller,
+            ))
+
+    def test_pathfinder_3(self):
+        """test non-python module subpath (eg, pass in foo/ as the paths and
+        then have foo/bin/MODULE/controllers.py where foo/bin is not a module
+        """
+        cwd = self.create_dir()
+        modpath = self.get_module_name(count=2, name="controllers")
+
+        basedir = self.create_modules(
+            {
+                modpath: {
+                    "bar": [
+                        "from endpoints import Controller",
+                        "",
+                        "class One(Controller): pass",
+                        "class Default(Controller): pass",
+                    ],
+                    "che": {
+                        "boo": [
+                            "from endpoints import Controller",
+                            "",
+                            "class Two(Controller): pass",
+                            "class Default(Controller): pass",
+                        ],
+                    },
+                },
+            },
+            tmpdir=cwd.child_dir("src"),
+        )
+
+        cs = Application(paths=[cwd])
+
+        controller_path_args = [
+            ["che", "boo", "two"],
+            ["che", "boo"],
+            ["bar", "one"],
+            ["bar"],
+        ]
+
+        for path_args in controller_path_args:
+            self.assertTrue(issubclass(
+                cs.pathfinder[path_args]["class"],
+                Controller,
+            ))
+
+    def test_get_class_path_args_classes(self):
+        c = self.create_server([
+            "class Foo(object):",
+            "    class Bar(Controller):",
+            "        def ANY(self):",
+            "            pass",
+        ])
+        res = c.get('/foo/bar')
+        self.assertEqual(204, res.code)
+
+    def test_get_class_path_args_method(self):
+        """Moved from CallTest since routing logic is mainly in the Router
+        now. This makes sure inaccessible classes fail loudly"""
+        with self.assertRaises(ValueError):
+            self.create_server([
+                "class Foo(object):",
+                "    @classmethod",
+                "    def load_class(cls):",
+                "        class Bar(Controller):",
+                "            def ANY(self):",
+                "                pass",
+                "Foo.load_class()",
+            ])
+
+    def test_ext(self):
+        controller_class = self.create_module_class([
+            "from endpoints import Controller",
+            "",
+            "class Foo_txt(Controller):",
+            "    def ANY(self): pass",
+        ])
+        cs = Application()
+        r = cs.find_controller_info(self.mock(path="/foo.txt"))
+        self.assertEqual("Foo_txt", r["reflect_class"].get_target().__name__)
+
+    def test_find_controller_info_default(self):
+        """I introduced a bug on 1-12-14 that caused default controllers to fail
+        to be found, this makes sure that bug is squashed"""
+        c = self.create_server([
+            "from endpoints import Controller",
+            "class Default(Controller):",
+            "    def GET(): pass",
+        ])
+
+        info = c.find("/")
+        self.assertEqual('Default', info["reflect_class"].name)
+        self.assertTrue(
+            issubclass(info["reflect_class"].get_target(), Controller),
+        )
+
+    def test_find_controller_info_advanced(self):
+        c = self.create_server({
+            "": [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "default": [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def ANY_1(*args, **kwargs): pass",
+                "    def ANY_2(*args, **kwargs): pass",
+                ""
+            ],
+            "foo": [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Bar(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "    def POST(*args, **kwargs): pass",
+                ""
+            ],
+            "foo.baz": [
+                "from endpoints import Controller",
+                "class Default(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                "",
+                "class Che(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+            "foo.boom": [
+                "from endpoints import Controller",
+                "",
+                "class Bang(Controller):",
+                "    def GET(*args, **kwargs): pass",
+                ""
+            ],
+        })
+
+        ts = [
+            {
+                'in': dict(method="GET", path="/default"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.default",
+                    'class_name': 'Default',
+                    'leftover_path_args': [],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/foo/baz"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo.baz",
+                    'class_name': 'Default',
+                    'leftover_path_args': [],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/foo/bar/happy/sad"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo",
+                    'class_name': 'Bar',
+                    'leftover_path_args': ['happy', 'sad'],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}",
+                    'class_name': 'Default',
+                    'leftover_path_args': [],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/happy"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}",
+                    'class_name': 'Default',
+                    'leftover_path_args': ["happy"],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/foo/baz/che"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo.baz",
+                    'class_name': 'Che',
+                    'leftover_path_args': [],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/foo/baz/happy"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo.baz",
+                    'class_name': 'Default',
+                    'leftover_path_args': ["happy"],
+                }
+            },
+            {
+                'in': dict(method="GET", path="/foo/happy"),
+                'out': {
+                    'module_name': f"{c.controller_prefix}.foo",
+                    'class_name': 'Default',
+                    'leftover_path_args': ["happy"],
+                }
+            },
+        ]
+
+        for t in ts:
+            request = c.create_request(**t["in"])
+            d = c.find(request=request)
+
+            for key, val in t["out"].items():
+                rc = d["reflect_class"]
+                if key == "module_name":
+                    self.assertEqual(val, rc.modpath, t["in"]["path"])
+
+                elif key == "class_name":
+                    self.assertEqual(
+                        val,
+                        rc.reflect_class().name,
+                        t["in"]["path"]
+                    )
+
+                else:
+                    self.assertEqual(val, d[key], t["in"]["path"])

@@ -9,6 +9,8 @@ import inspect
 import os
 import datetime
 from typing import Any
+from types import ModuleType
+from collections.abc import Iterable
 
 from datatypes import (
     String,
@@ -27,7 +29,7 @@ from ..call import (
     Controller,
     Request,
     Response,
-    Router,
+#     Router,
 )
 from ..reflection.inspect import Pathfinder
 from ..exception import (
@@ -189,7 +191,7 @@ class Application(object):
     controller_class = Controller
     """Every defined controller has to be a child of this class"""
 
-    router_class = Router
+#     router_class = Router
     """Handles caching of Controllers and route finding for converting a
     requested path into a Controller"""
 
@@ -290,25 +292,38 @@ class Application(object):
 
         return d
 
-    def __init__(self, controller_prefixes=None, **kwargs):
-        if controller_prefixes:
-            if isinstance(controller_prefixes, str):
-                controller_prefixes = environ.split_value(controller_prefixes)
+    def __init__(
+        self,
+        controller_prefixes: Iterable[str]|str|None = None,
+        paths: Iterable[str]|None = None,
+        **kwargs,
+    ):
+        """Create an Application instance
 
-            self.controller_prefixes = controller_prefixes
+        This loads the controllers using `.find_modules` and then loads all
+        the controllers into the pathfinder in `.create_pathfinder`
 
-        else:
-            if "controller_prefix" in kwargs:
-                self.controller_prefixes = [kwargs["controller_prefix"]]
-
-            else:
-                self.controller_prefixes = environ.get_controller_prefixes()
-
+        :param controller_prefixes: the controller module prefixes to use
+            to find controllers to answer requests (eg, if you pass in 
+            `foo.bar` then any submodules will be stripped of `foo.bar` and use
+            the rest of the module path to figure out the full requestable
+            path, so `foo.bar.che.Boo` would have `che/boo` as its path
+        :param paths: the paths to check for controllers. This looks for
+            a module named `controllers` in the paths, the first found module
+            wins
+        """
         for k, v in kwargs.items():
             if k.endswith("_class"):
                 setattr(self, k, v)
 
-        self.router = self.create_router()
+        self.controller_modules = self.find_modules(
+            controller_prefixes=controller_prefixes,
+            paths=paths,
+            **kwargs,
+        )
+
+        self.pathfinder = self.create_pathfinder(**kwargs)
+#         self.router = self.create_router()
 
     def __call__(self, *args, **kwargs) -> Any:
         """Factory method
@@ -495,12 +510,122 @@ class Application(object):
             )
         )
 
-    def create_router(self):
-        return self.router_class(
-            controller_prefixes=self.controller_prefixes,
-            controller_class=self.controller_class,
-            pathfinder_class=self.pathfinder_class,
+    def create_pathfinder(self, **kwargs) -> Pathfinder:
+        """Internal method. Create the tree that will be used to resolve a
+        requested path to a found controller
+
+        :returns: basically a dictionary of dictionaries where each
+            key represents a part of a path, the final key will contain the
+            controller class that can answer a request
+        """
+        pathfinder = self.pathfinder_class(
+            list(self.controller_modules.keys()),
         )
+
+        controller_classes = self.controller_class.controller_classes
+        for controller_class in controller_classes.values():
+            if not controller_class.is_private():
+                pathfinder.add_class(controller_class)
+
+        return pathfinder
+
+    def find_controller_info(self, request, **kwargs):
+        """returns all the information needed to create a controller and
+        handle the request
+
+        This is where all the routing magic happens, this takes the
+        request.path and gathers the information needed to turn that path into
+        a Controller
+
+        This uses the requested path_args and checks the internal tree to find
+        the right path or raises a TypeError if the path can't be resolved
+
+        we always translate an HTTP request using this pattern:
+
+            METHOD /module/class/args?kwargs
+
+        :param request: Request
+        :param **kwargs:
+        :returns: dict
+        """
+        ret = {}
+
+        logger.debug("Compiling Controller info using path: %s", request.path)
+
+        rc_classes = []
+        leftover_path_args = list(filter(None, request.path.split('/')))
+        node = self.pathfinder
+
+        while node is not None:
+            if node.value and "class" in node.value:
+                rc_classes.append(node.value["reflect_class"])
+
+            if leftover_path_args:
+                try:
+                    node = node.get_node(leftover_path_args[0])
+                    leftover_path_args = leftover_path_args[1:]
+
+                except KeyError:
+                    node = None
+
+            else:
+                node = None
+
+        if rc_classes:
+            request.path_positionals = leftover_path_args
+            request.reflect_class = rc_classes[-1]
+
+            ret["leftover_path_args"] = leftover_path_args
+            ret["reflect_class"] = rc_classes[-1]
+
+        else:
+            raise TypeError(f"Unknown controller with path: {request.path}")
+
+        return ret
+
+    def find_modules(
+        self,
+        controller_prefixes: list[str],
+        paths: list[str],
+        **kwargs
+        ) -> Iterable[ModuleType]:
+        """Internal method. Finds all the modules
+
+        This loads the controllers using the `controller_prefixes` or `paths`
+        and returns all the found modules
+
+        Controllers get loaded into memory using `Controller.__init_subclass__`
+        so just finding all the modules will load the controllers that
+        can be used to answer requests
+        """
+        if controller_prefixes:
+            if isinstance(controller_prefixes, str):
+                controller_prefixes = environ.split_value(controller_prefixes)
+
+        else:
+            controller_prefixes = environ.get_controller_prefixes()
+
+        if not paths and not self.controller_class.controller_classes:
+            paths = [Dirpath.cwd()]
+
+        if controller_prefixes and logger.isEnabledFor(logging.DEBUG):
+            for cp in controller_prefixes:
+                logger.debug("Checking controller prefix: %s", cp)
+
+#         pout.v(controller_prefixes, paths)
+
+        return self.pathfinder_class.find_modules(
+            controller_prefixes,
+            paths,
+            kwargs.get("autodiscover_name", environ.AUTODISCOVER_NAME),
+        )
+
+#     def create_router(self):
+#         return self.router_class(
+#             controller_prefixes=self.controller_prefixes,
+#             controller_class=self.controller_class,
+#             pathfinder_class=self.pathfinder_class,
+#         )
 
     def create_controller(self, request, response, **kwargs):
         """Create a controller to handle the request
@@ -514,7 +639,7 @@ class Application(object):
             controller_class = kwargs["controller_class"]
 
         else:
-            request.controller_info = self.router.find_controller_info(
+            request.controller_info = self.find_controller_info(
                 request,
                 **kwargs
             )

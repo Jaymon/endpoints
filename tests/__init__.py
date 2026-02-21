@@ -28,13 +28,21 @@ class Server(object):
     """This is just a wrapper to get access to the Interface handling code"""
     @property
     def controller_prefix(self):
-        return self.application.controller_prefixes[0]
+        controller_prefixes = list(self.application.controller_modules.keys())
+        return controller_prefixes[0]
+#         return self.application.controller_prefixes[0]
 
-    @property
-    def router(self):
-        return self.application.router
+#     @property
+#     def router(self):
+#         return self.application.router
 
     def __init__(self, *args, **kwargs):
+        if "controller_prefix" in kwargs:
+            kwargs.setdefault(
+                "controller_prefixes",
+                [kwargs["controller_prefix"]],
+            )
+
         self.application = kwargs.get(
             "application_class",
             Application,
@@ -102,7 +110,7 @@ class Server(object):
 
     def find(self, path="", method="GET", **kwargs):
         kwargs["request"] = self.create_request(path, method, **kwargs)
-        return self.application.router.find_controller_info(**kwargs)
+        return self.application.find_controller_info(**kwargs)
 
 
 class TestCase(IsolatedAsyncioTestCase):
@@ -163,11 +171,11 @@ class TestCase(IsolatedAsyncioTestCase):
                 "from endpoints.compat import *",
                 "from {} import {} as Application".format(
                     self.application_class.__module__,
-                    self.application_class.__name__
+                    self.application_class.__name__,
                 ),
             ]
 
-        footer = "application = Application()"
+        footer = "application = Application([__name__])"
 
         controller_prefix = testdata.create_module(
             data=contents,
