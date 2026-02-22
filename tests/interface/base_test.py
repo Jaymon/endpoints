@@ -437,13 +437,11 @@ class ApplicationTest(TestCase):
             ])
 
     def test_callback_info(self):
-        #c = self.create_server("class Che(Controller): pass")
         c = self.create_server()
 
         request = c.create_request("/foo/bar", "GET")
         request.query_kwargs = {'foo': 'bar', 'che': 'baz'}
 
-#         with self.assertRaises(TypeError):
         with self.assertRaises(CallError):
             c.find(request=request)
 
@@ -453,12 +451,6 @@ class ApplicationTest(TestCase):
                     def GET(*args, **kwargs): pass
         """)
 
-#         c = self.create_server({
-#             "foo": [
-#                 "class Bar(Controller):",
-#                 "    def GET(*args, **kwargs): pass"
-#             ],
-#         })
         # if it succeeds, then it passed the test :)
         d = c.find(request=request)
 
@@ -763,92 +755,6 @@ class RouterTest(TestCase):
         )
         self.assertEqual("Default", req.reflect_class.name)
         self.assertEqual(["happy"], req.path_positionals)
-
-        ts = [
-                #             {
-#                 'in': dict(method="GET", path="/default"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.default",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': [],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/foo/baz"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.foo.baz",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': [],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/foo/bar/happy/sad"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.foo",
-#                     'class_name': 'Bar',
-#                     'leftover_path_args': ['happy', 'sad'],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': [],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/happy"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': ["happy"],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/foo/baz/che"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.foo.baz",
-#                     'class_name': 'Che',
-#                     'leftover_path_args': [],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/foo/baz/happy"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.foo.baz",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': ["happy"],
-#                 }
-#             },
-#             {
-#                 'in': dict(method="GET", path="/foo/happy"),
-#                 'out': {
-#                     'module_name': f"{c.controller_prefix}.foo",
-#                     'class_name': 'Default',
-#                     'leftover_path_args': ["happy"],
-#                 }
-#             },
-        ]
-
-#         for t in ts:
-#             request = c.create_request(**t["in"])
-#             d = c.find(request=request)
-# 
-#             for key, val in t["out"].items():
-#                 rc = d["reflect_class"]
-#                 if key == "module_name":
-#                     self.assertEqual(val, rc.modpath, t["in"]["path"])
-# 
-#                 elif key == "class_name":
-#                     self.assertEqual(
-#                         val,
-#                         rc.reflect_class().name,
-#                         t["in"]["path"]
-#                     )
-# 
-#                 else:
-#                     self.assertEqual(val, d[key], t["in"]["path"])
 
     def test__update_request(self):
         s = self.create_server("""

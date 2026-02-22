@@ -15,7 +15,6 @@ from endpoints.exception import (
 from endpoints.utils import Base64, String
 from endpoints.decorators.base import (
     ControllerDecorator,
-#     BackendDecorator,
 )
 from endpoints.decorators.limit import (
     RateLimitDecorator,

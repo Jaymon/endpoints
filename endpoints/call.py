@@ -660,21 +660,6 @@ class Controller(ETL):
         request.body_positionals = body_positionals
         request.body_keywords = body_keywords
 
-#         request.positionals = []
-#         request.keywords = {}
-# 
-#         if request.path_positionals:
-#             request.positionals.extend(request.path_positionals)
-# 
-#         if request.query_keywords:
-#             request.keywords.update(request.query_keywords)
-# 
-#         if request.body_positionals:
-#             request.positionals.extend(request.body_positionals)
-# 
-#         if request.body_keywords:
-#             request.keywords.update(request.body_keywords)
-
         request.positionals, request.keywords = await self.get_request_params()
 
     def _get_handler_method(self) -> Callable:
@@ -1174,18 +1159,8 @@ class Request(Call):
     method: str|None = None
     """the http method (GET, POST)"""
 
-#     controller_info: Mapping|None = None
-    """will hold the controller information for the request, populated from the
-    Call"""
-
     pathfinder_node: Mapping|None = None
     """Readonly. Holds the requested pathfinder node"""
-
-#     pathfinder_value: Mapping|None = None
-    """READONLY. Holds the pathfinder node's value for this request"""
-
-#     controller_classes: Sequence[Controller]|None = None
-    """Holds all the controller classes in path order"""
 
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
@@ -1215,14 +1190,6 @@ class Request(Call):
     keywords: Mapping|None = None
     """Holds the keywords for the request that will be used as the base
     for each HTTP method that is called while trying to answer the request"""
-
-#     reflect_class: object|None = None
-    """Holds the reflect class instance for the controller that is going to
-    answer the request"""
-
-#     reflect_method: object|None = None
-    """Holds the reflect method instance for the method that is currently
-    attempting to answer the request. This is set in `Controller.handle`"""
 
     protocol: str|None = None
     """The HTTP protocol (eg, HTTP/1.1)"""

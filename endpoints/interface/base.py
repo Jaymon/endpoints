@@ -173,10 +173,6 @@ class Application(object):
 
     webSocket protocol: https://www.rfc-editor.org/rfc/rfc6455
     """
-    controller_prefixes = None
-    """the controller prefixes (python module paths) you want to use to find
-    your Controller subclasses"""
-
     request_class = Request
     """the endpoints.http.Request compatible class that should be used to make
     Request() instances"""
@@ -530,14 +526,8 @@ class Application(object):
 
         leftover_path_args = list(filter(None, request.path.split("/")))
         node = self.pathfinder
-#         controller_classes = []
 
         while node is not None:
-#             if node.value:
-#                 if "reflect_class" in node.value:
-#                     rc = node.value["reflect_class"]
-#                     controller_classes.append(rc.get_class())
-
             if leftover_path_args:
                 try:
                     node = node.get_node(leftover_path_args[0] + "/")
@@ -550,7 +540,6 @@ class Application(object):
                 break
 
         request.path_positionals = leftover_path_args
-#         request.controller_classes = controller_classes
 
         # we need to find the http node
         method_node = None
@@ -582,97 +571,12 @@ class Application(object):
 
         request.pathfinder_node = method_node
 
-
-        # we need to find the http method
-#         v = node.get(request.method, None)
-#         if v is None:
-#             v = node.get("ANY", None)
-#             if v is None:
-#                 if leftover_path_args:
-#                     # if we have leftover path args and we don't have a
-#                     # method to even answer the request it should be NOT
-#                     # FOUND since the path is invalid
-#                     raise CallError(
-#                         404,
-#                         f"{request.method} {request.path} not found",
-#                     )
-# 
-#                 else:
-#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                     # should be Not Implemented if the method is
-#                     # unrecognized or not implemented by the origin server
-#                     raise CallError(
-#                         501,
-#                         f"{request.method} {request.path} not implemented",
-#                     )
-# 
-#         request.pathfinder_value = MappingProxyType(v)
-
-        # I don't know if these are completely needed, I do know
-        # .reflect_method is used in Controller.handle_error
-#         request.reflect_method = v["reflect_method"]
-#         request.reflect_class = v["reflect_method"].reflect_class()
-
         logger.debug(
             "Found %s %s handler: %s",
             request.method,
             request.path,
             method_node.value["reflect_method"].callpath,
         )
-
-#     def find_controller_info(self, request, **kwargs):
-#         """returns all the information needed to create a controller and
-#         handle the request
-# 
-#         This is where all the routing magic happens, this takes the
-#         request.path and gathers the information needed to turn that path into
-#         a Controller
-# 
-#         This uses the requested path_args and checks the internal tree to find
-#         the right path or raises a TypeError if the path can't be resolved
-# 
-#         we always translate an HTTP request using this pattern:
-# 
-#             METHOD /module/class/args?kwargs
-# 
-#         :param request: Request
-#         :param **kwargs:
-#         :returns: dict
-#         """
-#         ret = {}
-# 
-#         logger.debug("Compiling Controller info using path: %s", request.path)
-# 
-#         rc_classes = []
-#         leftover_path_args = list(filter(None, request.path.split('/')))
-#         node = self.pathfinder
-# 
-#         while node is not None:
-#             if node.value and "class" in node.value:
-#                 rc_classes.append(node.value["reflect_class"])
-# 
-#             if leftover_path_args:
-#                 try:
-#                     node = node.get_node(leftover_path_args[0])
-#                     leftover_path_args = leftover_path_args[1:]
-# 
-#                 except KeyError:
-#                     node = None
-# 
-#             else:
-#                 node = None
-# 
-#         if rc_classes:
-#             request.path_positionals = leftover_path_args
-#             request.reflect_class = rc_classes[-1]
-# 
-#             ret["leftover_path_args"] = leftover_path_args
-#             ret["reflect_class"] = rc_classes[-1]
-# 
-#         else:
-#             raise TypeError(f"Unknown controller with path: {request.path}")
-# 
-#         return ret
 
     def find_modules(
         self,
@@ -755,27 +659,6 @@ class Application(object):
 
         return self.create_controller(request, response, **kwargs)
 
-#     def create_error_controller(self, request, response, **kwargs):
-#         if "controller_class" not in kwargs:
-#             if request.controller_classes:
-#                 kwargs["controller_class"] = request.controller_classes[-1]
-# 
-#             else:
-#                 kwargs["controller_class"] = self.controller_class
-# 
-#         return self.create_controller(request, response, **kwargs)
-
-#     def create_error_controller(self, request, response, **kwargs):
-#         if "controller_class" not in kwargs:
-#             controller_info = request.controller_info or {}
-#             if rc := controller_info.get("reflect_class", None):
-#                 kwargs["controller_class"] = rc.get_target()
-# 
-#             else:
-#                 kwargs["controller_class"] = self.controller_class
-# 
-#         return self.create_controller(request, response, **kwargs)
-
     async def handle(self, request, response, **kwargs) -> Controller:
         """Called from the interface to actually handle the request."""
         response.start = time.time()
@@ -791,7 +674,6 @@ class Application(object):
                 controller = self.create_error_controller(request, response)
 
             await controller.handle_error(e)
-            #await self.handle_error(request, response, e, **kwargs)
 
         self.log_stop(request, response)
 

@@ -20,39 +20,10 @@ testdata.basic_logging(
 
 class Server(object):
     """This is just a wrapper to get access to the Interface handling code"""
-#     @property
-#     def controller_prefix(self):
-#         controller_prefixes = list(self.application.controller_modules.keys())
-#         return controller_prefixes[0]
-
     def __init__(self, controller_prefix, **kwargs):
         self.controller_prefix = controller_prefix
         app_path = f"{self.controller_prefix}:application"
         self.application = ReflectName(app_path).resolve()
-
-#         if "controller_prefix" in kwargs:
-#             kwargs.setdefault(
-#                 "controller_prefixes",
-#                 [kwargs["controller_prefix"]],
-#             )
-# 
-#         self.application = kwargs.get(
-#             "application_class",
-#             Application,
-#         )(*args, **kwargs)
-
-
-#     def __init__(self, *args, **kwargs):
-#         if "controller_prefix" in kwargs:
-#             kwargs.setdefault(
-#                 "controller_prefixes",
-#                 [kwargs["controller_prefix"]],
-#             )
-# 
-#         self.application = kwargs.get(
-#             "application_class",
-#             Application,
-#         )(*args, **kwargs)
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
@@ -122,12 +93,6 @@ class Server(object):
     def find(self, path="", method="GET", **kwargs):
         request = self.get_request(path, method, **kwargs)
         return request.pathfinder_value
-
-#         request = self.create_request(path, method, **kwargs)
-# #         kwargs["request"] = self.create_request(path, method, **kwargs)
-#         self.application._update_request(request)
-#         return request.pathfinder_value
-# #         return self.application.find_controller_info(**kwargs)
 
 
 class TestCase(IsolatedAsyncioTestCase):
@@ -216,8 +181,4 @@ class TestCase(IsolatedAsyncioTestCase):
 
     def create_application(self, *args, **kwargs):
         return self.application_class(*args, **kwargs)
-
-
-class IsolatedAsyncioTestCase(TestCase):
-    pass
 

@@ -14,7 +14,6 @@ from datatypes import (
     ReflectClass,
     ReflectCallable,
     Boolean,
-#     ClasspathFinder,
     MethodpathFinder,
     NamingConvention,
 )
@@ -388,15 +387,7 @@ class ReflectMethod(ReflectCallable):
 
     def get_version(self):
         """Get the version for this method"""
-        version = ""
-
-        for rd in self.reflect_ast_decorators():
-            if rd.name == "version":
-                dargs, dkwargs = rd.get_parameters()
-                version = dargs[0]
-                break
-
-        return version
+        return ""
 
     @functools.cache
     def get_param_info(self):
@@ -805,19 +796,10 @@ class Pathfinder(MethodpathFinder):
             rc = None
             key = NamingConvention(key).kebabcase()
 
-
         key, value = super()._get_node_class_info(key, **kwargs)
 
         if rc:
             value["reflect_class"] = rc
-# 
-#             logger.debug(
-#                 "Registering: {} {} -> {}".format(
-#                     ", ".join(rc.get_http_method_names().keys()),
-#                     rc.get_url_path(),
-#                     rc.classpath,
-#                 )
-#             )
 
         return key, value
 
@@ -831,7 +813,6 @@ class Pathfinder(MethodpathFinder):
         create a node in the tree"""
         parts = key.split("_", 1)
         if parts[0].isupper():
-#                 nc = NamingConvention(parts[1])
             rc = self.create_reflect_controller(
                 kwargs["class"],
                 module_keys=kwargs["module_keys"],
@@ -843,12 +824,6 @@ class Pathfinder(MethodpathFinder):
                 kwargs["method_name"],
             )
 
-#             if key := rm.get_url_name():
-#                 key = [key, rm.http_verb]
-# 
-#             else:
-#                 key = rm.http_verb
-
             key, value = super()._get_node_method_info(
                 rm.get_url_name(),
                 **kwargs,
@@ -856,7 +831,6 @@ class Pathfinder(MethodpathFinder):
 
             key = [key, rm.http_verb] if key else rm.http_verb
 
-            #value["reflect_class"] = rc
             value["reflect_method"] = rm
 
             logger.debug(
