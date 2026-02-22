@@ -14,7 +14,8 @@ from datatypes import (
     ReflectClass,
     ReflectCallable,
     Boolean,
-    ClasspathFinder,
+#     ClasspathFinder,
+    MethodpathFinder,
     NamingConvention,
 )
 from datatypes.reflection.inspect import ReflectArgument, ReflectObject
@@ -346,23 +347,44 @@ class ReflectMethod(ReflectCallable):
 
         yield from super().reflect_arguments(*args, **kwargs)
 
-    def get_url_path(self):
-        """Get the path for this method. The reason why this is on the method
-        and not the controller is because there could be path parameters
-        for specific methods which means a controller, while having the
-        same root path, can have different method paths"""
-        path = self.reflect_class().get_url_path()
-        url_params = "/".join(
-            f"{{{p.name}}}" for p in self.reflect_path_params()
-        )
+    def get_url_path(self, placeholders: bool = True) -> str:
+        """Get the path for this method
 
-        if url_params:
+        :param placeholders: True (default) if the placeholders for this
+            url path should be included, if False then placeholders won't
+            be added
+        """
+        path = self.reflect_class().get_url_path()
+        if name := self.get_url_name():
             if not path.endswith("/"):
                 path += "/"
 
-            path += url_params
+            path += name
+
+        if placeholders:
+            url_params = "/".join(
+                f"{{{p.name}}}" for p in self.reflect_path_params()
+            )
+
+            if url_params:
+                if not path.endswith("/"):
+                    path += "/"
+
+                path += url_params
 
         return path
+
+    def get_url_name(self) -> str:
+        """Get the url name of this method, the reason why this is separate
+        from `.name` is because the method'ss name can be different than
+        the url name"""
+        parts = self.name.split("_", 1)
+        if len(parts) > 1:
+            nc = NamingConvention(parts[1])
+            return nc.kebabcase()
+
+        else:
+            return ""
 
     def get_version(self):
         """Get the version for this method"""
@@ -739,9 +761,15 @@ class ReflectParam(ReflectObject):
         return val
 
 
-class Pathfinder(ClasspathFinder):
+class Pathfinder(MethodpathFinder):
     """Internal class used by Application. This holds the tree of all the
-    controllers so Application can resolve the path"""
+    controllers so Application can resolve the path
+
+    .. note:: This stores path aliases with a trailing backslash, the reason
+        why is because this also contains the http methods (eg, POST) and it
+        Application needed a way for the path resolution to distinguish the
+        path `/post/` from `post.POST`
+    """
     def __init__(self, prefixes=None, **kwargs):
         super().__init__(prefixes, **kwargs)
         self.find_keys = {}
@@ -754,7 +782,7 @@ class Pathfinder(ClasspathFinder):
     def create_reflect_controller(self, target, **kwargs):
         return kwargs.get("reflect_controller_class", ReflectController)(
             target,
-            **kwargs
+            **kwargs,
         )
 
     def _get_node_class_info(self, key, **kwargs):
@@ -766,7 +794,9 @@ class Pathfinder(ClasspathFinder):
             # The actual controller `Che` in: Foo.Bar.Che
             rc = self.create_reflect_controller(
                 kwargs["class"],
-                **kwargs
+                module_keys=kwargs["module_keys"],
+                class_keys=kwargs["class_keys"],
+                modules=kwargs["modules"],
             )
             key = rc.get_url_name()
 
@@ -780,16 +810,65 @@ class Pathfinder(ClasspathFinder):
 
         if rc:
             value["reflect_class"] = rc
-
-            logger.debug(
-                "Registering: {} {} -> {}".format(
-                    ", ".join(rc.get_http_method_names().keys()),
-                    rc.get_url_path(),
-                    rc.classpath,
-                )
-            )
+# 
+#             logger.debug(
+#                 "Registering: {} {} -> {}".format(
+#                     ", ".join(rc.get_http_method_names().keys()),
+#                     rc.get_url_path(),
+#                     rc.classpath,
+#                 )
+#             )
 
         return key, value
+
+    def _get_node_method_info(
+        self,
+        key: str,
+        **kwargs,
+    ) -> tuple[str|None, Mapping|None]:
+        """All methods of Command children go through this method but this
+        method only cares about `handle_* methods, all other methods won't
+        create a node in the tree"""
+        parts = key.split("_", 1)
+        if parts[0].isupper():
+#                 nc = NamingConvention(parts[1])
+            rc = self.create_reflect_controller(
+                kwargs["class"],
+                module_keys=kwargs["module_keys"],
+                class_keys=kwargs["class_keys"][:-1],
+                modules=kwargs["modules"],
+            )
+            rm = rc.create_reflect_http_method(
+                parts[0],
+                kwargs["method_name"],
+            )
+
+#             if key := rm.get_url_name():
+#                 key = [key, rm.http_verb]
+# 
+#             else:
+#                 key = rm.http_verb
+
+            key, value = super()._get_node_method_info(
+                rm.get_url_name(),
+                **kwargs,
+            )
+
+            key = [key, rm.http_verb] if key else rm.http_verb
+
+            #value["reflect_class"] = rc
+            value["reflect_method"] = rm
+
+            logger.debug(
+                "Registering endpoint: %s %s -> %s",
+                rm.http_verb,
+                rm.get_url_path(),
+                rm.callpath,
+            )
+
+            return key, value
+
+        return None, None
 
     def add_node(self, key, node, value):
         """override parent to set find keys
@@ -799,12 +878,16 @@ class Pathfinder(ClasspathFinder):
         """
         super().add_node(key, node, value)
 
-        if key not in self.find_keys:
-            self.find_keys[key] = key
+        if not value or "reflect_method" not in value:
+            if key not in self.find_keys:
+                self.find_keys[key + "/"] = key
 
-            nc = NamingConvention(key)
-            for vk in nc.variations():
-                self.find_keys[vk] = key
+                nc = NamingConvention(key)
+                for vk in nc.variations():
+                    self.find_keys[vk + "/"] = key
+
+        else:
+            self.find_keys[key] = key
 
     def normalize_key(self, key):
         """override parent to normalize key using .find_keys"""

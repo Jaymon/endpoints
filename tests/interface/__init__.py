@@ -271,53 +271,6 @@ class _HTTPTestCase(TestCase):
         r = c.get('/')
         self.assertEqual(500, r.code)
 
-    def test_versioning(self):
-        server = self.create_server(contents=[
-            "class Default(Controller):",
-            "    def GET(*args, **kwargs): pass",
-            "    @version('', 'v1')",
-            "    def POST_v1(*args, **kwargs): pass",
-            "    @version('v2')",
-            "    def POST_v2(*args, **kwargs): return kwargs['foo']",
-            "",
-        ])
-
-        c = self.create_client()
-        r = c.post("/", None, headers={"content-type": "application/json"})
-        self.assertEqual(204, r.code)
-
-        c = self.create_client()
-        r = c.post(
-            "/",
-            {"foo": "bar"},
-            headers={
-                "content-type": "application/json",
-                "Accept": "application/json;version=v2"
-            }
-        )
-        self.assertEqual(200, r.code)
-        self.assertEqual("bar", r.body)
-
-        r = c.post("/", {})
-        self.assertEqual(204, r.code)
-
-        r = c.post("/", None, headers={"content-type": "application/json"})
-        self.assertEqual(204, r.code)
-
-        r = c.post("/", None)
-        self.assertEqual(204, r.code)
-
-        r = c.post("/", {}, headers={"content-type": "application/json"})
-        self.assertEqual(204, r.code)
-
-        r = c.post(
-            "/",
-            {"foo": "bar"},
-            headers={"Accept": "application/json;version=v2"}
-        )
-        self.assertEqual(200, r.code)
-        self.assertEqual("bar", r.body)
-
     def test_io_streaming_get_file_stream(self):
         content = "this is a text file to stream"
         filepath = testdata.create_file(content)
@@ -671,7 +624,6 @@ class _WebSocketTestCase(TestCase):
         fixed"""
         server = self.create_server(contents=[
             "from endpoints import Controller",
-            "from endpoints.decorators import version",
             "class Default(Controller):",
             "    def CONNECT(self, **kwargs):",
             "        pass",
@@ -691,44 +643,6 @@ class _WebSocketTestCase(TestCase):
         r = c.post("/foo")
         self.assertEqual(200, r.code)
         self.assertTrue("Foo.POST" in r.body)
-
-    def test_versioning(self):
-        server = self.create_server(contents=[
-            "from endpoints import Controller",
-            "from endpoints.decorators import version",
-            "class Default(Controller):",
-            "    def CONNECT(self, **kwargs): pass",
-            "    def DISCONNECT(self, **kwargs): pass",
-            "    @version('', 'v1')",
-            "    def GET_v1(*args, **kwargs): return 'v1'",
-            "    @version('v2')",
-            "    def GET_v2(*args, **kwargs): return 'v2'",
-        ])
-
-        c = self.create_client()
-        c.connect()
-
-        r = c.get('/')
-        self.assertEqual(200, r.code)
-        self.assertTrue("v1" in r.body)
-
-        r = c.get(
-            '/',
-            headers={
-                "Accept": "application/json;version=v1"
-            }
-        )
-        self.assertEqual(200, r.code)
-        self.assertTrue("v1" in r.body)
-
-        r = c.get(
-            '/',
-            headers={
-                "Accept": "application/json;version=v2"
-            }
-        )
-        self.assertEqual(200, r.code)
-        self.assertTrue("v2" in r.body)
 
     def test_error_500(self):
         server = self.create_server(contents=[

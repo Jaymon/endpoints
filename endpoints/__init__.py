@@ -5,7 +5,6 @@ from .exception import (
     Redirect,
     CallStop,
     AccessDenied,
-    VersionError,
     CloseConnection,
 )
 from .utils import AcceptHeader, Url

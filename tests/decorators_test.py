@@ -395,32 +395,3 @@ class CacheTest(TestCase):
         h = c.response.get_header("Pragma")
         self.assertTrue("no-cache" in h)
 
-
-class VersionTest(TestCase):
-    def test_simple(self):
-        c = self.create_server([
-            "class Foo(Controller):",
-            "    @version('', 'v1')",
-            "    def GET_1(self):",
-            "        return 1",
-            "",
-            "    @version('v2')",
-            "    def GET_2(self):",
-            "        return 2",
-        ])
-
-        res = c.handle("/foo", version="v1")
-        self.assertEqual(1, res._body)
-
-        res = c.handle("/foo", version="")
-        self.assertEqual(1, res._body)
-
-        res = c.handle("/foo")
-        self.assertEqual(1, res._body)
-
-        res = c.handle("/foo", version="v2")
-        self.assertEqual(2, res._body)
-
-        res = c.handle("/foo", version="v3")
-        self.assertEqual(404, res.code)
-

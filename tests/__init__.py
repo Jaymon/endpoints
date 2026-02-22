@@ -3,6 +3,7 @@ import asyncio
 
 import testdata
 from testdata import IsolatedAsyncioTestCase
+from datatypes import ReflectName
 
 from endpoints.config import environ
 from endpoints.interface.base import Application
@@ -19,22 +20,39 @@ testdata.basic_logging(
 
 class Server(object):
     """This is just a wrapper to get access to the Interface handling code"""
-    @property
-    def controller_prefix(self):
-        controller_prefixes = list(self.application.controller_modules.keys())
-        return controller_prefixes[0]
+#     @property
+#     def controller_prefix(self):
+#         controller_prefixes = list(self.application.controller_modules.keys())
+#         return controller_prefixes[0]
 
-    def __init__(self, *args, **kwargs):
-        if "controller_prefix" in kwargs:
-            kwargs.setdefault(
-                "controller_prefixes",
-                [kwargs["controller_prefix"]],
-            )
+    def __init__(self, controller_prefix, **kwargs):
+        self.controller_prefix = controller_prefix
+        app_path = f"{self.controller_prefix}:application"
+        self.application = ReflectName(app_path).resolve()
 
-        self.application = kwargs.get(
-            "application_class",
-            Application,
-        )(*args, **kwargs)
+#         if "controller_prefix" in kwargs:
+#             kwargs.setdefault(
+#                 "controller_prefixes",
+#                 [kwargs["controller_prefix"]],
+#             )
+# 
+#         self.application = kwargs.get(
+#             "application_class",
+#             Application,
+#         )(*args, **kwargs)
+
+
+#     def __init__(self, *args, **kwargs):
+#         if "controller_prefix" in kwargs:
+#             kwargs.setdefault(
+#                 "controller_prefixes",
+#                 [kwargs["controller_prefix"]],
+#             )
+# 
+#         self.application = kwargs.get(
+#             "application_class",
+#             Application,
+#         )(*args, **kwargs)
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
@@ -96,9 +114,20 @@ class Server(object):
             **kwargs
         )
 
+    def get_request(self, path="", method="GET", **kwargs):
+        request = self.create_request(path, method, **kwargs)
+        self.application._update_request(request)
+        return request
+
     def find(self, path="", method="GET", **kwargs):
-        kwargs["request"] = self.create_request(path, method, **kwargs)
-        return self.application.find_controller_info(**kwargs)
+        request = self.get_request(path, method, **kwargs)
+        return request.pathfinder_value
+
+#         request = self.create_request(path, method, **kwargs)
+# #         kwargs["request"] = self.create_request(path, method, **kwargs)
+#         self.application._update_request(request)
+#         return request.pathfinder_value
+# #         return self.application.find_controller_info(**kwargs)
 
 
 class TestCase(IsolatedAsyncioTestCase):
@@ -164,6 +193,17 @@ class TestCase(IsolatedAsyncioTestCase):
             ]
 
         footer = "application = Application([__name__])"
+
+        if isinstance(contents, dict):
+            if "" in contents:
+                if isinstance(contents[""], str):
+                    contents[""] = [contents[""]]
+
+            else:
+                contents.setdefault("", [])
+
+            contents[""].append(footer)
+            footer = ""
 
         controller_prefix = testdata.create_module(
             data=contents,

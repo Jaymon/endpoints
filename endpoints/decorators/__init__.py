@@ -15,7 +15,6 @@ from .auth import (
 )
 
 from .call import (
-    version,
     httpcache,
     nohttpcache,
 )

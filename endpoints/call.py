@@ -6,7 +6,7 @@ import re
 import io
 from collections import defaultdict
 from collections.abc import AsyncGenerator
-from types import NoneType
+from types import NoneType, MappingProxyType
 from typing import Annotated
 import json
 
@@ -23,12 +23,12 @@ from datatypes import (
     Dirpath,
     ReflectType,
 )
+from datatypes.reflection import ReflectABC
 from datatypes.http import Multipart
 
 from .compat import *
 from .exception import (
     CallError,
-    #VersionError,
     Redirect,
     CallStop,
     #AccessDenied,
@@ -587,7 +587,7 @@ class Controller(ETL):
 
         return method_args, method_kwargs
 
-    async def handle_request(self):
+    async def _update_request(self):
         """Internal method. Called by `.handle` to get the request ready
         to be consumed by the controller's request/http methods."""
         body_positionals = []
@@ -659,7 +659,30 @@ class Controller(ETL):
 
         request.body_positionals = body_positionals
         request.body_keywords = body_keywords
+
+#         request.positionals = []
+#         request.keywords = {}
+# 
+#         if request.path_positionals:
+#             request.positionals.extend(request.path_positionals)
+# 
+#         if request.query_keywords:
+#             request.keywords.update(request.query_keywords)
+# 
+#         if request.body_positionals:
+#             request.positionals.extend(request.body_positionals)
+# 
+#         if request.body_keywords:
+#             request.keywords.update(request.body_keywords)
+
         request.positionals, request.keywords = await self.get_request_params()
+
+    def _get_handler_method(self) -> Callable:
+        """Internal method. This returns the method that will be called in
+        `.run`"""
+        if v := self.request.pathfinder_value:
+            method = getattr(self, v["method_name"])
+        return method
 
     async def handle(self):
         """handles the request and sets the response
@@ -667,91 +690,25 @@ class Controller(ETL):
         .. note:: This sets any response information directly onto
             `.response` and pulls any request information directly
             from `.request`
-
-        .. note:: This method relies on `.request.controller_info` being
-            populated
         """
-        request = self.request
-        response = self.response
-        exceptions = defaultdict(list)
+        await self._update_request()
 
-        await self.handle_request()
+        try:
+            method = self._get_handler_method()
+            method_args, method_kwargs = await self.get_method_params()
 
-        rc = request.reflect_class
+            # we pull the method from self because rm is unbounded since it
+            # was created from the reflect Controller class and not the
+            # reflected instance
+            body = method(*method_args, **method_kwargs)
 
-        reflect_methods = rc.reflect_http_handler_methods(request.method)
-        if not reflect_methods:
-            if request.path_positionals:
-                # if we have leftover path args and we don't have a method to
-                # even answer the request it should be NOT FOUND since the
-                # path is invalid
-                raise CallError(
-                    404,
-                    "Could not find a {} method for path {}".format(
-                        request.method,
-                        request.path,
-                    )
-                )
+            while inspect.iscoroutine(body):
+                body = await body
 
-            else:
-                # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                # should be Not Implemented if the method is unrecognized or
-                # not implemented by the origin server
-                raise CallError(
-                    501,
-                    "{} {} not implemented".format(
-                        request.method,
-                        request.path
-                    )
-                )
+            self.response.body = body
 
-        for rm in reflect_methods:
-            # we update the controller info so other handlers know what
-            # method succeeded/failed
-            request.controller_info["reflect_method"] = rm
-            request.reflect_method = rm
-
-            try:
-                logger.debug(f"Request Controller method: {rm.callpath}")
-
-                method_args, method_kwargs = await self.get_method_params()
-
-                # we pull the method from self because rm is unbounded since it
-                # was created from the reflect Controller class and not the
-                # reflected instance
-                body = getattr(self, rm.name)(*method_args, **method_kwargs)
-
-                while inspect.iscoroutine(body):
-                    body = await body
-
-                response.body = body
-                exceptions = None
-                break
-
-            except Exception as e:
-                exceptions[e.__class__.__name__].append(e)
-
-        if exceptions:
-            try:
-                if len(exceptions) == 1:
-                    raise list(exceptions.values())[0][0]
-
-                else:
-                    for excs in exceptions.values():
-                        for exc in excs:
-                            if not isinstance(exc, CallError):
-                                logger.warning(exc)
-
-                    raise CallError(
-                        400,
-                        "Could not find a method to satisfy {} {}".format(
-                            request.method,
-                            request.path
-                        )
-                    )
-
-            except Exception as e:
-                await self.handle_error(e)
+        except Exception as e:
+            await self.handle_error(e)
 
         else:
             await self.handle_response()
@@ -1180,7 +1137,7 @@ class Call(object):
     def __deepcopy__(self, memodict=None):
         memodict = memodict or {}
 
-        memodict.setdefault("controller_info", None)
+#         memodict.setdefault("controller_info", None)
         memodict.setdefault("raw_request", None)
         memodict.setdefault("body", getattr(self, "body", None))
 
@@ -1217,9 +1174,18 @@ class Request(Call):
     method: str|None = None
     """the http method (GET, POST)"""
 
-    controller_info: Mapping|None = None
+#     controller_info: Mapping|None = None
     """will hold the controller information for the request, populated from the
     Call"""
+
+    pathfinder_node: Mapping|None = None
+    """Readonly. Holds the requested pathfinder node"""
+
+#     pathfinder_value: Mapping|None = None
+    """READONLY. Holds the pathfinder node's value for this request"""
+
+#     controller_classes: Sequence[Controller]|None = None
+    """Holds all the controller classes in path order"""
 
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
@@ -1231,7 +1197,7 @@ class Request(Call):
     """Holds the body keywords that were pulled out of `.body`"""
 
     query: str|None = None
-    """Holds the raw query (everything after the ? in the url"""
+    """Holds the raw query (everything after the ? in the url)"""
 
     query_keywords: Mapping|None = None
     """Holds the body keywords that were pulled out of `.query`"""
@@ -1250,16 +1216,40 @@ class Request(Call):
     """Holds the keywords for the request that will be used as the base
     for each HTTP method that is called while trying to answer the request"""
 
-    reflect_class: object|None = None
+#     reflect_class: object|None = None
     """Holds the reflect class instance for the controller that is going to
     answer the request"""
 
-    reflect_method: object|None = None
+#     reflect_method: object|None = None
     """Holds the reflect method instance for the method that is currently
     attempting to answer the request. This is set in `Controller.handle`"""
 
     protocol: str|None = None
     """The HTTP protocol (eg, HTTP/1.1)"""
+
+    @property
+    def pathfinder_value(self) -> Mapping|None:
+        if self.pathfinder_node is not None:
+            return MappingProxyType(self.pathfinder_node.value)
+
+    @property
+    def reflect_method(self) -> ReflectABC|None:
+        """The reflect method instance for the method that will
+        answer the request"""
+        if v := self.pathfinder_value:
+            return v["reflect_method"]
+
+    @property
+    def reflect_class(self) -> ReflectABC|None:
+        """The reflect class instance for the controller that is going to
+        answer the request"""
+        if v := self.pathfinder_value:
+            return v["reflect_method"].reflect_class()
+
+    @property
+    def controller_class(self):
+        if rc := self.reflect_class:
+            return rc.get_class()
 
     @cachedproperty(cached="_uuid")
     def uuid(self):
@@ -1412,8 +1402,7 @@ class Request(Call):
 
         class_path = ""
         module_path = ""
-        if self.controller_info:
-            rc = self.controller_info["reflect_class"]
+        if rc := self.reflect_class:
             class_path = rc.get_url_path()
             module_path = rc.get_module_url_path()
 

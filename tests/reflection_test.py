@@ -11,6 +11,7 @@ from endpoints.reflection.openapi import (
 )
 from endpoints.reflection.inspect import (
     ReflectController,
+    Pathfinder,
 )
 
 from . import TestCase
@@ -173,6 +174,14 @@ class ReflectMethodTest(TestCase):
         """)[0]
         self.assertEqual("/", rm.get_url_path())
 
+    def test_get_url_path_base(self):
+        rm = self.create_reflect_methods("""
+            class Foo(Controller):
+                def GET_bar(self, che, /):
+                    pass
+        """)[0]
+        self.assertEqual("/foo/bar", rm.get_url_path(False))
+
     def test_get_http_method_names_1(self):
         rcs = self.create_reflect_controllers("""
             class _ParentController(Controller):
@@ -317,6 +326,22 @@ class ReflectMethodTest(TestCase):
         self.assertEqual(0, len(list(rm.reflect_query_params())))
         self.assertEqual(0, len(list(rm.reflect_defined_params())))
 
+    def test_get_url_name(self):
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET_foo_bar(self, *args, **kwargs):
+                    pass
+        """)[0]
+
+        self.assertEqual("foo-bar", rm.get_url_name())
+
+        rm = self.create_reflect_methods("""
+            class Default(Controller):
+                def GET(self, *args, **kwargs):
+                    pass
+        """)[0]
+
+        self.assertEqual("", rm.get_url_name())
 
 
 class ReflectParamTest(TestCase):
@@ -650,7 +675,6 @@ class OpenapiOpenAPITest(TestCase):
     def test_responses(self):
         oa = self.create_openapi("""
             class Foo(Controller):
-                @version("v2")
                 def POST(self) -> dict:
                     raise CallError(401, "error message")
         """)
@@ -763,8 +787,8 @@ class OpenapiOpenAPITest(TestCase):
         """)
 
         ti = {
-            "/foo/{bar}": "getFoo1",
-            "/foo/{che}": "getFoo2"
+            "/foo/1/{bar}": "getFoo1",
+            "/foo/2/{che}": "getFoo2"
         }
         for path, operation_id in ti.items():
             pi = oa.paths[path]
@@ -1253,4 +1277,36 @@ class OpenapiResponseTest(TestCase):
 
         content = oa.paths["/"]["get"]["responses"]["200"]["content"]
         self.assertTrue("text/html" in content)
+
+
+class PathfinderTest(TestCase):
+    def test_method(self):
+        s = self.create_server("""
+            class Default(Controller):
+                def GET(self): pass
+                def GET_foo(self): pass
+                def GET_bar(self, che, /): pass
+        """)
+        pf = s.application.pathfinder
+
+        self.assertTrue("GET" in pf)
+        self.assertTrue("foo" in pf)
+        self.assertTrue("bar" in pf)
+
+        self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
+
+    def test_http_method(self):
+        s = self.create_server("""
+            class Default(Controller):
+                def POST(self): pass
+            class Post(Controller):
+                def POST(self): pass
+        """)
+        pf = s.application.pathfinder
+
+        v = pf["POST/"]
+        self.assertTrue("class" in v)
+
+        v = pf["POST"]
+        self.assertTrue("method" in v)
 

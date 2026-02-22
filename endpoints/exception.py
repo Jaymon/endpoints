@@ -99,14 +99,6 @@ class CallStop(CallError):
         super().__init__(code, msg, body=body, **kwargs)
 
 
-class VersionError(CallError):
-    """Raised when @version fails on a Controller method"""
-    def __init__(self, request_version, versions, **kwargs):
-        self.request_version = request_version
-        self.versions = versions
-        super().__init__(**kwargs)
-
-
 class CloseConnection(CallError):
     def __init__(self, msg="", *args, **kwargs):
         """Close a connection, so in a websocket request this will cause the

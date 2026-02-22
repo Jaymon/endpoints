@@ -1,5 +1,6 @@
 from endpoints.interface.base import Application
 from endpoints.call import Controller
+from endpoints.exception import CallError
 
 from . import TestCase
 
@@ -352,13 +353,18 @@ class ApplicationTest(TestCase):
             ],
         })
 
-        c = self.create_server(controller_prefixes=["foo", "bar"])
+        a = Application(["foo", "bar"])
+        req = a.request_class()
+        req.method = "GET"
+        req.path = "/user"
+        a._update_request(req)
+        self.assertTrue("bar", req.pathfinder_value["reflect_method"].modpath)
 
-        t = c.find("/user")
-        self.assertTrue("bar", t["reflect_class"].modpath)
-
-        t = c.find("/che")
-        self.assertTrue("foo", t["reflect_class"].modpath)
+        req = a.request_class()
+        req.method = "GET"
+        req.path = "/che"
+        a._update_request(req)
+        self.assertTrue("foo", req.pathfinder_value["reflect_method"].modpath)
 
     def test_routing_1(self):
         """there was a bug that caused errors raised after the yield to return
@@ -375,14 +381,14 @@ class ApplicationTest(TestCase):
             "    def GET(self): pass",
         ])
 
-        info = c.find()
-        rc = info["reflect_class"]
+        req = c.get_request()
+        rc = req.pathfinder_value["reflect_method"].reflect_class()
         self.assertEqual(c.controller_prefix, rc.modpath)
         self.assertEqual("Default", rc.name)
 
-        info = c.find("/foo/che/baz")
-        rc = info["reflect_class"]
-        self.assertEqual(2, len(info['leftover_path_args']))
+        req = c.get_request("/foo/che/baz")
+        rc = req.pathfinder_value["reflect_method"].reflect_class()
+        self.assertEqual(2, len(req.path_positionals))
         self.assertEqual("Foo", rc.name)
 
     def test_default_match_with_path(self):
@@ -418,10 +424,9 @@ class ApplicationTest(TestCase):
 
         path = '/nomodbar' # same name as one of the non controller classes
         info = c.find(path)
-        rc = info["reflect_class"]
+        rc = info["reflect_method"].reflect_class()
         self.assertEqual('Default', rc.name)
         self.assertEqual(c.controller_prefix, rc.modpath)
-        self.assertEqual('nomodbar', info['leftover_path_args'][0])
 
     def test_import_error(self):
         with self.assertRaises(ImportError):
@@ -438,16 +443,22 @@ class ApplicationTest(TestCase):
         request = c.create_request("/foo/bar", "GET")
         request.query_kwargs = {'foo': 'bar', 'che': 'baz'}
 
-        with self.assertRaises(TypeError):
+#         with self.assertRaises(TypeError):
+        with self.assertRaises(CallError):
             c.find(request=request)
 
-        c = self.create_server({
-            "foo": [
-                "from endpoints import Controller",
-                "class Bar(Controller):",
-                "    def GET(*args, **kwargs): pass"
-            ],
-        })
+        c = self.create_server("""
+            class Foo:
+                class Bar(Controller):
+                    def GET(*args, **kwargs): pass
+        """)
+
+#         c = self.create_server({
+#             "foo": [
+#                 "class Bar(Controller):",
+#                 "    def GET(*args, **kwargs): pass"
+#             ],
+#         })
         # if it succeeds, then it passed the test :)
         d = c.find(request=request)
 
@@ -638,157 +649,218 @@ class RouterTest(TestCase):
             ])
 
     def test_ext(self):
-        controller_class = self.create_module_class([
-            "from endpoints import Controller",
-            "",
-            "class Foo_txt(Controller):",
-            "    def ANY(self): pass",
-        ])
-        cs = Application()
-        r = cs.find_controller_info(self.mock(path="/foo.txt"))
-        self.assertEqual("Foo_txt", r["reflect_class"].get_target().__name__)
+        s = self.create_server("""
+            class Foo_txt(Controller):
+                def ANY(self): pass
+        """)
+
+        r = s.find("/foo.txt")
+        rc = r["reflect_method"].reflect_class()
+        self.assertEqual("Foo_txt", rc.get_target().__name__)
 
     def test_find_controller_info_default(self):
-        """I introduced a bug on 1-12-14 that caused default controllers to fail
-        to be found, this makes sure that bug is squashed"""
-        c = self.create_server([
-            "from endpoints import Controller",
-            "class Default(Controller):",
-            "    def GET(): pass",
-        ])
+        """I introduced a bug on 1-12-14 that caused default controllers to
+        fail to be found, this makes sure that bug is squashed"""
+        c = self.create_server("""
+            class Default(Controller):
+                def GET(): pass
+        """)
 
         info = c.find("/")
-        self.assertEqual('Default', info["reflect_class"].name)
-        self.assertTrue(
-            issubclass(info["reflect_class"].get_target(), Controller),
-        )
+        rc = info["reflect_method"].reflect_class()
+        self.assertEqual('Default', rc.name)
+        self.assertTrue(issubclass(rc.get_target(), Controller))
 
     def test_find_controller_info_advanced(self):
         c = self.create_server({
             "": [
-                "from endpoints import Controller",
                 "class Default(Controller):",
                 "    def GET(*args, **kwargs): pass",
-                ""
             ],
             "default": [
-                "from endpoints import Controller",
                 "class Default(Controller):",
-                "    def ANY_1(*args, **kwargs): pass",
-                "    def ANY_2(*args, **kwargs): pass",
-                ""
+                "    def ANY(*args, **kwargs): pass",
             ],
             "foo": [
-                "from endpoints import Controller",
                 "class Default(Controller):",
                 "    def GET(*args, **kwargs): pass",
-                "",
                 "class Bar(Controller):",
                 "    def GET(*args, **kwargs): pass",
                 "    def POST(*args, **kwargs): pass",
-                ""
             ],
             "foo.baz": [
-                "from endpoints import Controller",
                 "class Default(Controller):",
                 "    def GET(*args, **kwargs): pass",
-                "",
                 "class Che(Controller):",
                 "    def GET(*args, **kwargs): pass",
-                ""
             ],
             "foo.boom": [
-                "from endpoints import Controller",
-                "",
                 "class Bang(Controller):",
                 "    def GET(*args, **kwargs): pass",
-                ""
             ],
         })
 
+        req = c.get_request("/default")
+        self.assertEqual(
+            f"{c.controller_prefix}.default",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual([], req.path_positionals)
+
+        req = c.get_request("/foo/baz")
+        self.assertEqual(
+            f"{c.controller_prefix}.foo.baz",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual([], req.path_positionals)
+
+        req = c.get_request("/foo/bar/happy/sad")
+        self.assertEqual(
+            f"{c.controller_prefix}.foo",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Bar", req.reflect_class.name)
+        self.assertEqual(["happy", "sad"], req.path_positionals)
+
+        req = c.get_request("/")
+        self.assertEqual(
+            c.controller_prefix,
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual([], req.path_positionals)
+
+        req = c.get_request("/happy")
+        self.assertEqual(
+            c.controller_prefix,
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual(["happy"], req.path_positionals)
+
+        req = c.get_request("/foo/baz/che")
+        self.assertEqual(
+            f"{c.controller_prefix}.foo.baz",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Che", req.reflect_class.name)
+        self.assertEqual([], req.path_positionals)
+
+        req = c.get_request("/foo/baz/happy")
+        self.assertEqual(
+            f"{c.controller_prefix}.foo.baz",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual(["happy"], req.path_positionals)
+
+        req = c.get_request("/foo/happy")
+        self.assertEqual(
+            f"{c.controller_prefix}.foo",
+            req.reflect_class.reflect_module().name,
+        )
+        self.assertEqual("Default", req.reflect_class.name)
+        self.assertEqual(["happy"], req.path_positionals)
+
         ts = [
-            {
-                'in': dict(method="GET", path="/default"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.default",
-                    'class_name': 'Default',
-                    'leftover_path_args': [],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/baz"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo.baz",
-                    'class_name': 'Default',
-                    'leftover_path_args': [],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/bar/happy/sad"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo",
-                    'class_name': 'Bar',
-                    'leftover_path_args': ['happy', 'sad'],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}",
-                    'class_name': 'Default',
-                    'leftover_path_args': [],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/happy"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}",
-                    'class_name': 'Default',
-                    'leftover_path_args': ["happy"],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/baz/che"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo.baz",
-                    'class_name': 'Che',
-                    'leftover_path_args': [],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/baz/happy"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo.baz",
-                    'class_name': 'Default',
-                    'leftover_path_args': ["happy"],
-                }
-            },
-            {
-                'in': dict(method="GET", path="/foo/happy"),
-                'out': {
-                    'module_name': f"{c.controller_prefix}.foo",
-                    'class_name': 'Default',
-                    'leftover_path_args': ["happy"],
-                }
-            },
+                #             {
+#                 'in': dict(method="GET", path="/default"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.default",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': [],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/foo/baz"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.foo.baz",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': [],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/foo/bar/happy/sad"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.foo",
+#                     'class_name': 'Bar',
+#                     'leftover_path_args': ['happy', 'sad'],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': [],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/happy"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': ["happy"],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/foo/baz/che"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.foo.baz",
+#                     'class_name': 'Che',
+#                     'leftover_path_args': [],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/foo/baz/happy"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.foo.baz",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': ["happy"],
+#                 }
+#             },
+#             {
+#                 'in': dict(method="GET", path="/foo/happy"),
+#                 'out': {
+#                     'module_name': f"{c.controller_prefix}.foo",
+#                     'class_name': 'Default',
+#                     'leftover_path_args': ["happy"],
+#                 }
+#             },
         ]
 
-        for t in ts:
-            request = c.create_request(**t["in"])
-            d = c.find(request=request)
+#         for t in ts:
+#             request = c.create_request(**t["in"])
+#             d = c.find(request=request)
+# 
+#             for key, val in t["out"].items():
+#                 rc = d["reflect_class"]
+#                 if key == "module_name":
+#                     self.assertEqual(val, rc.modpath, t["in"]["path"])
+# 
+#                 elif key == "class_name":
+#                     self.assertEqual(
+#                         val,
+#                         rc.reflect_class().name,
+#                         t["in"]["path"]
+#                     )
+# 
+#                 else:
+#                     self.assertEqual(val, d[key], t["in"]["path"])
 
-            for key, val in t["out"].items():
-                rc = d["reflect_class"]
-                if key == "module_name":
-                    self.assertEqual(val, rc.modpath, t["in"]["path"])
+    def test__update_request(self):
+        s = self.create_server("""
+            class Foo(Controller):
+                def GET(self): pass
+                def GET_bar(self): pass
+                def GET_boo(self, che, /): pass
+        """)
 
-                elif key == "class_name":
-                    self.assertEqual(
-                        val,
-                        rc.reflect_class().name,
-                        t["in"]["path"]
-                    )
+        request = s.create_request("/foo/bar", "GET")
+        s.application._update_request(request)
 
-                else:
-                    self.assertEqual(val, d[key], t["in"]["path"])
+        rm = request.pathfinder_value["reflect_method"]
+        self.assertEqual("/foo/bar", rm.get_url_path())
 

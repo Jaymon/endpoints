@@ -9,7 +9,7 @@ import inspect
 import os
 import datetime
 from typing import Any
-from types import ModuleType
+from types import ModuleType, MappingProxyType
 from collections.abc import Iterable
 
 from datatypes import (
@@ -33,6 +33,7 @@ from ..call import (
 from ..reflection.inspect import Pathfinder
 from ..exception import (
     CloseConnection,
+    CallError,
 )
 
 from ..utils import ByteString, JSONEncoder
@@ -45,7 +46,11 @@ class InterfaceABC(object):
     def __call__(self, *args, **kwargs) -> Any:
         """The interface will want to customize this, whatever this call
         signature is, the `.create_request` will probably want to match
-        it"""
+        it
+
+        After createing the request and response instances, this will want
+        to call `self.application.handle`
+        """
         raise NotImplementedError()
 
     def create_request(self, *args, **kwargs) -> Request:
@@ -89,19 +94,12 @@ class Interface(InterfaceABC):
         else:
             raise ValueError("Unknown Interface.__call__ method")
 
-    def create_request(self, raw_request, **kwargs):
-        """convert the raw interface raw_request to a request that endpoints
-        understands
-
-        :params raw_request: mixed, this is the request given by backend
-        :params **kwargs:
-        :returns: an http.Request instance that endpoints understands
-        """
+    def create_request(self, *args, **kwargs) -> Request:
         request = self.application.request_class()
-        request.raw_request = raw_request
+        #request.raw_request = raw_request
         return request
 
-    def create_response(self, **kwargs):
+    def create_response(self, **kwargs) -> Response:
         """create the endpoints understandable response instance that is used
         to return output to the client"""
         return self.application.response_class()
@@ -523,66 +521,165 @@ class Application(object):
 
         return pathfinder
 
-    def find_controller_info(self, request, **kwargs):
-        """returns all the information needed to create a controller and
-        handle the request
+    def _update_request(self, request, **kwargs) -> None:
+        logger.debug(
+            "Finding handler for: %s %s",
+            request.method,
+            request.path,
+        )
 
-        This is where all the routing magic happens, this takes the
-        request.path and gathers the information needed to turn that path into
-        a Controller
-
-        This uses the requested path_args and checks the internal tree to find
-        the right path or raises a TypeError if the path can't be resolved
-
-        we always translate an HTTP request using this pattern:
-
-            METHOD /module/class/args?kwargs
-
-        :param request: Request
-        :param **kwargs:
-        :returns: dict
-        """
-        ret = {}
-
-        logger.debug("Compiling Controller info using path: %s", request.path)
-
-        rc_classes = []
-        leftover_path_args = list(filter(None, request.path.split('/')))
+        leftover_path_args = list(filter(None, request.path.split("/")))
         node = self.pathfinder
+#         controller_classes = []
 
         while node is not None:
-            if node.value and "class" in node.value:
-                rc_classes.append(node.value["reflect_class"])
+#             if node.value:
+#                 if "reflect_class" in node.value:
+#                     rc = node.value["reflect_class"]
+#                     controller_classes.append(rc.get_class())
 
             if leftover_path_args:
                 try:
-                    node = node.get_node(leftover_path_args[0])
+                    node = node.get_node(leftover_path_args[0] + "/")
                     leftover_path_args = leftover_path_args[1:]
 
                 except KeyError:
-                    node = None
+                    break
 
             else:
-                node = None
+                break
 
-        if rc_classes:
-            request.path_positionals = leftover_path_args
-            request.reflect_class = rc_classes[-1]
+        request.path_positionals = leftover_path_args
+#         request.controller_classes = controller_classes
 
-            ret["leftover_path_args"] = leftover_path_args
-            ret["reflect_class"] = rc_classes[-1]
+        # we need to find the http node
+        method_node = None
+        try:
+            method_node = node.get_node(request.method)
 
-        else:
-            raise TypeError(f"Unknown controller with path: {request.path}")
+        except KeyError:
+            try:
+                 method_node = node.get_node("ANY")
 
-        return ret
+            except KeyError:
+                if leftover_path_args:
+                    # if we have leftover path args and we don't have a
+                    # method to even answer the request it should be NOT
+                    # FOUND since the path is invalid
+                    raise CallError(
+                        404,
+                        f"{request.method} {request.path} not found",
+                    )
+
+                else:
+                    # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+                    # should be Not Implemented if the method is
+                    # unrecognized or not implemented by the origin server
+                    raise CallError(
+                        501,
+                        f"{request.method} {request.path} not implemented",
+                    )
+
+        request.pathfinder_node = method_node
+
+
+        # we need to find the http method
+#         v = node.get(request.method, None)
+#         if v is None:
+#             v = node.get("ANY", None)
+#             if v is None:
+#                 if leftover_path_args:
+#                     # if we have leftover path args and we don't have a
+#                     # method to even answer the request it should be NOT
+#                     # FOUND since the path is invalid
+#                     raise CallError(
+#                         404,
+#                         f"{request.method} {request.path} not found",
+#                     )
+# 
+#                 else:
+#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                     # should be Not Implemented if the method is
+#                     # unrecognized or not implemented by the origin server
+#                     raise CallError(
+#                         501,
+#                         f"{request.method} {request.path} not implemented",
+#                     )
+# 
+#         request.pathfinder_value = MappingProxyType(v)
+
+        # I don't know if these are completely needed, I do know
+        # .reflect_method is used in Controller.handle_error
+#         request.reflect_method = v["reflect_method"]
+#         request.reflect_class = v["reflect_method"].reflect_class()
+
+        logger.debug(
+            "Found %s %s handler: %s",
+            request.method,
+            request.path,
+            method_node.value["reflect_method"].callpath,
+        )
+
+#     def find_controller_info(self, request, **kwargs):
+#         """returns all the information needed to create a controller and
+#         handle the request
+# 
+#         This is where all the routing magic happens, this takes the
+#         request.path and gathers the information needed to turn that path into
+#         a Controller
+# 
+#         This uses the requested path_args and checks the internal tree to find
+#         the right path or raises a TypeError if the path can't be resolved
+# 
+#         we always translate an HTTP request using this pattern:
+# 
+#             METHOD /module/class/args?kwargs
+# 
+#         :param request: Request
+#         :param **kwargs:
+#         :returns: dict
+#         """
+#         ret = {}
+# 
+#         logger.debug("Compiling Controller info using path: %s", request.path)
+# 
+#         rc_classes = []
+#         leftover_path_args = list(filter(None, request.path.split('/')))
+#         node = self.pathfinder
+# 
+#         while node is not None:
+#             if node.value and "class" in node.value:
+#                 rc_classes.append(node.value["reflect_class"])
+# 
+#             if leftover_path_args:
+#                 try:
+#                     node = node.get_node(leftover_path_args[0])
+#                     leftover_path_args = leftover_path_args[1:]
+# 
+#                 except KeyError:
+#                     node = None
+# 
+#             else:
+#                 node = None
+# 
+#         if rc_classes:
+#             request.path_positionals = leftover_path_args
+#             request.reflect_class = rc_classes[-1]
+# 
+#             ret["leftover_path_args"] = leftover_path_args
+#             ret["reflect_class"] = rc_classes[-1]
+# 
+#         else:
+#             raise TypeError(f"Unknown controller with path: {request.path}")
+# 
+#         return ret
 
     def find_modules(
         self,
         controller_prefixes: list[str],
         paths: list[str],
         **kwargs
-        ) -> Iterable[ModuleType]:
+    ) -> Iterable[ModuleType]:
         """Internal method. Finds all the modules
 
         This loads the controllers using the `controller_prefixes` or `paths`
@@ -624,18 +721,14 @@ class Application(object):
             controller_class = kwargs["controller_class"]
 
         else:
-            request.controller_info = self.find_controller_info(
-                request,
-                **kwargs
-            )
-
-            rc = request.controller_info["reflect_class"]
-            controller_class = rc.get_target()
+            self._update_request(request)
+            rm = request.pathfinder_value["reflect_method"]
+            controller_class = rm.get_class()
 
         controller = controller_class(
             request,
             response,
-            **kwargs
+            **kwargs,
         )
 
         controller.application = self
@@ -643,14 +736,45 @@ class Application(object):
 
     def create_error_controller(self, request, response, **kwargs):
         if "controller_class" not in kwargs:
-            controller_info = request.controller_info or {}
-            if rc := controller_info.get("reflect_class", None):
-                kwargs["controller_class"] = rc.get_target()
+            kwargs["controller_class"] = self.controller_class
 
-            else:
-                kwargs["controller_class"] = self.controller_class
+            node = request.pathfinder_node
+            while node is not None:
+                if v := node.value:
+                    if "reflect_class" in v:
+                        controller_class = v["reflect_class"].get_class()
+                        kwargs["controller_class"] = controller_class
+                        break
+
+                    elif "reflect_method" in v:
+                        controller_class = v["reflect_method"].get_class()
+                        kwargs["controller_class"] = controller_class
+                        break
+
+                node = node.parent
 
         return self.create_controller(request, response, **kwargs)
+
+#     def create_error_controller(self, request, response, **kwargs):
+#         if "controller_class" not in kwargs:
+#             if request.controller_classes:
+#                 kwargs["controller_class"] = request.controller_classes[-1]
+# 
+#             else:
+#                 kwargs["controller_class"] = self.controller_class
+# 
+#         return self.create_controller(request, response, **kwargs)
+
+#     def create_error_controller(self, request, response, **kwargs):
+#         if "controller_class" not in kwargs:
+#             controller_info = request.controller_info or {}
+#             if rc := controller_info.get("reflect_class", None):
+#                 kwargs["controller_class"] = rc.get_target()
+# 
+#             else:
+#                 kwargs["controller_class"] = self.controller_class
+# 
+#         return self.create_controller(request, response, **kwargs)
 
     async def handle(self, request, response, **kwargs) -> Controller:
         """Called from the interface to actually handle the request."""
