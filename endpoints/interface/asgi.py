@@ -227,7 +227,7 @@ class Interface(Interface):
     def create_request(self, **kwargs):
         raw_request = kwargs["scope"]
         request = self.application.request_class()
-        request.add_headers(raw_request.get("headers", []))
+        request.headers.update(raw_request.get("headers", []))
 
         request.path = raw_request['path']
         request.query = raw_request['query_string']

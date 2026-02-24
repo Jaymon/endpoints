@@ -82,12 +82,11 @@ class _HTTPTestCase(TestCase):
         self.assertEqual(404, r.code)
 
     def test_get_response_headers(self):
-        server = self.create_server([
-            "class Default(Controller):",
-            "    def GET(self):",
-            "        self.response.set_header('FOO_BAR', 'check')",
-            "",
-        ])
+        server = self.create_server("""
+            class Default(Controller):
+                def GET(self):
+                    self.response.headers["FOO_BAR"] = "check"
+        """)
 
         c = self.create_client()
         r = c.get('/')

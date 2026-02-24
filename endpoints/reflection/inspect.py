@@ -547,20 +547,6 @@ class ReflectArgument(ReflectArgument):
 
         return v
 
-#         v = super().get_value()
-#         if v is not inspect.Parameter.empty:
-#             if rp := self.reflect_param():
-#                 v = rp.normalize_value(v)
-# 
-#         return v
-
-#     def normalize_value(self):
-#         v = self.value
-#         if rp := self.reflect_param():
-#             v = rp.normalize_value(v)
-# 
-#         return v
-
 
 class ReflectParam(ReflectObject):
     """Reflects an inspect.Parameter instance from an http method's signature

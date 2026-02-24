@@ -207,17 +207,11 @@ class AuthDecoratorTest(TestCase):
 
         c = self.create_controller(foo)
 
-        c.request.set_header(
-            "authorization",
-            self.get_bearer_auth_header("foo")
-        )
+        c.request.headers["authorization"] = self.get_bearer_auth_header("foo")
         with self.assertRaises(AccessDenied):
             await c.foo()
 
-        c.request.set_header(
-            "authorization",
-            self.get_bearer_auth_header("bar")
-        )
+        c.request.headers["authorization"] = self.get_bearer_auth_header("bar")
         await c.foo()
 
         c.request = Request()
@@ -244,24 +238,24 @@ class AuthDecoratorTest(TestCase):
         c = MockObject()
         c.request = r
 
-        r.set_header(
-            'authorization',
-            self.get_basic_auth_header(username, password)
+        r.headers["authorization"] = self.get_basic_auth_header(
+            username,
+            password,
         )
         with self.assertRaises(AccessDenied):
             await c.foo()
 
         username = "bar"
-        r.set_header(
-            'authorization',
-            self.get_basic_auth_header(username, password)
+        r.headers["authorization"] = self.get_basic_auth_header(
+            username,
+            password,
         )
         await c.foo()
 
         username = "che"
-        r.set_header(
-            'authorization',
-            self.get_basic_auth_header(username, password)
+        r.headers["authorization"] = self.get_basic_auth_header(
+            username,
+            password,
         )
         with self.assertRaises(AccessDenied):
             await c.foo()
@@ -286,9 +280,9 @@ class AuthDecoratorTest(TestCase):
         username = "bar"
         password = "..."
         r = Request()
-        r.set_header(
-            'authorization',
-            self.get_basic_auth_header(username, password)
+        r.headers["authorization"] = self.get_basic_auth_header(
+            username,
+            password,
         )
         c.request = r
 
@@ -378,7 +372,7 @@ class CacheTest(TestCase):
             pass
 
         await func(c)
-        h = c.response.get_header("Cache-Control")
+        h = c.response.headers.get("Cache-Control", "")
         self.assertTrue("max-age=500" in h)
 
     async def test_nohttpcache(self):
@@ -388,9 +382,9 @@ class CacheTest(TestCase):
         async def func(self): pass
 
         await func(c)
-        h = c.response.get_header("Cache-Control")
+        h = c.response.headers.get("Cache-Control", "")
         self.assertTrue("no-cache" in h)
 
-        h = c.response.get_header("Pragma")
+        h = c.response.headers.get("Pragma", "")
         self.assertTrue("no-cache" in h)
 

@@ -185,48 +185,46 @@ class CORSMixinTest(TestCase):
         self.assertTrue(c.OPTIONS)
         self.assertFalse('Access-Control-Allow-Origin' in c.response.headers)
 
-        req.set_header('Origin', 'http://example.com')
+        req.headers["Origin"] = "http://example.com"
         c = Cors(req, res)
         await c.handle_cors()
         self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
+            req.headers.get("Origin", "1"),
+            c.response.headers.get("Access-Control-Allow-Origin", "2"),
         ) 
 
-        req.set_header('Access-Control-Request-Method', 'POST')
-        req.set_header('Access-Control-Request-Headers', 'xone, xtwo')
+        req.headers["Access-Control-Request-Method"] = "POST"
+        req.headers["Access-Control-Request-Headers"] = "xone, xtwo"
         c = Cors(req, res)
         await c.handle_cors()
         await c.OPTIONS()
         self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
-        )
-        self.assertEqual(
-            req.get_header('Access-Control-Request-Method'),
-            c.response.get_header('Access-Control-Allow-Methods')
+            req.headers.get("Origin", "1"),
+            c.response.headers.get("Access-Control-Allow-Origin", "2"),
         ) 
         self.assertEqual(
-            req.get_header('Access-Control-Request-Headers'),
-            c.response.get_header('Access-Control-Allow-Headers')
+            req.headers.get("Access-Control-Request-Method", "1"),
+            c.response.headers.get("Access-Control-Allow-Methods", "2"),
+        ) 
+        self.assertEqual(
+            req.headers.get("Access-Control-Request-Headers", "1"),
+            c.response.headers.get("Access-Control-Allow-Headers", "2"),
         ) 
 
         c = Cors(req, res)
         await c.handle_cors()
         c.POST()
         self.assertEqual(
-            req.get_header('Origin'),
-            c.response.get_header('Access-Control-Allow-Origin')
-        ) 
+            req.headers["Origin"],
+            c.response.headers["Access-Control-Allow-Origin"],
+        )
 
 
 class RequestTest(TestCase):
     def test_get_auth_scheme_is_auth(self):
         r = Request()
 
-        r.set_headers({
-            "Authorization": "Basic FOOBAR",
-        })
+        r.headers["Authorization"] = "Basic FOOBAR"
         self.assertEqual("Basic", r.get_auth_scheme())
         self.assertTrue(r.is_auth("basic"))
         self.assertTrue(r.is_auth("Basic"))
@@ -236,8 +234,7 @@ class RequestTest(TestCase):
         self.assertEqual("", r.get_auth_scheme())
         self.assertFalse(r.is_auth("basic"))
 
-        # r.basic_auth("foo", "bar")
-        r.set_headers({"Authorization": "Basic foobar"})
+        r.headers["Authorization"] = "Basic foobar"
         self.assertTrue(r.is_auth("basic"))
         self.assertTrue(r.is_auth("client"))
         self.assertFalse(r.is_auth("token"))
@@ -255,32 +252,11 @@ class RequestTest(TestCase):
         self.assertFalse(r.is_auth("token"))
         self.assertFalse(r.is_auth("access"))
 
-    def test_copy(self):
-        r = Request()
-        r.set_headers({
-            "Host": "localhost",
-        })
-        r.query = "foo=bar"
-        r.path = "/baz/che"
-        r.scheme = "http"
-        r.port = "80"
-        r.foo = 1
-
-        r2 = r.copy()
-        self.assertEqual(r.foo, r2.foo)
-        self.assertEqual(r.port, r2.port)
-
-        r2.headers["foo"] = "bar"
-        self.assertFalse("foo" in r.headers)
-        self.assertTrue("foo" in r2.headers)
-
     def test_url(self):
         """make sure the .url attribute is correctly populated"""
         # this is wsgi configuration
         r = Request()
-        r.set_headers({
-            "Host": "localhost",
-        })
+        r.headers["Host"] = "localhost"
         r.query = "foo=bar"
         r.path = "/baz/che"
         r.scheme = "http"
@@ -299,84 +275,49 @@ class RequestTest(TestCase):
 
     def test_charset(self):
         r = Request()
-        r.set_header("content-type", "application/json;charset=UTF-8")
+        r.headers["content-type"] = "application/json;charset=UTF-8"
         charset = r.encoding
         self.assertEqual("UTF-8", charset.upper())
 
         r = Request()
-        r.set_header("content-type", "application/json")
+        r.headers["content-type"] = "application/json"
         charset = r.encoding
         self.assertEqual(None, charset)
 
     def test_ip(self):
         r = Request()
-        r.set_header('REMOTE_ADDR', '172.252.0.1')
+        r.headers["REMOTE_ADDR"] = "172.252.0.1"
         self.assertEqual('172.252.0.1', r.ip)
 
         r = Request()
-        r.set_header('REMOTE_ADDR', '1.241.34.107')
+        r.headers["REMOTE_ADDR"] = '1.241.34.107'
         self.assertEqual('1.241.34.107', r.ip)
 
         r = Request()
-        r.set_header('x-forwarded-for', '54.241.34.107')
+        r.headers["x-forwarded-for"] = '54.241.34.107'
         self.assertEqual('54.241.34.107', r.ip)
 
-        r.set_header('x-forwarded-for', '127.0.0.1, 54.241.34.107')
+        r.headers["x-forwarded-for"] = '127.0.0.1, 54.241.34.107'
         self.assertEqual('54.241.34.107', r.ip)
 
-        r.set_header('x-forwarded-for', '127.0.0.1')
-        r.set_header('client-ip', '54.241.34.107')
+        r.headers["x-forwarded-for"] = '127.0.0.1'
+        r.headers["client-ip"] = '54.241.34.107'
         self.assertEqual('54.241.34.107', r.ip)
 
     def test_ip_bad(self):
         r = Request()
-        r.set_header('REMOTE_ADDR', "10.0.2.2")
-        r.set_header(
-            "Via",
-            "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
-        )
+        r.headers["REMOTE_ADDR"] = "10.0.2.2"
+        r.headers["Via"] = "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
         self.assertEqual("", r.ip)
 
         r = Request()
-        r.set_header('REMOTE_ADDR', "54.241.34.107")
-        r.set_header(
-            "Via",
-            "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
-        )
+        r.headers["REMOTE_ADDR"] = "54.241.34.107"
+        r.headers["Via"] = "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
         self.assertEqual("54.241.34.107", r.ip)
-
-    def test_get_header(self):
-        r = Request()
-
-        r.set_headers({
-            'foo': 'bar',
-            'Content-Type': 'application/json',
-            'Happy-days': 'are-here-again'
-        })
-        v = r.get_header('foo', 'che')
-        self.assertEqual('bar', v)
-
-        v = r.get_header('Foo', 'che')
-        self.assertEqual('bar', v)
-
-        v = r.get_header('FOO', 'che')
-        self.assertEqual('bar', v)
-
-        v = r.get_header('che', 'che')
-        self.assertEqual('che', v)
-
-        v = r.get_header('che')
-        self.assertEqual(None, v)
-
-        v = r.get_header('content-type')
-        self.assertEqual('application/json', v)
-
-        v = r.get_header('happy-days')
-        self.assertEqual('are-here-again', v)
 
     def test_get_version(self):
         r = Request()
-        r.set_header('accept', 'application/json;version=v1')
+        r.headers["accept"] = 'application/json;version=v1'
 
         v = r.version()
         self.assertEqual("v1", v)
@@ -395,15 +336,15 @@ class RequestTest(TestCase):
         self.assertEqual("", r.version('application/json'))
 
         r = Request()
-        r.set_header('accept', 'application/json;version=v1')
+        r.headers["accept"] = 'application/json;version=v1'
         self.assertEqual('v1', r.version())
 
         r = Request()
-        r.set_header('accept', '*/*')
+        r.headers["accept"] = '*/*'
         self.assertEqual("", r.version('application/json'))
 
         r = Request()
-        r.set_header('accept', '*/*;version=v8')
+        r.headers["accept"] = '*/*;version=v8'
         self.assertEqual('v8', r.version('application/json'))
 
 

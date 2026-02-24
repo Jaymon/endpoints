@@ -458,7 +458,7 @@ class Controller(ETL):
                 mt = MimeType.find_type(filepath)
                 filesize = os.path.getsize(filepath)
                 response.media_type = mt or media_type
-                response.set_header("Content-Length", filesize)
+                response.headers["Content-Length"] = filesize
                 logger.debug(" ".join([
                     f"Response body set to file: \"{filepath}\"",
                     f"with mimetype: \"{mt}\"",
@@ -542,8 +542,6 @@ class Controller(ETL):
         method_args = []
         method_kwargs = {}
 
-#         pout.v(self.request.positionals, self.request.keywords)
-
         ras = self.request.reflect_method.reflect_arguments(
             *self.request.positionals,
             **self.request.keywords,
@@ -553,7 +551,6 @@ class Controller(ETL):
             if ra.has_multiple_values():
                 # method call is going to fail anyway so short-circuit
                 # processing
-#                 pout.v(ra)
                 method_args = self.request.positionals
                 method_kwargs = self.request.keywords
                 break
@@ -565,45 +562,6 @@ class Controller(ETL):
                 elif ra.is_keyword():
                     method_kwargs.update(ra.get_keyword_values())
 
-#         for ra in ras:
-#             if ra.is_bound():
-#                 if ra.has_multiple_values():
-#                     # method call is going to fail anyway so short-circuit
-#                     # processing
-#                     method_args = self.request.positionals
-#                     method_kwargs = self.request.keywords
-#                     break
-# 
-#                 else:
-#                     try:
-#                         v = ra.normalize_value()
-# 
-#                     except ValueError as e:
-#                         raise CallError(400, String(e)) from e
-# 
-#                     else:
-#                         if ra.is_bound_positional():
-#                             if ra.is_catchall():
-#                                 method_args.extend(v)
-# 
-#                             else:
-#                                 method_args.append(v)
-# 
-#                         else:
-#                             if ra.is_catchall():
-#                                 method_kwargs.update(v)
-# 
-#                             else:
-#                                 method_kwargs[ra.name] = v
-# 
-#             else:
-#                 if ra.is_unbound_positionals():
-#                     method_args.extend(ra.value)
-# 
-#                 elif ra.is_unbound_keywords():
-#                     method_kwargs.update(ra.value)
-
-#         pout.v(method_args, method_kwargs)
         return method_args, method_kwargs
 
     async def _update_request(self):
@@ -752,20 +710,20 @@ class Controller(ETL):
             # a success and should set the values found in the raised instance
             logger.debug(String(e))
             response.code = e.code
-            response.add_headers(e.headers)
+            response.headers.update(e.headers)
             response.body = e.body
 
         elif isinstance(e, Redirect):
             logger.debug(String(e))
             response.code = e.code
-            response.add_headers(e.headers)
+            response.headers.update(e.headers)
             response.body = None
 
         elif isinstance(e, CallError):
             self.log_error_warning(e)
 
             response.code = e.code
-            response.add_headers(e.headers)
+            response.headers.update(e.headers)
             if e.body is not None:
                 response.body = e.body
 
@@ -845,18 +803,15 @@ class Controller(ETL):
         if response.is_binary_file():
             response.encoding = None
 
-        if response.media_type and not response.has_header("Content-Type"):
+        if response.media_type and "Content-Type" not in response.headers:
             if response.encoding:
-                response.set_header(
-                    "Content-Type",
-                    "{};charset={}".format(
-                        response.media_type,
-                        response.encoding
-                    )
+                response.headers["Content-Type"] = "{};charset={}".format(
+                    response.media_type,
+                    response.encoding
                 )
 
             else:
-                response.set_header("Content-Type", response.media_type)
+                response.headers["Content-Type"] = response.media_type
 
     async def get_response_media_type(self, body) -> str|None:
         """Get the media type for this response based on `body`
@@ -990,7 +945,7 @@ class CORSMixin(object):
     async def handle_cors(self):
         """This will set the headers that are needed for any cors request
         (OPTIONS or real) """
-        origin = self.request.get_header('origin')
+        origin = self.request.headers.get("origin", "")
         if await self.is_valid_origin(origin):
             if origin:
                 # your server must read the value of the request's Origin
@@ -999,8 +954,8 @@ class CORSMixin(object):
                 # headers are being set dynamically depending on the origin.
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/CORS/Errors/CORSMissingAllowOrigin
                 # https://developer.mozilla.org/en-US/docs/Web/HTTP/Headers/Access-Control-Allow-Origin
-                self.response.set_header('Access-Control-Allow-Origin', origin)
-                self.response.set_header('Vary', "Origin")
+                self.response.headers["Access-Control-Allow-Origin"] = origin
+                self.response.headers["Vary"] = "Origin"
 
         else:
             # RFC6455 - If the origin indicated is unacceptable to the server,
@@ -1020,7 +975,7 @@ class CORSMixin(object):
 
         req = self.request
 
-        origin = req.get_header('origin')
+        origin = req.headers.get("origin", "")
         if not origin:
             raise CallError(400, 'Need Origin header') 
 
@@ -1029,18 +984,17 @@ class CORSMixin(object):
             ('Access-Control-Request-Method', 'Access-Control-Allow-Methods')
         ]
         for req_header, res_header in call_headers:
-            v = req.get_header(req_header)
+            v = req.headers.get(req_header)
             if v:
-                self.response.set_header(res_header, v)
+                self.response.headers[res_header] = v
 
             else:
                 raise CallError(400, 'Need {} header'.format(req_header))
 
-        other_headers = {
+        self.response.headers.update({
             'Access-Control-Allow-Credentials': 'true',
             'Access-Control-Max-Age': 3600
-        }
-        self.response.add_headers(other_headers)
+        })
 
 
 class TRACEMixin(object):
@@ -1080,73 +1034,10 @@ class Call(object):
     def __init__(self):
         self.headers = self.headers_class()
 
-    def has_header(self, header_name):
-        """return true if the header is set"""
-        return header_name in self.headers
-
-    def set_headers(self, headers):
-        """replace all headers with passed in headers"""
-        self.headers = HTTPHeaders(headers)
-
-    def add_headers(self, headers, **kwargs):
-        self.headers.update(headers, **kwargs)
-
-    def set_header(self, header_name, val):
-        self.headers[header_name] = val
-
-    def add_header(self, header_name, val, **params):
-        self.headers.add_header(header_name, val, **params)
-
-    def get_header(self, header_name, default_val=None, allow_empty=True):
-        """try as hard as possible to get a a response header of header_name,
-        return default_val if it can't be found"""
-        v = self.headers.get(header_name, default_val)
-        if v:
-            return v
-
-        else:
-            if not allow_empty:
-                return default_val
-
-    def find_header(self, header_names, default_val=None, allow_empty=True):
-        """given a list of headers return the first one you can, default_val if
-        you don't find any
-
-        :param header_names: list, a list of headers, first one found is
-            returned
-        :param default_val: mixed, returned if no matching header is found
-        :returns: mixed, the value of the header or default_val
-        """
-        ret = default_val
-        for header_name in header_names:
-            if self.has_header(header_name):
-                ret = self.get_header(header_name, default_val)
-                if ret or allow_empty:
-                    break
-
-        if not ret and not allow_empty:
-            ret = default_val
-
-        return ret
-
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
         u = Url(query=query)
         return u.query_kwargs
-
-    def copy(self):
-        """nice handy wrapper around the deepcopy"""
-        return self.__deepcopy__()
-
-    def __deepcopy__(self, memodict=None):
-        memodict = memodict or {}
-
-#         memodict.setdefault("controller_info", None)
-        memodict.setdefault("raw_request", None)
-        memodict.setdefault("body", getattr(self, "body", None))
-
-        #return Deepcopy(ignore_private=True).copy(self, memodict)
-        return Deepcopy().copy(self, memodict)
 
     def is_json(self):
         return self.headers.is_json()
@@ -1253,8 +1144,10 @@ class Request(Call):
             uuid = self.query_keywords["uuid"]
 
         # next use X-UUID header, then the websocket key
-        if not uuid:
-            uuid = self.find_header(["X-UUID", "Sec-Websocket-Key"])
+        for hn in ["X-UUID", "Sec-Websocket-Key"]:
+            if hn in self.headers:
+                uuid = self.headers[hn]
+                break
 
         return uuid or ""
 
@@ -1269,7 +1162,7 @@ class Request(Call):
             media type has no wildcards
         """
         v = ""
-        accept_header = self.get_header('accept', "")
+        accept_header = self.headers.get("accept", "")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a:
@@ -1315,7 +1208,7 @@ class Request(Call):
         ]
 
         for name in names:
-            vs = self.get_header(name, '')
+            vs = self.headers.get(name, "")
             if vs:
                 r.extend(map(lambda v: v.strip(), vs.split(',')))
 
@@ -1359,7 +1252,7 @@ class Request(Call):
     @cachedproperty(cached="_host")
     def host(self):
         """return the request host"""
-        return self.get_header("host")
+        return self.headers.get("host", "")
 
     @cachedproperty(cached="_scheme")
     def scheme(self):
@@ -1421,52 +1314,6 @@ class Request(Call):
 
         super().__init__()
 
-    def get(self, name="", default_val=None, **kwargs):
-        """Get a value
-
-        Order of preference: body, query, header
-
-        :param name: str, the name of the query or body key to check, a header
-            named "X-<NAME>" will also be checked if name is not found in the
-            body or query parameters
-        :param default_val: Any, the default value if the name isn't found
-            anywhere
-                * names: list[str], want to check multiple names instead of
-                    just one name?
-                * header_names: list[str], similar to names, check multiple
-                    header names in one call
-                * query_kwargs: dict, children can customize query kwargs so
-                    this allows them to be passed in so children's internal
-                    methods can customize behavior
-                * body_kwargs: dict, same as query_kwargs
-        :returns: Any
-        """
-        header_names = kwargs.get("header_names", [])
-        if v := kwargs.get("header_name", None):
-            header_names.append(header_name)
-
-        names = kwargs.get("names", [])
-        if name:
-            names.append(name)
-
-        kwargs = {}
-        if query_kwargs := kwargs.get("query_kwargs", {}):
-            kwargs = query_kwargs
-
-        if body_kwargs := kwargs.get("body_kwargs", {}):
-            kwargs.update(body_kwargs)
-
-        if not kwargs:
-            kwargs = self.kwargs
-
-        for name in names:
-            if v := kwargs.get(name, None):
-                return v
-
-            header_names.append(f"X-{name}")
-
-        return self.find_header(header_names, default_val)
-
     def version(self, content_type="*/*"):
         """by default, versioning is based off of this post 
         http://urthen.github.io/2013/05/09/ways-to-version-your-api/
@@ -1482,7 +1329,7 @@ class Request(Call):
         :returns: str, the found version
         """
         v = ""
-        accept_header = self.get_header('accept', "")
+        accept_header = self.headers.get("accept", "")
         if accept_header:
             a = AcceptHeader(accept_header)
             for mt in a.filter(content_type):
@@ -1518,7 +1365,7 @@ class Request(Call):
     def get_auth_bearer(self):
         """return the bearer token in the authorization header if it exists"""
         token = ''
-        auth_header = self.get_header('authorization')
+        auth_header = self.headers.get("authorization", "")
         if auth_header:
             m = re.search(r"^Bearer\s+(\S+)$", auth_header, re.I)
             if m: token = m.group(1)
@@ -1530,7 +1377,7 @@ class Request(Call):
         """
         username = ''
         password = ''
-        auth_header = self.get_header('authorization')
+        auth_header = self.headers.get("authorization", "")
         if auth_header:
             m = re.search(r"^Basic\s+(\S+)$", auth_header, re.I)
             if m:
@@ -1555,7 +1402,7 @@ class Request(Call):
         :returns: string, the authentication scheme (eg, Bearer, Basic)
         """
         scheme = ""
-        auth_header = self.get_header('authorization')
+        auth_header = self.headers.get("authorization", "")
         if auth_header:
             m = re.search(r"^(\S+)\s+", auth_header)
             if m:

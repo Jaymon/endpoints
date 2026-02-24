@@ -76,10 +76,10 @@ class Interface(Interface):
         r = self.application.request_class()
         for k, v in raw_request.items():
             if k.startswith('HTTP_'):
-                r.set_header(k[5:], v)
+                r.headers[k[5:]] = v
 
             elif k in ['CONTENT_TYPE', 'CONTENT_LENGTH']:
-                r.set_header(k, v)
+                r.headers[k] = v
 
         r.method = raw_request['REQUEST_METHOD']
         r.path = raw_request['PATH_INFO']
