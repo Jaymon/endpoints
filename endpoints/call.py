@@ -9,6 +9,7 @@ from collections.abc import AsyncGenerator
 from types import NoneType, MappingProxyType
 from typing import Annotated
 import json
+from functools import cached_property
 
 try:
     import orjson
@@ -18,7 +19,6 @@ except ImportError:
 
 from datatypes import (
     HTTPHeaders,
-    property as cachedproperty,
     NamingConvention,
     Dirpath,
     ReflectType,
@@ -1123,24 +1123,24 @@ class Request(Call):
             return v["reflect_method"].reflect_class()
 
     @property
-    def controller_class(self):
+    def controller_class(self) -> Controller:
         if rc := self.reflect_class:
             return rc.get_class()
 
-    @cachedproperty(cached="_uuid")
-    def uuid(self):
+    @cached_property
+    def uuid(self) -> str:
         # if there is an X-uuid header then set uuid and send it down
         # with every request using that header
         # https://stackoverflow.com/questions/18265128/what-is-sec-websocket-key-for
-        uuid = None
+        uuid = ""
 
         # first try and get the uuid from the body since javascript has limited
         # capability of setting headers for websockets
-        if self.body_keywords and "uuid" in self.body_keywords:
-            uuid = self.body_keywords["uuid"]
+        if self.body_keywords and "x-uuid" in self.body_keywords:
+            uuid = self.body_keywords["x-uuid"]
 
-        elif self.query_keywords and "uuid" in self.query_keywords:
-            uuid = self.query_keywords["uuid"]
+        elif self.query_keywords and "x-uuid" in self.query_keywords:
+            uuid = self.query_keywords["x-uuid"]
 
         # next use X-UUID header, then the websocket key
         for hn in ["X-UUID", "Sec-Websocket-Key"]:
@@ -1150,8 +1150,8 @@ class Request(Call):
 
         return uuid or ""
 
-    @cachedproperty(cached="_accept_media_type")
-    def accept_media_type(self):
+    @cached_property
+    def accept_media_type(self) -> str:
         """Return the requested media type
 
         https://www.w3.org/Protocols/rfc2616/rfc2616-sec14.html
@@ -1173,7 +1173,7 @@ class Request(Call):
 
         return v
 
-    @cachedproperty(cached="_response_encoding")
+    @cached_property
     def response_encoding(self) -> str:
         """The encoding the client requested the response to use
 
@@ -1190,57 +1190,64 @@ class Request(Call):
             ret = charsets[0][0]
         return ret
 
-    @cachedproperty(cached="_encoding")
-    def encoding(self):
+    @cached_property
+    def encoding(self) -> str:
         """the character encoding of the request, usually only set in POST type
         requests"""
         return self.headers.get_content_encoding()
 
-    @cachedproperty(read_only="_ips")
-    def ips(self):
+    @cached_property
+    def ip_addresses(self) -> list[str]:
         """return all the possible ips of this request, this will include
         public and private ips"""
         r = []
-        names = ['X_FORWARDED_FOR', 'CLIENT_IP', 'X_REAL_IP', 'X_FORWARDED', 
-            'X_CLUSTER_CLIENT_IP', 'FORWARDED_FOR', 'FORWARDED', 'VIA',
-            'REMOTE_ADDR'
+        names = [
+            "X_FORWARDED_FOR",
+            "CLIENT_IP",
+            "X_REAL_IP",
+            "X_FORWARDED", 
+            "X_CLUSTER_CLIENT_IP",
+            "FORWARDED_FOR",
+            "FORWARDED",
+            "VIA",
+            "REMOTE_ADDR",
         ]
 
         for name in names:
             vs = self.headers.get(name, "")
             if vs:
-                r.extend(map(lambda v: v.strip(), vs.split(',')))
+                r.extend(map(lambda v: v.strip(), vs.split(",")))
 
         return r
 
-    @cachedproperty(read_only="_ip")
-    def ip(self):
+    @cached_property
+    def ip_address(self) -> str:
         """return the public ip address"""
-        r = ''
+        r = ""
 
         # this was compiled from here:
         # https://github.com/un33k/django-ipware
         # http://www.ietf.org/rfc/rfc3330.txt (IPv4)
         # http://www.ietf.org/rfc/rfc5156.txt (IPv6)
         # https://en.wikipedia.org/wiki/Reserved_IP_addresses
-        format_regex = re.compile(r'\s')
-        ip_regex = re.compile(r'^(?:{})'.format(r'|'.join([
-            r'0\.', # reserved for 'self-identification'
-            r'10\.', # class A
-            r'169\.254', # link local block
-            r'172\.(?:1[6-9]|2[0-9]|3[0-1])\.', # class B
-            r'192\.0\.2\.', # documentation/examples
-            r'192\.168', # class C
-            r'255\.{3}', # broadcast address
-            r'2001\:db8', # documentation/examples
-            r'fc00\:', # private
-            r'fe80\:', # link local unicast
-            r'ff00\:', # multicast
-            r'127\.', # localhost
-            r'\:\:1' # localhost
+        format_regex = re.compile(r"\s")
+        ip_regex = re.compile(r"^(?:{})".format(r"|".join([
+            r"0\.", # reserved for "self-identification"
+            r"10\.", # class A
+            r"169\.254", # link local block
+            r"172\.(?:1[6-9]|2[0-9]|3[0-1])\.", # class B
+            r"192\.0\.2\.", # documentation/examples
+            r"192\.168", # class C
+            r"255\.{3}", # broadcast address
+            r"2001\:db8", # documentation/examples
+            r"fc00\:", # private
+            r"fe80\:", # link local unicast
+            r"ff00\:", # multicast
+            r"127\.", # localhost
+            r"\:\:1" # localhost
         ])))
 
-        ips = self.ips
+        ips = self.ip_addresses
         for ip in ips:
             if not format_regex.search(ip) and not ip_regex.match(ip):
                 r = ip
@@ -1248,24 +1255,24 @@ class Request(Call):
 
         return r
 
-    @cachedproperty(cached="_host")
-    def host(self):
+    @cached_property
+    def host(self) -> str:
         """return the request host"""
         return self.headers.get("host", "")
 
-    @cachedproperty(cached="_scheme")
-    def scheme(self):
+    @cached_property
+    def scheme(self) -> str:
         """return the request scheme (eg, http, https)"""
         return "http"
 
-    @cachedproperty(cached="_port")
+    @cached_property
     def port(self):
         """return the server port"""
         _, port = Url.split_hostname_from_port(self.host)
         return port
 
     @property
-    def url(self):
+    def url(self) -> Url:
         """return the full request url as an Url() instance"""
         scheme = self.scheme
         host = self.host
@@ -1295,8 +1302,8 @@ class Request(Call):
         )
         return u
 
-    @cachedproperty(cached="_uri")
-    def uri(self):
+    @cached_property
+    def uri(self) -> str:
         """Returns <PATH>?<QUERY>"""
         uri = self.path
         if query := self.query:

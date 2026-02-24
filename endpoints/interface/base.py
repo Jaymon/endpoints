@@ -381,8 +381,7 @@ class Application(object):
             return
 
         try:
-            if uuid := getattr(request, "uuid", ""):
-                uuid += " "
+            uuid = request.uuid
 
             logger.info("Request {}{} {}".format(
                 uuid,
@@ -400,23 +399,23 @@ class Application(object):
                 ),
             ))
 
-            ip = request.ip
+            ip = request.ip_address
             if ip:
                 logger.info("Request {}IP address: {}".format(uuid, ip))
 
-            if 'authorization' in request.headers:
-                logger.info('Request {}auth: {}'.format(
+            if "authorization" in request.headers:
+                logger.info("Request {}auth: {}".format(
                     uuid,
-                    request.headers['authorization']
+                    request.headers["authorization"]
                 ))
 
             ignore_hs = set([
-                'accept-language',
-                'accept-encoding',
-                'connection',
-                'authorization',
-                'host',
-                'x-forwarded-for'
+                "accept-language",
+                "accept-encoding",
+                "connection",
+                "authorization",
+                "host",
+                "x-forwarded-for"
             ])
             for k, v in request.headers.items():
                 if k not in ignore_hs:

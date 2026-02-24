@@ -284,40 +284,40 @@ class RequestTest(TestCase):
         charset = r.encoding
         self.assertEqual(None, charset)
 
-    def test_ip(self):
+    def test_ip_address(self):
         r = Request()
         r.headers["REMOTE_ADDR"] = "172.252.0.1"
-        self.assertEqual('172.252.0.1', r.ip)
+        self.assertEqual("172.252.0.1", r.ip_address)
 
         r = Request()
-        r.headers["REMOTE_ADDR"] = '1.241.34.107'
-        self.assertEqual('1.241.34.107', r.ip)
+        r.headers["REMOTE_ADDR"] = "1.241.34.107"
+        self.assertEqual("1.241.34.107", r.ip_address)
 
         r = Request()
-        r.headers["x-forwarded-for"] = '54.241.34.107'
-        self.assertEqual('54.241.34.107', r.ip)
+        r.headers["x-forwarded-for"] = "54.241.34.107"
+        self.assertEqual("54.241.34.107", r.ip_address)
 
-        r.headers["x-forwarded-for"] = '127.0.0.1, 54.241.34.107'
-        self.assertEqual('54.241.34.107', r.ip)
+        r.headers["x-forwarded-for"] = "127.0.0.1, 54.241.34.107"
+        self.assertEqual("54.241.34.107", r.ip_address)
 
-        r.headers["x-forwarded-for"] = '127.0.0.1'
-        r.headers["client-ip"] = '54.241.34.107'
-        self.assertEqual('54.241.34.107', r.ip)
+        r.headers["x-forwarded-for"] = "127.0.0.1"
+        r.headers["client-ip"] = "54.241.34.107"
+        self.assertEqual("54.241.34.107", r.ip_address)
 
     def test_ip_bad(self):
         r = Request()
         r.headers["REMOTE_ADDR"] = "10.0.2.2"
         r.headers["Via"] = "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
-        self.assertEqual("", r.ip)
+        self.assertEqual("", r.ip_address)
 
         r = Request()
         r.headers["REMOTE_ADDR"] = "54.241.34.107"
         r.headers["Via"] = "1.1 ironport1.orlando.cit:80 (Cisco-WSA/9.0.1-162)"
-        self.assertEqual("54.241.34.107", r.ip)
+        self.assertEqual("54.241.34.107", r.ip_address)
 
     def test_get_version(self):
         r = Request()
-        r.headers["accept"] = 'application/json;version=v1'
+        r.headers["accept"] = "application/json;version=v1"
 
         v = r.version()
         self.assertEqual("v1", v)
@@ -333,24 +333,24 @@ class RequestTest(TestCase):
         there were defaults set"""
         r = Request()
         r.headers = {}
-        self.assertEqual("", r.version('application/json'))
+        self.assertEqual("", r.version("application/json"))
 
         r = Request()
-        r.headers["accept"] = 'application/json;version=v1'
-        self.assertEqual('v1', r.version())
+        r.headers["accept"] = "application/json;version=v1"
+        self.assertEqual("v1", r.version())
 
         r = Request()
-        r.headers["accept"] = '*/*'
-        self.assertEqual("", r.version('application/json'))
+        r.headers["accept"] = "*/*"
+        self.assertEqual("", r.version("application/json"))
 
         r = Request()
-        r.headers["accept"] = '*/*;version=v8'
-        self.assertEqual('v8', r.version('application/json'))
+        r.headers["accept"] = "*/*;version=v8"
+        self.assertEqual("v8", r.version("application/json"))
 
 
 class ResponseTest(TestCase):
     def test_headers(self):
-        """make sure headers don't persist between class instantiations"""
+        """make sure headers don"t persist between class instantiations"""
         r = Response()
         r.headers["foo"] = "bar"
         self.assertEqual("bar", r.headers["foo"])
