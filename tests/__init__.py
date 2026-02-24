@@ -108,23 +108,14 @@ class TestCase(IsolatedAsyncioTestCase):
     def get_host(self):
         return environ.HOST
 
-    def create_server(self, contents="", config_contents="", **kwargs):
+    def create_server(self, contents="", **kwargs):
         # if we don't pass in module contents then we will want to start with
         # a blank slate module, this is because we don't want the autodiscover
         # functionality to trigger during tests
         tdm = self.create_controller_module(contents, **kwargs)
         kwargs["cwd"] = tdm.basedir
         kwargs["controller_prefix"] = tdm
-
         kwargs["host"] = self.get_host()
-
-        if config_contents:
-            config_path = testdata.create_file(
-                data=config_contents,
-                ext=".py",
-            )
-            kwargs["config_path"] = config_path
-
         server = self.server_class(**kwargs)
         server.stop()
         server.start()

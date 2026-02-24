@@ -259,13 +259,13 @@ class Controller(ETL):
     Controller's have a specific lifecycle to answer a request:
 
         1. `.handle`
-            a. `.handle_request`
+            a. `._update_request`
             b. `.get_request_params`
-            c. called for each matching request/HTTP method (eg, GET_1, GET_2)
-                1. `.get_method_params`
-                2. matching request method
-            d. `.handle_error` (optional)
-            e. `.handle_response`
+            c. `._get_handler_method`
+            d. `.get_method_params`
+            e. matching http request method (eg, `GET`)
+            f. `.handle_error` (optional)
+            g. `.handle_response`
                 1. `.get_response_media_type`
                 2. `.get_response_body`
         2. `.__aiter__`
@@ -641,7 +641,7 @@ class Controller(ETL):
 
     def _get_handler_method(self) -> Callable:
         """Internal method. This returns the method that will be called in
-        `.run`"""
+        `.handle` to actually handle the request (eg, `GET`)"""
         if v := self.request.pathfinder_value:
             method = getattr(self, v["method_name"])
         return method
@@ -653,9 +653,8 @@ class Controller(ETL):
             `.response` and pulls any request information directly
             from `.request`
         """
-        await self._update_request()
-
         try:
+            await self._update_request()
             method = self._get_handler_method()
             method_args, method_kwargs = await self.get_method_params()
 
@@ -928,10 +927,10 @@ class CORSMixin(object):
     cors = True
     """Activates CORS support"""
 
-    async def handle(self):
+    async def _update_request(self):
         if self.cors:
             await self.handle_cors()
-        return await super().handle()
+        await super()._update_request()
 
     async def is_valid_origin(self, origin) -> bool:
         """Check the origin and decide if it is valid
