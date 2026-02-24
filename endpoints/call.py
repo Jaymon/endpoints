@@ -1345,21 +1345,13 @@ class Request(Call):
 
         return v
 
-    def is_method(self, method):
+    def eq_method(self, method: str) -> bool:
         """return True if the request method matches the passed in method
 
         :param method: str, something like "GET" or "POST"
         :return: bool
         """
         return self.method.upper() == method.upper()
-
-    def is_get(self):
-        """Return true if the request is a GET request"""
-        return self.is_method("GET")
-
-    def is_post(self):
-        """Return True if the request is a POST request"""
-        return self.is_method("POST")
 
     def has_body(self):
         return self.body is not None
