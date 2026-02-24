@@ -31,11 +31,11 @@ from endpoints.decorators.call import (
 
 from . import (
     testdata,
-    IsolatedAsyncioTestCase,
+    TestCase,
 )
 
 
-class TestCase(IsolatedAsyncioTestCase):
+class TestCase(TestCase):
     def get_basic_auth_header(self, username, password):
         credentials = Base64.encode('{}:{}'.format(username, password))
         return 'Basic {}'.format(credentials)

@@ -155,7 +155,7 @@ class ControllerTest(TestCase):
     def test_casting(self):
         c = self.create_server("""
             class Default(Controller):
-                async def GET(self, foo: int, bar: int = None, /):
+                async def GET(self, foo: int, bar: int|None = None, /):
                     return {"foo_is_int": isinstance(foo, int)}
         """)
 

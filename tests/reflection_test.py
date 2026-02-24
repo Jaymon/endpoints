@@ -576,7 +576,7 @@ class ReflectParamTest(TestCase):
 
                 def GET_2(
                     self,
-                    foo: str,
+                    foo: int,
                     bar: int = 20,
                     /,
                 ):

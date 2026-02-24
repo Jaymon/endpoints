@@ -542,49 +542,68 @@ class Controller(ETL):
         method_args = []
         method_kwargs = {}
 
+#         pout.v(self.request.positionals, self.request.keywords)
+
         ras = self.request.reflect_method.reflect_arguments(
             *self.request.positionals,
             **self.request.keywords,
         )
 
         for ra in ras:
-            if ra.is_bound():
-                if ra.has_multiple_values():
-                    # method call is going to fail anyway so short-circuit
-                    # processing
-                    method_args = self.request.positionals
-                    method_kwargs = self.request.keywords
-                    break
-
-                else:
-                    try:
-                        v = ra.normalize_value()
-
-                    except ValueError as e:
-                        raise CallError(400, String(e)) from e
-
-                    else:
-                        if ra.is_bound_positional():
-                            if ra.is_catchall():
-                                method_args.extend(v)
-
-                            else:
-                                method_args.append(v)
-
-                        else:
-                            if ra.is_catchall():
-                                method_kwargs.update(v)
-
-                            else:
-                                method_kwargs[ra.name] = v
+            if ra.has_multiple_values():
+                # method call is going to fail anyway so short-circuit
+                # processing
+#                 pout.v(ra)
+                method_args = self.request.positionals
+                method_kwargs = self.request.keywords
+                break
 
             else:
-                if ra.is_unbound_positionals():
-                    method_args.extend(ra.value)
+                if ra.is_positional():
+                    method_args.extend(ra.get_positional_values())
 
-                elif ra.is_unbound_keywords():
-                    method_kwargs.update(ra.value)
+                elif ra.is_keyword():
+                    method_kwargs.update(ra.get_keyword_values())
 
+#         for ra in ras:
+#             if ra.is_bound():
+#                 if ra.has_multiple_values():
+#                     # method call is going to fail anyway so short-circuit
+#                     # processing
+#                     method_args = self.request.positionals
+#                     method_kwargs = self.request.keywords
+#                     break
+# 
+#                 else:
+#                     try:
+#                         v = ra.normalize_value()
+# 
+#                     except ValueError as e:
+#                         raise CallError(400, String(e)) from e
+# 
+#                     else:
+#                         if ra.is_bound_positional():
+#                             if ra.is_catchall():
+#                                 method_args.extend(v)
+# 
+#                             else:
+#                                 method_args.append(v)
+# 
+#                         else:
+#                             if ra.is_catchall():
+#                                 method_kwargs.update(v)
+# 
+#                             else:
+#                                 method_kwargs[ra.name] = v
+# 
+#             else:
+#                 if ra.is_unbound_positionals():
+#                     method_args.extend(ra.value)
+# 
+#                 elif ra.is_unbound_keywords():
+#                     method_kwargs.update(ra.value)
+
+#         pout.v(method_args, method_kwargs)
         return method_args, method_kwargs
 
     async def _update_request(self):

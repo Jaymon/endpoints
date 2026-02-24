@@ -528,27 +528,38 @@ class ReflectMethod(ReflectCallable):
 
 
 class ReflectArgument(ReflectArgument):
-    def __init__(
-        self,
-        target,
-        value,
-        reflect_callable,
-        reflect_param=None,
-        **kwargs,
-    ):
-        super().__init__(target, value, reflect_callable, **kwargs)
-
-        self._reflect_param = reflect_param
+    def __init__(self, *args, **kwargs):
+        self._reflect_param = kwargs.pop("reflect_param", None)
+        super().__init__(*args, **kwargs)
 
     def reflect_param(self):
         return self._reflect_param
 
-    def normalize_value(self):
-        v = self.value
-        if rp := self.reflect_param():
-            v = rp.normalize_value(v)
+    def get_value(self):
+        """Overrides parent `.get_value` to normalize the value"""
+        v = self.get_bound_value()
+        if v is inspect.Parameter.empty:
+            v = self.get_default_value()
+
+        else:
+            if rp := self.reflect_param():
+                v = rp.normalize_value(v)
 
         return v
+
+#         v = super().get_value()
+#         if v is not inspect.Parameter.empty:
+#             if rp := self.reflect_param():
+#                 v = rp.normalize_value(v)
+# 
+#         return v
+
+#     def normalize_value(self):
+#         v = self.value
+#         if rp := self.reflect_param():
+#             v = rp.normalize_value(v)
+# 
+#         return v
 
 
 class ReflectParam(ReflectObject):
