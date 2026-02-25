@@ -21,41 +21,41 @@ def application() -> int:
     ret_code = 0
 
     parser = argparse.ArgumentParser(
-        description='Start an endpoints server',
+        description="Start an endpoints server",
         add_help=True,
         # https://stackoverflow.com/a/12151325/5006
         formatter_class=argparse.ArgumentDefaultsHelpFormatter
     )
     parser.add_argument(
         "-v", "--version",
-        action='version',
+        action="version",
         version="%(prog)s {}".format(__version__)
     )
     parser.add_argument(
         "--quiet",
-        action='store_true',
-        dest='quiet'
+        action="store_true",
+        dest="quiet"
     )
     parser.add_argument(
-        '--prefix', "--controller-prefix", "-P",
+        "--prefix", "--controller-prefix", "-P",
         #nargs="+",
         action="append",
         dest="prefixes",
         default=environ.get_controller_prefixes(),
-        help='The controller prefix(es) (python modpaths where Controller subclasses are found)'
+        help="The controller prefix(es) (python modpaths where Controller subclasses are found)"
     )
     parser.add_argument(
-        '--host', "-H",
+        "--host", "-H",
         #default="localhost:3030",
         type=Host,
         default="localhost",
-        help='The host to serve on in the form host:port'
+        help="The host to serve on in the form host:port"
     )
     parser.add_argument(
-        '--dir', "-D", "--directory",
+        "--dir", "-D", "--directory",
         dest="directory",
         default=os.getcwd(),
-        help='directory to run the server in, usually contains the prefix module path',
+        help="directory to run the server in, usually contains the prefix module path",
     )
     parser.add_argument(
         "application",
@@ -93,7 +93,7 @@ def application() -> int:
     s = make_server(args.host[0], args.host[1], app)
 
     # we reset the host and update the environment because the server
-    # could've set the port
+    # could"ve set the port
     hostloc = ":".join(map(str, s.server_address))
     environ.set_host(hostloc)
 
