@@ -45,7 +45,7 @@ Repository = "https://github.com/Jaymon/endpoints"
 [project.optional-dependencies]
 tests = [
   "testdata",
-  "daphne"
+  "uvicorn"
 ]
 websockets = [
   "websocket-client"

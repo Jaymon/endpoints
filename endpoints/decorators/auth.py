@@ -77,7 +77,6 @@ class auth_basic(AuthDecorator):
     basic header
 
     :example:
-
         # create a basic http auth decorator
         from endpoints import Controller
         from endpoints.decorators.auth import auth_basic

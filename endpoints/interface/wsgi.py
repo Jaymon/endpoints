@@ -15,16 +15,7 @@ logger = logging.getLogger(__name__)
 
 
 class Interface(Interface):
-    """The Application that a WSGI server needs
-
-    this extends Server just to make it easier on the end user, basically, all
-    you need to do to use this is in your wsgi-file, you can just do:
-
-        from endpoints.interface.wsgi import Application
-        application = Application()
-
-    and you're good to go
-    """
+    """The Interface that a WSGI application needs"""
     def __init__(self, *args, **kwargs):
         super().__init__(*args, **kwargs)
         self._asyncioRunner = asyncio.Runner()
@@ -35,6 +26,9 @@ class Interface(Interface):
         return self._asyncioRunner.run(
             self._handle_http(environ, start_response),
         )
+
+    def __del__(self):
+        self._asyncioRunner.close()
 
     async def _handle_http(self, environ, start_response) -> Iterable[bytes]:
         # we return a list because if we try to yield it will get messed

@@ -7,10 +7,16 @@ import testdata
 from endpoints.compat import *
 from endpoints.client import HTTPClient, WebSocketClient
 from endpoints.utils import JSONEncoder, Url
-from .. import TestCase
+from .. import TestCase, Server
+
+
+class Server(Server):
+    server = None
 
 
 class TestCase(TestCase):
+    server = None
+
     client_class = HTTPClient
 
     def setUp(self):
@@ -38,49 +44,6 @@ class _HTTPTestCase(TestCase):
     """Base class for the actual interfaces, this contains common tests for any
     interface handling HTTP requests
     """
-#     async def test_get_request_url_2(self):
-#         """make sure request url gets controller_path correctly"""
-# 
-#         prefix = self.create_controller_module([
-#             "class Requrl(Controller):",
-#             "    def GET(self):",
-#             "        return self.request.url.controller()",
-#             "",
-#         ])
-# 
-#         path = f"{prefix}:application"
-# 
-#         import uvicorn
-#         from threading import Thread
-#         import asyncio
-#         import time
-# 
-#         def target():
-#             asyncio.run(uvicorn.Server(
-#                 uvicorn.Config(
-#                     path,
-#                     workers=1,
-#                     host="0.0.0.0",
-#                     port=4000,
-#                     factory=True,
-#                 ),
-#             ).serve())
-# 
-#         th = Thread(target=target)
-#         th.daemon = True
-# 
-#         th.start()
-#         time.sleep(1)
-# 
-#         c = self.client_class(base_url="http://127.0.0.1:4000")
-#         r = c.get("/requrl")
-#         self.assertTrue("/requrl" in r.body, r.body)
-#         self.assertRegex(r.body, r"https?://[^/]")
-
-
-
-
-
     def test_get_request_url_1(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server([

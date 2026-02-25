@@ -51,13 +51,37 @@ Now that you have your `controllers.py`, let's use the built-in WSGI server to s
 
 ### Start an ASGI Server
 
-Install [Daphne](https://github.com/django/daphne):
+Create an `asgi.py` script in the same directory as your `controllers.py` script:
 
-    $ pip install -U daphne
+```python
+# asgi.py
+
+from endpoints import Application
+
+application = Application("controllers")
+```
+
+Install [uvicorn](https://github.com/Kludex/uvicorn):
+
+    $ pip install -U uvicorn
 
 And start it:
 
-    $ ENDPOINTS_PREFIX=controllers daphne -b localhost -p 8000 -v 3 endpoints.interface.asgi:Application.factory
+    $ uvicorn --port 8000 --factory asgi:application
+
+You could also use...
+
+[Daphne](https://github.com/django/daphne):
+
+    $ daphne -b localhost -p 8000 -v 3 asgi:application
+    
+[Granian](https://github.com/emmett-framework/granian):
+
+    $ granian --port 8000 --factory --interface asgi asgi:application
+    
+[Hypercorn](https://github.com/pgjones/hypercorn):
+
+    $ hypercorn --bind localhost:8000 asgi:asgi:application
 
 
 ### Test it out
@@ -88,10 +112,10 @@ It uses the following convention.
 
     <HTTP-METHOD> /<MODULE-PATH>/<CLASS-PATH>/<POSITIONAL-ARGUMENTS>?<KEYWORD-ARGUMENTS>
 
-_Endpoints_ will use the prefix module path you set as a reference point (either passed in via the environment variable `ENDPOINTS_PREFIX` or passed into the `Application(controller_prefix=...)` instance) to find the correct submodule using the path specified by the request.
+_Endpoints_ will use the prefix module path you set as a reference point (either passed in via the environment variable `ENDPOINTS_PREFIX` or passed into the `Application(controller_prefix)` instance) to find the correct submodule using the path specified by the request.
 
 Requests are translated from the left bit to the right bit of the path.
-So for the path `/foo/bar/che/baz`, endpoints would first check for the `<PREFIX>.foo` module, then the `<PREFIX>.foo.bar` module, then the `<PREFIX>.foo.bar.che` module, etc. until it fails to find a valid module.
+So for the path `/foo/bar/che/baz`, endpoints would first check for the `<ENDPOINTS_PREFIX>.foo` module, then the `<ENDPOINTS_PREFIX>.foo.bar` module, then the `<ENDPOINTS_PREFIX>.foo.bar.che` module, etc. until it fails to find a valid module.
 
 Once the module is found, endpoints will then attempt to find the class with the remaining path parts. If no matching class is found then a class named `Default` will be used if it exists.
 

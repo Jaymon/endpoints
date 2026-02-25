@@ -159,16 +159,16 @@ class UrlTest(TestCase):
             ],
         })
 
-        res = c.handle("/foomod/bar")
+        res = c.handle("/foomod/bar", host="endpoints.fake")
         self.assertEqual("http://endpoints.fake/foomod", res._body)
 
-        res = c.handle("/foomod")
+        res = c.handle("/foomod", host="endpoints.fake")
         self.assertEqual("http://endpoints.fake/foomod", res._body)
 
-        res = c.handle("/fooclass/bar")
+        res = c.handle("/fooclass/bar", host="endpoints.fake")
         self.assertEqual("http://endpoints.fake/fooclass/bar", res._body)
 
-        res = c.handle("/fooclass")
+        res = c.handle("/fooclass", host="endpoints.fake")
         self.assertEqual("http://endpoints.fake/fooclass", res._body)
 
     def test_controller(self):

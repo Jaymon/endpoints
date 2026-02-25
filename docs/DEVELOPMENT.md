@@ -8,13 +8,13 @@ Install `pyt`:
 
 After cloning the repo, `cd` into the repo's directory and run:
 
-    $ pyt tests
+    $ pyt tests -df
     
 You can probably run them without using `pyt` also:
 
     $ python -m unittest tests
 
-Check the `tests_require` parameter in the `setup.py` script to see what modules are needed to run the tests because there are dependencies that the tests need that the rest of the package does not.
+Check the `project.optional-dependencies.tests` section in `pyproject.toml` to see what modules are needed to run the tests because there are dependencies that the tests need that the rest of the package does not.
 
 
 ## Refreshing server on file change

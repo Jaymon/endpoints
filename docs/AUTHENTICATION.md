@@ -1,6 +1,6 @@
 # Authentication
 
-Validating access to certain resources is pretty common and so _endpoints_ provides [helper decorators](https://github.com/firstopinion/endpoints/blob/master/endpoints/decorators/auth.py) to make this process easier and customizable.
+Validating access to certain resources is pretty common and so _endpoints_ provides [helper decorators](https://github.com/Jaymon/endpoints/blob/master/endpoints/decorators/auth.py) to make this process easier and customizable.
 
 
 ## Http basic authentication
@@ -59,7 +59,7 @@ from endpoints.decorators.auth import auth_basic
 
 class auth_user(auth_basic):
     """validate a user in our system and set request.user if a valid user is found"""
-    async def auth_user(self, controller, username, password):
+    async def handle(self, controller, username, password):
         # validate username and password using app specific db or whatnot
         user = magical_db_check(username, password)
         controller.request.user = user
@@ -74,7 +74,7 @@ from endpoints.decorators.auth import AuthDecorator
 
 
 class auth(AuthDecorator):
-    async def handle(self, controller, **kwargs):
+    async def handle(self, controller, *args, **kwargs):
         # check something or do something to validate the request
         # return True if auth was valid, False otherwise
         pass
@@ -100,9 +100,9 @@ class auth_perm(AuthDecorator):
     def definition(self, *perms):
         self.perms = perms
 
-    async def handle_kwargs(self, controller, **kwargs):
+    async def get_decorator_params(self, controller, **kwargs):
         user = await get_user(request) # magically fetch a user
-        return {
+        return [], {
             'user_perms': set(user.perms),
             'valid_perms': set(self.perms),
         }
@@ -118,11 +118,11 @@ def definition(self, *perms):
     self.perms = perms
 ```
 
-Next, we override `handle_kwargs` to setup the params that will be sent to our `handle` method, this method returns a `dict` that will get sent to our `handle` method in the form of: `**kwargs`.
+Next, we override `get_decorator_params` to setup the parameters that will be sent to our `handle` method, this method returns a `tuple[Sequence, Mapping]` that will get sent to our `handle` method in the form of: `*args, **kwargs`.
 
-In this instance, our `handle_kwargs` pulls our user out from some magical async `get_user` method and then returns that user's permissions along with our saved permissions set in the `definition` method.
+In this instance, our `get_decorator_params` pulls our user out from some magical async `get_user` method and then returns that user's permissions along with our saved permissions set in the `definition` method.
 
-And finally, we have our `handle` method to check the values `handle_kwargs` gave us.
+And finally, we have our `handle` method to check the values `get_decorator_params` gave us.
 
 Now, we can use this decorator on our Controller methods:
 

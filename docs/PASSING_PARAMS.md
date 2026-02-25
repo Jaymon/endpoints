@@ -32,7 +32,7 @@ Another example:
 ```python
 from endpoints import Controller
 
-class Param2(str):
+class Param1(str):
     def __new__(cls, v):
         if v not in ["one", "two"]:
             raise ValueError(v)
@@ -40,7 +40,7 @@ class Param2(str):
         return super().__new__(cls, v)
 
 class Foo(Controller):
-    async def GET(self, param1="some val", param2: Param2):
+    async def GET(self, param1: Param2):
         pass
 ```
 

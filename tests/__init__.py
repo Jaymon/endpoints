@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
 import asyncio
+from functools import cached_property
 
 import testdata
 from testdata import IsolatedAsyncioTestCase
-from datatypes import ReflectName
+from datatypes import ReflectName, Host
 
 from endpoints.config import environ
 from endpoints.interface.base import Application
@@ -19,11 +20,24 @@ testdata.basic_logging(
 
 
 class Server(object):
-    """This is just a wrapper to get access to the Interface handling code"""
-    def __init__(self, controller_prefix, **kwargs):
+    @cached_property
+    def application(self):
+        return ReflectName(self.app_path).resolve()
+
+    def __init__(self, controller_prefix: str, host: str = "", **kwargs):
         self.controller_prefix = controller_prefix
-        app_path = f"{self.controller_prefix}:application"
-        self.application = ReflectName(app_path).resolve()
+        self.app_path = f"{self.controller_prefix}:application"
+
+        if not host:
+            host = environ.HOST
+
+        if host:
+            self.server_host = Host(host)
+
+        else:
+            self.server_host = Host("0.0.0.0", "4000")
+
+        self.host = self.server_host.client()
 
     def create_request(self, path, method, **kwargs):
         if not (req := kwargs.pop("request", None)):
@@ -36,7 +50,7 @@ class Server(object):
             req.set_header('Accept', '*/*;version={}'.format(version))
 
         d = dict(kwargs)
-        d.setdefault("host", "endpoints.fake")
+        d.setdefault("host", self.host)
         for k, v in d.items():
             if k == "query_kwargs":
                 k = "query_keywords"
@@ -96,8 +110,6 @@ class Server(object):
 
 
 class TestCase(IsolatedAsyncioTestCase):
-    server = None
-
     server_class = Server
 
     application_class = Application

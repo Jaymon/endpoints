@@ -29,15 +29,13 @@ We received a 501 response because our `Hello` controller has no **POST** method
 
 ```python
 from endpoints import Controller
-from endpoints.decorators import param
 
 class Hello(Controller):
     async def GET(self):
         return "hello world"
 
-    @param("name")
-    async def POST(self, **kwargs):
-        return "hello {}".format(kwargs["name"])
+    async def POST(self, name: str):
+        return "hello {}".format(name)
 ```
 
 Let's see if it worked:
@@ -78,18 +76,14 @@ The following path would be:
 
 ### CORS support
 
-Every _Endpoints_ Controller has [Cors support](http://www.w3.org/TR/cors/) by default. This support will handle all the `OPTION` requests, and setting all the appropriate headers, so you don't have to worry about them (unless you want to).
-You can turn Cors support off by setting `cors = False` on the Controller:
+Every _Endpoints_ Controller can activate [Cors support](http://www.w3.org/TR/cors/). This support will handle all the `OPTION` requests, and setting all the appropriate headers, so you don't have to worry about them (unless you want to).
 
 ```python
-from endpoints import Controller
+from endpoints import Controller, CORSMixin
 
-class Default(Controller):
-
-  cors = False # Turn off cors
-
+class Default(Controller, CORSMixin):
   async def GET(self):
-    return "This will not have CORS support"
+    return "This will have CORS support"
 ```
 
 ## Default Controllers

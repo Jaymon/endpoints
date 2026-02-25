@@ -430,11 +430,11 @@ class ApplicationTest(TestCase):
 
     def test_import_error(self):
         with self.assertRaises(ImportError):
-            c = self.create_server([
+            self.create_server([
                 "from does_not_exist import FairyDust",
                 "class Default(Controller):",
                 "    def GET(self): pass",
-            ])
+            ]).application
 
     def test_callback_info(self):
         c = self.create_server()
@@ -638,7 +638,7 @@ class RouterTest(TestCase):
                 "            def ANY(self):",
                 "                pass",
                 "Foo.load_class()",
-            ])
+            ]).application
 
     def test_ext(self):
         s = self.create_server("""
