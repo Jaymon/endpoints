@@ -2,7 +2,6 @@
 import json
 import zipfile
 
-
 import testdata
 
 from endpoints.compat import *
@@ -39,7 +38,50 @@ class _HTTPTestCase(TestCase):
     """Base class for the actual interfaces, this contains common tests for any
     interface handling HTTP requests
     """
-    def test_get_request_url(self):
+#     async def test_get_request_url_2(self):
+#         """make sure request url gets controller_path correctly"""
+# 
+#         prefix = self.create_controller_module([
+#             "class Requrl(Controller):",
+#             "    def GET(self):",
+#             "        return self.request.url.controller()",
+#             "",
+#         ])
+# 
+#         path = f"{prefix}:application"
+# 
+#         import uvicorn
+#         from threading import Thread
+#         import asyncio
+#         import time
+# 
+#         def target():
+#             asyncio.run(uvicorn.Server(
+#                 uvicorn.Config(
+#                     path,
+#                     workers=1,
+#                     host="0.0.0.0",
+#                     port=4000,
+#                     factory=True,
+#                 ),
+#             ).serve())
+# 
+#         th = Thread(target=target)
+#         th.daemon = True
+# 
+#         th.start()
+#         time.sleep(1)
+# 
+#         c = self.client_class(base_url="http://127.0.0.1:4000")
+#         r = c.get("/requrl")
+#         self.assertTrue("/requrl" in r.body, r.body)
+#         self.assertRegex(r.body, r"https?://[^/]")
+
+
+
+
+
+    def test_get_request_url_1(self):
         """make sure request url gets controller_path correctly"""
         server = self.create_server([
             "class Requrl(Controller):",
@@ -49,7 +91,7 @@ class _HTTPTestCase(TestCase):
         ])
 
         c = self.create_client()
-        r = c.get('/requrl')
+        r = c.get("/requrl")
         self.assertTrue("/requrl" in r.body, r.body)
         self.assertRegex(r.body, r"https?://[^/]")
 
@@ -67,7 +109,7 @@ class _HTTPTestCase(TestCase):
         """)
 
         c = self.create_client()
-        r = c.get('/?user_ids[]=12&user_ids[]=34')
+        r = c.get("/?user_ids[]=12&user_ids[]=34")
         self.assertEqual("1234", r.body)
 
     def test_get_404_request(self):
@@ -78,7 +120,7 @@ class _HTTPTestCase(TestCase):
         ])
 
         c = self.create_client()
-        r = c.get('/foo/bar/baz?che=1&boo=2')
+        r = c.get("/foo/bar/baz?che=1&boo=2")
         self.assertEqual(404, r.code)
 
     def test_get_response_headers(self):
@@ -89,7 +131,7 @@ class _HTTPTestCase(TestCase):
         """)
 
         c = self.create_client()
-        r = c.get('/')
+        r = c.get("/")
         self.assertEqual(204, r.code)
         self.assertTrue("foo-bar" in r.headers)
 
@@ -102,7 +144,7 @@ class _HTTPTestCase(TestCase):
         ])
 
         c = self.create_client()
-        r = c.get('/')
+        r = c.get("/")
         content = list(range(100))
         self.assertEqual(200, r.code)
         self.assertEqual(content, r.body)
