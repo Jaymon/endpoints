@@ -26,7 +26,7 @@ classifiers = [
   "Programming Language :: Python :: 3"
 ]
 dependencies = [
-  "datatypes"
+  "datatypes~=0.34.0"
 ]
 name = "endpoints"
 dynamic = [
