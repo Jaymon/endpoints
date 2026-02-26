@@ -10,7 +10,9 @@ from . import _HTTPTestCase, _WebSocketTestCase, Server
 
 class Server(Server):
     def start(self):
+        # https://github.com/Kludex/uvicorn/blob/main/uvicorn/server.py
         self.server = uvicorn.Server(
+            # https://github.com/Kludex/uvicorn/blob/main/uvicorn/config.py
             uvicorn.Config(
                 self.app_path,
                 workers=1,

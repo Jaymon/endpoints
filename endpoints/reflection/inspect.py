@@ -830,7 +830,7 @@ class Pathfinder(MethodpathFinder):
 
             value["reflect_method"] = rm
 
-            logger.debug(
+            logger.info(
                 "Registering endpoint: %s %s -> %s",
                 rm.http_verb,
                 rm.get_url_path(),
