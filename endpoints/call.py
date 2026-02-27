@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import logging
 import os
 import inspect
@@ -45,6 +44,7 @@ from .utils import (
     JSONEncoder,
 )
 from .reflection.inspect import Pathfinder
+
 
 logger = logging.getLogger(__name__)
 
@@ -265,7 +265,7 @@ class Controller(ETL):
             d. `.get_method_params`
             e. matching http request method (eg, `GET`)
             f. `.handle_error` (optional)
-            g. `.handle_response`
+            g. `._update_response`
                 1. `.get_response_media_type`
                 2. `.get_response_body`
         2. `.__aiter__`
@@ -274,7 +274,7 @@ class Controller(ETL):
     the controller's normal lifecycle, then the controller's lifecycle is:
 
         1. `.handle_error`
-            a. `.handle_response`
+            a. `._update_response`
                 1. `.get_response_media_type`
                 2. `.get_response_body`
         2. `.__aiter__`
@@ -672,7 +672,7 @@ class Controller(ETL):
             await self.handle_error(e)
 
         else:
-            await self.handle_response()
+            await self._update_response()
 
     async def handle_error(self, e, **kwargs):
         """Handles responses for error states. All raised exceptions will go
@@ -771,9 +771,9 @@ class Controller(ETL):
         else:
             logger.exception(e)
 
-        await self.handle_response()
+        await self._update_response()
 
-    async def handle_response(self):
+    async def _update_response(self):
         """Internal method. Called from `.handle` on success or
         `.handle_error` on failure. This gets the response ready for
         Application to return it back to the client"""
@@ -1312,12 +1312,6 @@ class Request(Call):
         return uri
 
     def __init__(self):
-        # Holds the parsed positional arguments parsed from .body
-        self.body_args = []
-
-        # Holds the parsed keyword arguments parsed from .body
-        self.body_kwargs = {}
-
         super().__init__()
 
     def version(self, content_type="*/*"):
