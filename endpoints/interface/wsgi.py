@@ -66,23 +66,23 @@ class Interface(Interface):
             list(response.headers.items())
         )
 
-    def create_request(self, raw_request, **kwargs):
+    def create_request(self, environ, **kwargs):
         r = self.application.request_class()
-        for k, v in raw_request.items():
+        for k, v in environ.items():
             if k.startswith('HTTP_'):
                 r.headers[k[5:]] = v
 
             elif k in ['CONTENT_TYPE', 'CONTENT_LENGTH']:
                 r.headers[k] = v
 
-        r.method = raw_request['REQUEST_METHOD']
-        r.path = raw_request['PATH_INFO']
-        r.query = raw_request['QUERY_STRING']
-        r.scheme = raw_request.get('wsgi.url_scheme', "http")
-        r.host = raw_request["HTTP_HOST"]
-        r.protocol = raw_request.get("SERVER_PROTOCOL", None) # eg, HTTP/1.1
+        r.method = environ['REQUEST_METHOD']
+        r.path = environ['PATH_INFO']
+        r.query = environ['QUERY_STRING']
+        r.scheme = environ.get('wsgi.url_scheme', "http")
+        r.host = environ["HTTP_HOST"]
+        r.protocol = environ.get("SERVER_PROTOCOL", None) # eg, HTTP/1.1
 
-        r.body = raw_request.get('wsgi.input', None)
-        r.raw_request = raw_request
+        r.body = environ.get('wsgi.input', None)
+        r.environ = environ
         return r
 

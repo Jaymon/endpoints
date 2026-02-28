@@ -95,9 +95,7 @@ class Interface(InterfaceABC):
             raise ValueError("Unknown Interface.__call__ method")
 
     def create_request(self, *args, **kwargs) -> Request:
-        request = self.application.request_class()
-        #request.raw_request = raw_request
-        return request
+        return self.application.request_class()
 
     def create_response(self, **kwargs) -> Response:
         """create the endpoints understandable response instance that is used
@@ -199,10 +197,10 @@ class Application(object):
     """asgiref thing. This is to make the `daphne` server a little more
     predictable. If this is not set then `daphne` considers `.__call__` a
     double callable and will call `.__call__` with `scope` and nothing else
-    and expected a callable, then it will call that callable with `receive`
-    and `send`.
+    and expects a callable returned, then it will call that callable with
+    `receive` and `send`.
 
-    I have no idea why it does that, since this functionality is completely
+    I have no idea why it does this, since this functionality is completely
     different than any other ASGI server. I'm guessing this is an older
     ASGI problem. This is checked in `asgiref.compatibility.is_double_callable`
     """

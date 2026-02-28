@@ -224,26 +224,25 @@ class Interface(Interface):
         """
         return
 
-    def create_request(self, **kwargs):
-        raw_request = kwargs["scope"]
+    def create_request(self, scope, **kwargs):
         request = self.application.request_class()
-        request.headers.update(raw_request.get("headers", []))
+        request.headers.update(scope.get("headers", []))
 
-        request.path = raw_request['path']
-        request.query = raw_request['query_string']
-        request.host, request.port = raw_request["server"]
+        request.path = scope['path']
+        request.query = scope['query_string']
+        request.host, request.port = scope["server"]
 
-        if self.is_http_call(raw_request):
-            request.method = raw_request['method']
-            request.scheme = raw_request.get("scheme", "http")
+        if self.is_http_call(scope):
+            request.method = scope['method']
+            request.scheme = scope.get("scheme", "http")
             request.protocol = "{}/{}".format(
-                raw_request["type"].upper(),
-                raw_request["http_version"],
+                scope["type"].upper(),
+                scope["http_version"],
             )
 
-        elif self.is_websocket_call(raw_request):
-            request.scheme = raw_request.get("scheme", "ws")
+        elif self.is_websocket_call(scope):
+            request.scheme = scope.get("scheme", "ws")
 
-        request.raw_request = raw_request
+        request.scope = scope
         return request
 

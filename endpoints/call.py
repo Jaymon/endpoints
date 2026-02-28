@@ -1031,7 +1031,10 @@ class Call(object):
     """Any, Holds the body for this instance"""
 
     def __init__(self):
-        self.headers = self.headers_class()
+        self.headers = self.create_headers()
+
+    def create_headers(self, **kwargs) -> HTTPHeaders:
+        return self.headers_class()
 
     def _parse_query_str(self, query):
         """return name=val&name2=val2 strings into {name: val} dict"""
@@ -1061,10 +1064,6 @@ class Request(Call):
         * query_kwargs -- tied to query, the values in query but converted to a
             dict {name: val}
     '''
-    raw_request: Mapping|None = None
-    """the original raw request that was filtered through one of the interfaces
-    """
-
     method: str|None = None
     """the http method (GET, POST)"""
 
