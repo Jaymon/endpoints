@@ -567,10 +567,16 @@ class Controller(ETL):
     async def _update_request(self):
         """Internal method. Called by `.handle` to get the request ready
         to be consumed by the controller's request/http methods."""
-        body_positionals = []
-        body_keywords = {}
-
         request = self.request
+
+        body_positionals = request.body_positionals or []
+        body_keywords = request.body_keywords or {}
+
+#         if request.body_positionals:
+#             body_positionals.extend(request.body_positionals)
+# 
+#         if request.body_keywords:
+#             body_keywords.update(request.body_keywords)
 
         if request.query:
             request.query_keywords = self.decode_urlencoded(
