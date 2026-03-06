@@ -124,6 +124,27 @@ class ControllerDecoratorTest(TestCase):
             count += 1
         self.assertEqual(10, count)
 
+    async def test_decorate_class(self):
+        class Dec(ControllerDecorator):
+            def handle(self, controller, *args, **kwargs):
+                controller.called += 1
+                return True
+
+        @Dec
+        class TestDecorateClass(Controller):
+            async def GET(self): pass
+            async def POST_foo(self): pass
+
+
+        c = TestDecorateClass(None, None)
+        c.called = 0
+
+        await c.GET()
+        self.assertEqual(1, c.called)
+
+        await c.POST_foo()
+        self.assertEqual(2, c.called)
+
 
 class RateLimitTest(TestCase):
     def rollback_now(self, method, ttl):

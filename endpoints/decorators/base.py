@@ -3,21 +3,24 @@ import logging
 import inspect
 from typing import Callable
 
-from datatypes.decorators import FuncDecorator
+# from datatypes.decorators import FuncDecorator
+from datatypes.decorators import Decorator
 
 from ..compat import *
 from ..exception import CallError
+from ..reflection.inspect import ReflectController
 
 
 logger = logging.getLogger(__name__)
 
 
-class ControllerDecorator(FuncDecorator):
+#class ControllerDecorator(FuncDecorator):
+class ControllerDecorator(Decorator):
     """Base decorator providing common functionality to run .handle() when a
     decorated function is called, this class is meant to be extended by a child
 
     This also is Controller specific, it's meant to be used in decorators that
-    decorate Controller methods
+    decorate Controller classes or methods
 
     A controller decorator has a specific lifecycle:
 
@@ -35,7 +38,33 @@ class ControllerDecorator(FuncDecorator):
             b. `.get_response_body`
             c. `.handle_decorator_error` (optional)
     """
-    def decorate(self, method: Callable, *args, **kwargs) -> Callable:
+    def decorate_class(self, controller_class: type, *args, **kwargs) -> type:
+        """Decorate the passed in Controller class
+
+        What this does is find all the http methods of the given controller
+        class and decorate those individually with `*args, **kwargs`, so
+        this is just a shortcut for decorating all the methods of a certain
+        controller (eg, you want all the http methods of the controller
+        clas to have the same auth)
+        """
+        rc = ReflectController(controller_class)
+        http_method_names = rc.get_http_method_names()
+        for http_method_name, method_names in http_method_names.items():
+            for method_name in method_names:
+                #instance = type(self)(getattr(klass, method_name))
+                #method = instance(*args, **kwargs)
+                method = type(self)(
+                    getattr(controller_class, method_name),
+                    *args,
+                    **kwargs,
+                )
+                setattr(controller_class, method_name, method)
+
+        return klass
+
+
+    #def decorate(self, method: Callable, *args, **kwargs) -> Callable:
+    def decorate_func(self, method: Callable, *args, **kwargs) -> Callable:
         """decorate the passed in Callable calling target when func is called
 
         You should never override this method unless you know what you are
