@@ -1,9 +1,7 @@
-# -*- coding: utf-8 -*-
 import logging
 import inspect
 from typing import Callable
 
-# from datatypes.decorators import FuncDecorator
 from datatypes.decorators import Decorator
 
 from ..compat import *
@@ -14,7 +12,6 @@ from ..reflection.inspect import ReflectController
 logger = logging.getLogger(__name__)
 
 
-#class ControllerDecorator(FuncDecorator):
 class ControllerDecorator(Decorator):
     """Base decorator providing common functionality to run .handle() when a
     decorated function is called, this class is meant to be extended by a child
@@ -45,7 +42,9 @@ class ControllerDecorator(Decorator):
         class and decorate those individually with `*args, **kwargs`, so
         this is just a shortcut for decorating all the methods of a certain
         controller (eg, you want all the http methods of the controller
-        clas to have the same auth)
+        clas to have the same auth). This is basically syntactic sugar
+        that makes it a bit easier to decorate all the http methods (eg GET
+        and POST) of a controller
         """
         rc = ReflectController(controller_class)
         http_method_names = rc.get_http_method_names()
@@ -62,8 +61,6 @@ class ControllerDecorator(Decorator):
 
         return klass
 
-
-    #def decorate(self, method: Callable, *args, **kwargs) -> Callable:
     def decorate_func(self, method: Callable, *args, **kwargs) -> Callable:
         """decorate the passed in Callable calling target when func is called
 
