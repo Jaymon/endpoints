@@ -50,8 +50,6 @@ class ControllerDecorator(Decorator):
         http_method_names = rc.get_http_method_names()
         for http_method_name, method_names in http_method_names.items():
             for method_name in method_names:
-                #instance = type(self)(getattr(klass, method_name))
-                #method = instance(*args, **kwargs)
                 method = type(self)(
                     getattr(controller_class, method_name),
                     *args,
@@ -59,7 +57,7 @@ class ControllerDecorator(Decorator):
                 )
                 setattr(controller_class, method_name, method)
 
-        return klass
+        return controller_class
 
     def decorate_func(self, method: Callable, *args, **kwargs) -> Callable:
         """decorate the passed in Callable calling target when func is called
