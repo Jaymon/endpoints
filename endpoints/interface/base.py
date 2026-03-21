@@ -381,13 +381,10 @@ class Application(object):
         try:
             uuid = request.uuid
 
-            logger.info("Request {}{} {}".format(
-                uuid,
-                request.method,
-                request.uri,
-            ))
+            logger.info("> %s%s %s", uuid, request.method, request.uri)
 
-            logger.info("Request {}date: {}".format(
+            logger.info(
+                "> %sDate: %s",
                 uuid,
                 datetime.datetime.fromtimestamp(
                     response.start,
@@ -395,31 +392,34 @@ class Application(object):
                 ).strftime(
                     "%Y-%m-%dT%H:%M:%S.%fZ"
                 ),
-            ))
+            )
 
-            ip = request.ip_address
-            if ip:
-                logger.info("Request {}IP address: {}".format(uuid, ip))
+            if ip := request.ip_address:
+                logger.info("> %sIP address: %s", uuid, ip)
 
-            if "authorization" in request.headers:
-                logger.info("Request {}auth: {}".format(
-                    uuid,
-                    request.headers["authorization"]
-                ))
+#             if "authorization" in request.headers:
+#                 logger.info(
+#                     "> %sAuthorization: %s",
+#                     uuid,
+#                     request.headers["authorization"],
+#                 )
 
-            ignore_hs = set([
-                "accept-language",
-                "accept-encoding",
-                "connection",
-                "authorization",
-                "host",
-                "x-forwarded-for"
-            ])
             for k, v in request.headers.items():
-                if k not in ignore_hs:
-                    logger.info(
-                        "Request {}header - {}: {}".format(uuid, k, v)
-                    )
+                logger.info("> %s%s: %s", uuid, k, v)
+
+#             ignore_hs = set([
+#                 "accept-language",
+#                 "accept-encoding",
+#                 "connection",
+#                 "authorization",
+#                 "host",
+#                 "x-forwarded-for"
+#             ])
+#             for k, v in request.headers.items():
+#                 if k not in ignore_hs:
+#                     logger.info(
+#                         "Request {}header - {}: {}".format(uuid, k, v)
+#                     )
 
             self.log_start_body(request, response)
 
@@ -453,22 +453,17 @@ class Application(object):
                     body = request.body
 
                 logger.debug(
-                    "Request {}body: {}".format(
-                        uuid,
-                        body,
-                        #repr(body) if isinstance(body, bytes) else body
-                    )
+                    "> %sBody: %s",
+                    uuid,
+                    body,
+                    #repr(body) if isinstance(body, bytes) else body
                 )
 
             elif request.should_have_body():
-                logger.debug(
-                    "Request {}body: <EMPTY>".format(uuid)
-                )
+                logger.debug("> %sBody: <EMPTY>", uuid)
 
         except Exception as e:
-            logger.debug(
-                "Request {}body raw: {}".format(uuid, request.body),
-            )
+            logger.debug("> %sRaw Body: %s", uuid, request.body)
             logger.exception(e)
 
     def log_stop(self, request, response):
@@ -479,21 +474,31 @@ class Application(object):
         if uuid := getattr(request, "uuid", ""):
             uuid += " "
 
-        for k, v in response.headers.items():
-            logger.info("Response {}header - {}: {}".format(uuid, k, v))
-
         response.stop = time.time()
 
         logger.info(
-            "Response {}{} {} in {} for Request {} {}".format(
-                uuid,
-                response.code,
-                response.status,
-                Profiler.get_output(response.start, response.stop),
-                request.method,
-                request.uri,
-            )
+            "< %s%s %s %d %s in %s",
+            uuid,
+            request.method,
+            request.uri,
+            response.code,
+            response.status,
+            Profiler.get_output(response.start, response.stop),
         )
+
+#         logger.info(
+#             "< {}{} {} in {} for Request {} {}".format(
+#                 uuid,
+#                 response.code,
+#                 response.status,
+#                 Profiler.get_output(response.start, response.stop),
+#                 request.method,
+#                 request.uri,
+#             )
+#         )
+
+        for k, v in response.headers.items():
+            logger.info("< %s%s: %s", uuid, k, v)
 
     def create_pathfinder(self, **kwargs) -> Pathfinder:
         """Internal method. Create the tree that will be used to resolve a
