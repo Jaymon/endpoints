@@ -397,29 +397,8 @@ class Application(object):
             if ip := request.ip_address:
                 logger.info("> %sIP address: %s", uuid, ip)
 
-#             if "authorization" in request.headers:
-#                 logger.info(
-#                     "> %sAuthorization: %s",
-#                     uuid,
-#                     request.headers["authorization"],
-#                 )
-
             for k, v in request.headers.items():
                 logger.info("> %s%s: %s", uuid, k, v)
-
-#             ignore_hs = set([
-#                 "accept-language",
-#                 "accept-encoding",
-#                 "connection",
-#                 "authorization",
-#                 "host",
-#                 "x-forwarded-for"
-#             ])
-#             for k, v in request.headers.items():
-#                 if k not in ignore_hs:
-#                     logger.info(
-#                         "Request {}header - {}: {}".format(uuid, k, v)
-#                     )
 
             self.log_start_body(request, response)
 
@@ -485,17 +464,6 @@ class Application(object):
             response.status,
             Profiler.get_output(response.start, response.stop),
         )
-
-#         logger.info(
-#             "< {}{} {} in {} for Request {} {}".format(
-#                 uuid,
-#                 response.code,
-#                 response.status,
-#                 Profiler.get_output(response.start, response.stop),
-#                 request.method,
-#                 request.uri,
-#             )
-#         )
 
         for k, v in response.headers.items():
             logger.info("< %s%s: %s", uuid, k, v)
