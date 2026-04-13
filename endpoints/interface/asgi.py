@@ -228,8 +228,8 @@ class Interface(Interface):
         request = self.application.request_class()
         request.headers.update(scope.get("headers", []))
 
-        request.path = scope['path']
-        request.query = scope['query_string']
+        request.path = scope["path"]
+        request.query = scope["query_string"]
         request.host, request.port = scope["server"]
 
         if self.is_http_call(scope):
