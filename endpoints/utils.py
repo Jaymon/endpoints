@@ -11,14 +11,14 @@ from datatypes import (
     Base64,
     Path,
     Deepcopy,
-    Url as BaseUrl,
+    Url,
 )
 
 from .compat import *
 from .config import environ
 
 
-class Url(BaseUrl):
+class Url(Url):
     """a url object on steroids, this is here to make it easy to manipulate
     urls we try to map the supported fields to their urlparse equivalents,
     with some additions
@@ -26,7 +26,7 @@ class Url(BaseUrl):
     https://tools.ietf.org/html/rfc3986.html
 
     given a url http://user:pass@foo.com:1000/bar/che?baz=boom#anchor
-    with a controller: Bar
+    with a controller: bar.Che
 
     .scheme = http
     .netloc = user:pass@foo.com:1000
@@ -40,7 +40,8 @@ class Url(BaseUrl):
     .uri = /bar/che?baz=boom#anchor
     .host(...) = http://foo.com/...
     .base(...) = http://foo.com/bar/che/...
-    .controller(...) = http://foo.com/bar/...
+    .module(...) = http://foo.com/bar/...
+    .controller(...) = http://foo.com/bar/che...
     """
     controller_class_path = ""
     """Holds the path to the controller (eg, if the controller was in module
