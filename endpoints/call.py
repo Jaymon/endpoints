@@ -6,7 +6,7 @@ import io
 from collections import defaultdict
 from collections.abc import AsyncGenerator
 from types import NoneType, MappingProxyType
-from typing import Annotated
+from typing import Annotated, Any
 import json
 from functools import cached_property
 
@@ -43,7 +43,7 @@ from .utils import (
     Status,
     JSONEncoder,
 )
-from .reflection.inspect import Pathfinder
+from .reflection.inspect import Pathfinder, ReflectParam
 
 
 logger = logging.getLogger(__name__)
@@ -504,34 +504,34 @@ class Controller(ETL):
         k = f"{cls.__module__}:{cls.__qualname__}"
         cls.controller_classes[k] = cls
 
-    async def get_request_params(self) -> tuple[Iterable, Mapping]:
-        """Called right before the controller's requested method is called
-        (eg GET, POST). It's meant for children controllers to be able to
-        customize the arguments that are passed into the method
-
-        This is ran before any decorators
-
-        :returns: whatever is returned from this method is passed into the
-            controller request method as *args, **kwargs
-        """
-        positionals = []
-        keywords = {}
-
-        request = self.request
-
-        if request.path_positionals:
-            positionals.extend(request.path_positionals)
-
-        if request.query_keywords:
-            keywords.update(request.query_keywords)
-
-        if request.body_positionals:
-            positionals.extend(request.body_positionals)
-
-        if request.body_keywords:
-            keywords.update(request.body_keywords)
-
-        return positionals, keywords
+#     async def get_request_params(self) -> tuple[Iterable, Mapping]:
+#         """Called right before the controller's requested method is called
+#         (eg GET, POST). It's meant for children controllers to be able to
+#         customize the arguments that are passed into the method
+# 
+#         This is ran before any decorators
+# 
+#         :returns: whatever is returned from this method is passed into the
+#             controller request method as *args, **kwargs
+#         """
+#         positionals = []
+#         keywords = {}
+# 
+#         request = self.request
+# 
+#         if request.path_positionals:
+#             positionals.extend(request.path_positionals)
+# 
+#         if request.query_keywords:
+#             keywords.update(request.query_keywords)
+# 
+#         if request.body_positionals:
+#             positionals.extend(request.body_positionals)
+# 
+#         if request.body_keywords:
+#             keywords.update(request.body_keywords)
+# 
+#         return positionals, keywords
 
     async def get_method_params(self) -> tuple[Iterable, Mapping]:
         """Convert request positionals and keywords to the actual arguments
@@ -562,7 +562,41 @@ class Controller(ETL):
                 elif ra.is_keyword():
                     method_kwargs.update(ra.get_keyword_values())
 
+#                 rp = ra.reflect_param()
+# 
+#                 if ra.is_positional():
+#                     if rp is None:
+#                         method_args.extend(ra.get_positional_values())
+# 
+#                     else:
+#                         for v in ra.get_positional_values():
+#                             v = await self.get_method_param_value(rp, v)
+#                             method_args.append(v)
+# 
+#                 elif ra.is_keyword():
+#                     if rp is None:
+#                         method_kwargs.update(ra.get_keyword_values())
+# 
+#                     else:
+#                         for k, v in ra.get_keyword_values().items():
+#                             v = await self.get_method_param_value(rp, v)
+#                             method_kwargs[k] = v
+
         return method_args, method_kwargs
+
+#     async def get_method_positional(self, value: Any) -> Any:
+#         return await self.get_method_param_value(value)
+# 
+#     async def get_method_keyword(self, key: str, value: Any) -> tuple[str, Any]:
+#         return (key, await self.get_method_param_value(value))
+
+#     async def get_method_param_value(
+#         self,
+#         reflect_param: ReflectParam,
+#         value: Any,
+#     ) -> Any:
+#         return reflect_param.normalize_value(value)
+#         #return reflect_param.cast(value)
 
     async def _update_request(self):
         """Internal method. Called by `.handle` to get the request ready
@@ -643,7 +677,26 @@ class Controller(ETL):
         request.body_positionals = body_positionals
         request.body_keywords = body_keywords
 
-        request.positionals, request.keywords = await self.get_request_params()
+        if request.positionals is None:
+            request.positionals = []
+
+        if request.keywords is None:
+            request.keywords = {}
+
+        # aggregate all the positionals and keywords, these are used in
+        # `.get_method_params` to figure out the args and kwargs that will
+        # be passed to the request method
+        if request.path_positionals:
+            request.positionals.extend(request.path_positionals)
+
+        if request.query_keywords:
+            request.keywords.update(request.query_keywords)
+
+        if request.body_positionals:
+            request.positionals.extend(request.body_positionals)
+
+        if request.body_keywords:
+            request.keywords.update(request.body_keywords)
 
     def _get_handler_method(self) -> Callable:
         """Internal method. This returns the method that will be called in
