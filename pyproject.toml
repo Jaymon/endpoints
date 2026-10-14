@@ -15,7 +15,7 @@ keywords = [
   "framework",
   "web-framework",
   "REST",
-  "rest-api"
+  "rest-api",
 ]
 classifiers = [
   "Development Status :: 5 - Production/Stable",
@@ -23,19 +23,19 @@ classifiers = [
   "Intended Audience :: Developers",
   "Operating System :: OS Independent",
   "Topic :: Internet :: WWW/HTTP :: Dynamic Content :: CGI Tools/Libraries",
-  "Programming Language :: Python :: 3"
+  "Programming Language :: Python :: 3",
 ]
 dependencies = [
-  "datatypes~=0.34.0"
+  "datatypes~=0.37.0",
 ]
 name = "endpoints"
 dynamic = [
-  "version"
+  "version",
 ]
 readme = "README.md"
 license = "MIT"
 license-files = [
-  "LICENSE.txt"
+  "LICENSE.txt",
 ]
 
 [project.urls]
@@ -45,20 +45,20 @@ Repository = "https://github.com/Jaymon/endpoints"
 [project.optional-dependencies]
 tests = [
   "testdata",
-  "uvicorn"
+  "uvicorn~=0.41.0",
 ]
 websockets = [
-  "websocket-client"
+  "websocket-client~=1.9.0",
 ]
 templates = [
-  "jinja2"
+  "jinja2~=3.1.6",
 ]
 openapi = [
-  "jsonschema",
-  "pyyaml"
+  "jsonschema~=4.25.1",
+  "pyyaml~=6.0.3",
 ]
 orjson = [
-  "orjson"
+  "orjson~=3.11.3",
 ]
 
 [project.scripts]
@@ -66,7 +66,7 @@ endpoints = "endpoints.__main__:application"
 
 [build-system]
 requires = [
-  "setuptools>=62.3.0"
+  "setuptools>=62.3.0",
 ]
 build-backend = "setuptools.build_meta"
 
@@ -75,10 +75,10 @@ exclude = [
   "tests*",
   "example*",
   "*_test*",
-  "docs*"
+  "docs*",
 ]
 include = [
-  "endpoints*"
+  "endpoints*",
 ]
 
 [tool.setuptools.dynamic]

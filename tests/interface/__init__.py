@@ -308,7 +308,7 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
 
         r = c.get("/foo")
-        self.assertEqual(b"hello world", r.body)
+        self.assertEqual(b"hello world", r.content)
 
     def test_io_streaming_2(self):
         """Make sure a binary file opened through path.Filepath doesn't get
@@ -327,7 +327,7 @@ class _HTTPTestCase(TestCase):
         c = self.create_client()
 
         r = c.get("/foo")
-        self.assertEqual(b"hello world", r.body)
+        self.assertEqual(b"hello world", r.content)
 
     def test_io_streaming_3(self):
         """Make sure a non-binary file doesn't get into an infinite loop
