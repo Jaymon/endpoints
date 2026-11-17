@@ -74,6 +74,21 @@ The following path would be:
     prefix.Foo.POST(param1="POST1", param2="GET2", param3="val3")
 
 
+### Subpaths
+
+```python
+class Foo(Controller):
+  async def GET_bar(self): pass
+  async def GET_che(self): pass
+
+your call requests would be translated like this:
+
+|HTTP Request                           | Path Followed                                              |
+|-------------------------------------- | ---------------------------------------------------------- |
+|GET /foo/bar                           | controllers.Default.GET_bar()                              |
+|GET /foo/che                           | controllers.Default.GET_che()                              |
+
+
 ### CORS support
 
 Every _Endpoints_ Controller can activate [Cors support](http://www.w3.org/TR/cors/). This support will handle all the `OPTION` requests, and setting all the appropriate headers, so you don't have to worry about them (unless you want to).

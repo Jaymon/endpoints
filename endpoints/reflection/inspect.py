@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 import re
 import io
 from collections import defaultdict, Counter
@@ -41,7 +40,6 @@ class ReflectController(ReflectClass):
 
         self.module_keys = list(kwargs.get("module_keys", []))
         self.modules = kwargs.get("modules", [])
-
         self.class_keys = list(kwargs.get("class_keys", []))
 
     def reflect_url_modules(self):
@@ -222,7 +220,7 @@ class ReflectController(ReflectClass):
 
         members = inspect.getmembers(controller_class)
         for member_name, member in members:
-            prefix, sep, postfix = member_name.partition("_")
+            prefix, _, _ = member_name.partition("_")
             if prefix.isupper() and callable(member):
                 if prefix != "OPTIONS" or controller_class.cors:
                     method_names[prefix].add(member_name)
@@ -375,9 +373,10 @@ class ReflectMethod(ReflectCallable):
 
     def get_url_name(self) -> str:
         """Get the url name of this method, the reason why this is separate
-        from `.name` is because the method'ss name can be different than
+        from `.name` is because the method's name can be different than
         the url name"""
-        parts = self.name.split("_", 1)
+        parts = re.split(r"_+", self.name, maxsplit=1)
+        #parts = self.name.split("_", 1)
         if len(parts) > 1:
             nc = NamingConvention(parts[1])
             return nc.kebabcase()

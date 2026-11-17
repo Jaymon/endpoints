@@ -1,4 +1,3 @@
-# -*- coding: utf-8 -*-
 from typing import TypedDict
 
 from datatypes.reflection.inspect import ReflectType
@@ -181,6 +180,23 @@ class ReflectMethodTest(TestCase):
                     pass
         """)[0]
         self.assertEqual("/foo/bar", rm.get_url_path(False))
+
+    def test_get_url_path_multi(self):
+        rms = self.create_reflect_methods("""
+            class Foo(Controller):
+                def GET(self, bar: int, /):
+                    pass
+                def GET_(self, che: str, /):
+                    pass
+                def GET__(self):
+                    pass
+        """)
+
+        rc = rms[0].reflect_class()
+
+        self.assertEqual("/foo/{bar}", rms[0].get_url_path())
+        self.assertEqual("/foo/{che}", rms[1].get_url_path())
+        self.assertEqual("/foo", rms[2].get_url_path())
 
     def test_get_http_method_names_1(self):
         rcs = self.create_reflect_controllers("""
@@ -1280,7 +1296,7 @@ class OpenapiResponseTest(TestCase):
 
 
 class PathfinderTest(TestCase):
-    def test_method(self):
+    def test_method_1(self):
         s = self.create_server("""
             class Default(Controller):
                 def GET(self): pass
@@ -1292,7 +1308,6 @@ class PathfinderTest(TestCase):
         self.assertTrue("GET" in pf)
         self.assertTrue("foo" in pf)
         self.assertTrue("bar" in pf)
-
         self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
 
     def test_http_method(self):
