@@ -375,9 +375,10 @@ class ReflectMethod(ReflectCallable):
         """Get the url name of this method, the reason why this is separate
         from `.name` is because the method's name can be different than
         the url name"""
-        parts = re.split(r"_+", self.name, maxsplit=1)
-        #parts = self.name.split("_", 1)
-        if len(parts) > 1:
+        #parts = re.split(r"_+", self.name, maxsplit=1)
+        parts = self.name.split("_", 1)
+        if (len(parts) > 1):
+        #if (len(parts) > 1) and (not re.match(r"^_+$", parts[1])):
             nc = NamingConvention(parts[1])
             return nc.kebabcase()
 
@@ -753,7 +754,7 @@ class Pathfinder(MethodpathFinder):
     controllers so Application can resolve the path
 
     .. note:: This stores path aliases with a trailing backslash, the reason
-        why is because this also contains the http methods (eg, POST) and it
+        why is because this also contains the http methods (eg, POST) and the
         Application needed a way for the path resolution to distinguish the
         path `/post/` from `post.POST`
     """
@@ -804,9 +805,6 @@ class Pathfinder(MethodpathFinder):
         key: str,
         **kwargs,
     ) -> tuple[str|None, Mapping|None]:
-        """All methods of Command children go through this method but this
-        method only cares about `handle_* methods, all other methods won't
-        create a node in the tree"""
         parts = key.split("_", 1)
         if parts[0].isupper():
             rc = self.create_reflect_controller(
@@ -829,13 +827,6 @@ class Pathfinder(MethodpathFinder):
 
             value["reflect_method"] = rm
 
-            logger.info(
-                "Registering endpoint: %s %s -> %s",
-                rm.http_verb,
-                rm.get_url_path(),
-                rm.callpath,
-            )
-
             return key, value
 
         return None, None
@@ -848,7 +839,7 @@ class Pathfinder(MethodpathFinder):
         """
         super().add_node(key, node, value)
 
-        if not value or "reflect_method" not in value:
+        if (not value) or ("reflect_method" not in value):
             if key not in self.find_keys:
                 self.find_keys[key + "/"] = key
 
@@ -857,7 +848,30 @@ class Pathfinder(MethodpathFinder):
                     self.find_keys[vk + "/"] = key
 
         else:
+            if value and "reflect_method" in value:
+                logger.info(
+                    "Registering endpoint: %s %s -> %s",
+                    value["reflect_method"].http_verb,
+                    value["reflect_method"].get_url_path(),
+                    value["reflect_method"].callpath,
+                )
+
             self.find_keys[key] = key
+
+    def update_node(self, key, node, value):
+        if "reflect_method" in value:
+            logger.warning(
+                "Unreachable endpoint: %s %s -> %s",
+                value["reflect_method"].http_verb,
+                value["reflect_method"].get_url_path(),
+                value["reflect_method"].callpath,
+            )
+
+            node.value.setdefault("unreachable", [])
+            node.value["unreachable"].append(value)
+
+        else:
+            super().update_node(key, node, value)
 
     def normalize_key(self, key):
         """override parent to normalize key using .find_keys"""

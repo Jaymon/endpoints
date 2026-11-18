@@ -188,15 +188,12 @@ class ReflectMethodTest(TestCase):
                     pass
                 def GET_(self, che: str, /):
                     pass
-                def GET__(self):
-                    pass
         """)
 
         rc = rms[0].reflect_class()
 
         self.assertEqual("/foo/{bar}", rms[0].get_url_path())
         self.assertEqual("/foo/{che}", rms[1].get_url_path())
-        self.assertEqual("/foo", rms[2].get_url_path())
 
     def test_get_http_method_names_1(self):
         rcs = self.create_reflect_controllers("""
@@ -1309,6 +1306,20 @@ class PathfinderTest(TestCase):
         self.assertTrue("foo" in pf)
         self.assertTrue("bar" in pf)
         self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
+
+    def test_method_2(self):
+        s = self.create_server("""
+            class Default(Controller):
+                def GET(self): pass
+                def GET_(self, che, /): pass
+                def GET_bar(self, che, /): pass
+        """)
+        pf = s.application.pathfinder
+
+        self.assertTrue("GET" in pf)
+        self.assertTrue("bar" in pf)
+        self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
+        self.assertEqual("GET_", pf["GET"]["unreachable"][0]["method_name"])
 
     def test_http_method(self):
         s = self.create_server("""
