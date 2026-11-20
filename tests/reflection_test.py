@@ -1321,6 +1321,18 @@ class PathfinderTest(TestCase):
         self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
         self.assertEqual("GET_", pf["GET"]["unreachable"][0]["method_name"])
 
+    def test_method_3(self):
+        s = self.create_server("""
+            class Foo(Controller):
+                def GET_bar(self): pass
+                def GET_che(self): pass
+        """)
+        pf = s.application.pathfinder
+
+        v = pf[["foo", "bar"]]
+        self.assertTrue("reflect_class" in v)
+        self.assertEqual(["bar"], v["method_keys"])
+
     def test_http_method(self):
         s = self.create_server("""
             class Default(Controller):

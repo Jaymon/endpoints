@@ -358,13 +358,19 @@ class ApplicationTest(TestCase):
         req.method = "GET"
         req.path = "/user"
         a._update_request(req)
-        self.assertTrue("bar", req.pathfinder_value["reflect_method"].modpath)
+        self.assertTrue(
+            "bar",
+            req.controller_node.value["reflect_class"].modpath,
+        )
 
         req = a.request_class()
         req.method = "GET"
         req.path = "/che"
         a._update_request(req)
-        self.assertTrue("foo", req.pathfinder_value["reflect_method"].modpath)
+        self.assertTrue(
+            "foo",
+            req.controller_node.value["reflect_class"].modpath,
+        )
 
     def test_routing_1(self):
         """there was a bug that caused errors raised after the yield to return
@@ -372,24 +378,20 @@ class ApplicationTest(TestCase):
         c = self.create_server([
             "from endpoints import Controller",
             "class Default(Controller):",
-            "    def GET(self): pass",
+            "    def GET(self): return type(self).__name__",
             "",
             "class Foo(Controller):",
-            "    def GET(self): pass",
+            "    def GET(self, *args): return args",
             "",
             "class Bar(Controller):",
-            "    def GET(self): pass",
+            "    def GET(self): return type(self).__name__",
         ])
 
-        req = c.get_request()
-        rc = req.pathfinder_value["reflect_method"].reflect_class()
-        self.assertEqual(c.controller_prefix, rc.modpath)
-        self.assertEqual("Default", rc.name)
+        r = c.get("")
+        self.assertEqual("Default", r.body)
 
-        req = c.get_request("/foo/che/baz")
-        rc = req.pathfinder_value["reflect_method"].reflect_class()
-        self.assertEqual(2, len(req.path_positionals))
-        self.assertEqual("Foo", rc.name)
+        r = c.get("/foo/che/baz")
+        self.assertEqual(("che", "baz"), r.body)
 
     def test_default_match_with_path(self):
         """when the default controller is used, make sure it falls back to
@@ -404,12 +406,12 @@ class ApplicationTest(TestCase):
             ]
         })
 
-        res = c.handle("/nmcon/8")
+        res = c.get("/nmcon/8")
         self.assertEqual("8", res.body)
 
     def test_no_match(self):
         """make sure a controller module that imports a class with the same as
-        one of the query args doesen't get picked up as the controller class"""
+        one of the query args doesn't get picked up as the controller class"""
         c = self.create_server({
             "nomod": [
                 "class Nomodbar(object): pass",
@@ -418,15 +420,12 @@ class ApplicationTest(TestCase):
                 "from endpoints import Controller",
                 "from .nomod import Nomodbar",
                 "class Default(Controller):",
-                "    def GET(self): pass",
+                "    def GET(self, p): return p",
             ],
         })
 
-        path = '/nomodbar' # same name as one of the non controller classes
-        info = c.find(path)
-        rc = info["reflect_method"].reflect_class()
-        self.assertEqual('Default', rc.name)
-        self.assertEqual(c.controller_prefix, rc.modpath)
+        r = c.handle("/nomodbar")
+        self.assertEqual("nomodbar", r.body)
 
     def test_import_error(self):
         with self.assertRaises(ImportError):
@@ -437,22 +436,19 @@ class ApplicationTest(TestCase):
             ]).application
 
     def test_callback_info(self):
+        # this server has no controllers
         c = self.create_server()
+        r = c.get("/foo/bar")
+        self.assertEqual(404, r.status_code)
 
-        request = c.create_request("/foo/bar", "GET")
-        request.query_kwargs = {'foo': 'bar', 'che': 'baz'}
-
-        with self.assertRaises(CallError):
-            c.find(request=request)
-
+        # this server has a controller that can answer the request
         c = self.create_server("""
             class Foo:
                 class Bar(Controller):
                     def GET(*args, **kwargs): pass
         """)
-
-        # if it succeeds, then it passed the test :)
-        d = c.find(request=request)
+        r = c.get("/foo/bar")
+        self.assertEqual(204, r.status_code)
 
 
 class RouterTest(TestCase):
@@ -643,120 +639,164 @@ class RouterTest(TestCase):
     def test_ext(self):
         s = self.create_server("""
             class Foo_txt(Controller):
-                def ANY(self): pass
+                def ANY(self): return "Foo_txt.ANY"
         """)
 
-        r = s.find("/foo.txt")
-        rc = r["reflect_method"].reflect_class()
-        self.assertEqual("Foo_txt", rc.get_target().__name__)
+        r = s.get("/foo.txt")
+        self.assertEqual("Foo_txt.ANY", r.body)
 
     def test_find_controller_info_default(self):
         """I introduced a bug on 1-12-14 that caused default controllers to
         fail to be found, this makes sure that bug is squashed"""
         c = self.create_server("""
             class Default(Controller):
-                def GET(): pass
+                def GET(): return "Default.GET"
         """)
 
-        info = c.find("/")
-        rc = info["reflect_method"].reflect_class()
-        self.assertEqual('Default', rc.name)
-        self.assertTrue(issubclass(rc.get_target(), Controller))
+        r = c.get("/")
+        self.assertTrue(isinstance(r.controller, Controller))
+        self.assertEqual("Default", type(r.controller).__name__)
+
+#         info = c.find("/")
+#         rc = info["reflect_method"].reflect_class()
+#         self.assertEqual('Default', rc.name)
+#         self.assertTrue(issubclass(rc.get_target(), Controller))
 
     def test_find_controller_info_advanced(self):
         c = self.create_server({
-            "": [
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-            ],
-            "default": [
-                "class Default(Controller):",
-                "    def ANY(*args, **kwargs): pass",
-            ],
-            "foo": [
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "class Bar(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "    def POST(*args, **kwargs): pass",
-            ],
-            "foo.baz": [
-                "class Default(Controller):",
-                "    def GET(*args, **kwargs): pass",
-                "class Che(Controller):",
-                "    def GET(*args, **kwargs): pass",
-            ],
-            "foo.boom": [
-                "class Bang(Controller):",
-                "    def GET(*args, **kwargs): pass",
-            ],
+            "": """
+                class Default(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "Default.GET", args, kwargs
+            """,
+            "default": """
+                class Default(Controller):
+                    def ANY(self, *args, **kwargs):
+                        return "default.Default.ANY", args, kwargs
+            """,
+            "foo": """
+                class Default(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "foo.Default.GET", args, kwargs
+                class Bar(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "foo.Bar.GET", args, kwargs
+                    def POST(self, *args, **kwargs):
+                        return "foo.Bar.POST", args, kwargs
+            """,
+            "foo.baz": """
+                class Default(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "foo.baz.Default.GET", args, kwargs
+                class Che(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "foo.baz.Che.GET", args, kwargs
+            """,
+            "foo.boom": """
+                class Bang(Controller):
+                    def GET(self, *args, **kwargs):
+                        return "foo.boom.Bang.GET", args, kwargs
+            """,
         })
 
-        req = c.get_request("/default")
-        self.assertEqual(
-            f"{c.controller_prefix}.default",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual([], req.path_positionals)
+        r = c.get("/default")
+        self.assertEqual("default.Default.ANY", r.body[0])
+        self.assertEqual(tuple(), r.body[1])
 
-        req = c.get_request("/foo/baz")
-        self.assertEqual(
-            f"{c.controller_prefix}.foo.baz",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual([], req.path_positionals)
+#         req = c.get_request("/default")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.default",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual([], req.path_positionals)
 
-        req = c.get_request("/foo/bar/happy/sad")
-        self.assertEqual(
-            f"{c.controller_prefix}.foo",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Bar", req.reflect_class.name)
-        self.assertEqual(["happy", "sad"], req.path_positionals)
+        r = c.get("/foo/baz")
+        self.assertEqual("foo.baz.Default.GET", r.body[0])
+        self.assertEqual(tuple(), r.body[1])
 
-        req = c.get_request("/")
-        self.assertEqual(
-            c.controller_prefix,
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual([], req.path_positionals)
+#         req = c.get_request("/foo/baz")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.foo.baz",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual([], req.path_positionals)
 
-        req = c.get_request("/happy")
-        self.assertEqual(
-            c.controller_prefix,
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual(["happy"], req.path_positionals)
 
-        req = c.get_request("/foo/baz/che")
-        self.assertEqual(
-            f"{c.controller_prefix}.foo.baz",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Che", req.reflect_class.name)
-        self.assertEqual([], req.path_positionals)
+        r = c.get("/foo/bar/happy/sad")
+        self.assertEqual("foo.Bar.GET", r.body[0])
+        self.assertEqual(("happy", "sad"), r.body[1])
 
-        req = c.get_request("/foo/baz/happy")
-        self.assertEqual(
-            f"{c.controller_prefix}.foo.baz",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual(["happy"], req.path_positionals)
+#         req = c.get_request("/foo/bar/happy/sad")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.foo",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Bar", req.reflect_class.name)
+#         self.assertEqual(["happy", "sad"], req.path_positionals)
 
-        req = c.get_request("/foo/happy")
-        self.assertEqual(
-            f"{c.controller_prefix}.foo",
-            req.reflect_class.reflect_module().name,
-        )
-        self.assertEqual("Default", req.reflect_class.name)
-        self.assertEqual(["happy"], req.path_positionals)
+        r = c.get("/")
+        self.assertEqual("Default.GET", r.body[0])
+        self.assertEqual(tuple(), r.body[1])
 
-    def test__update_request(self):
+#         req = c.get_request("/")
+#         self.assertEqual(
+#             c.controller_prefix,
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual([], req.path_positionals)
+
+        r = c.get("/happy")
+        self.assertEqual("Default.GET", r.body[0])
+        self.assertEqual(("happy",), r.body[1])
+
+#         req = c.get_request("/happy")
+#         self.assertEqual(
+#             c.controller_prefix,
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual(["happy"], req.path_positionals)
+
+        r = c.get("/foo/baz/che")
+        self.assertEqual("foo.baz.Che.GET", r.body[0])
+        self.assertEqual(tuple(), r.body[1])
+
+#         req = c.get_request("/foo/baz/che")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.foo.baz",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Che", req.reflect_class.name)
+#         self.assertEqual([], req.path_positionals)
+
+        r = c.get("/foo/baz/happy")
+        self.assertEqual("foo.baz.Default.GET", r.body[0])
+        self.assertEqual(("happy",), r.body[1])
+
+#         req = c.get_request("/foo/baz/happy")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.foo.baz",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual(["happy"], req.path_positionals)
+
+        r = c.get("/foo/happy")
+        self.assertEqual("foo.Default.GET", r.body[0])
+        self.assertEqual(("happy",), r.body[1])
+
+#         req = c.get_request("/foo/happy")
+#         self.assertEqual(
+#             f"{c.controller_prefix}.foo",
+#             req.reflect_class.reflect_module().name,
+#         )
+#         self.assertEqual("Default", req.reflect_class.name)
+#         self.assertEqual(["happy"], req.path_positionals)
+
+    def test__update_request_1(self):
         s = self.create_server("""
             class Foo(Controller):
                 def GET(self): pass
@@ -767,6 +807,18 @@ class RouterTest(TestCase):
         request = s.create_request("/foo/bar", "GET")
         s.application._update_request(request)
 
-        rm = request.pathfinder_value["reflect_method"]
-        self.assertEqual("/foo/bar", rm.get_url_path())
+        rc = request.controller_node.value["reflect_class"]
+        self.assertEqual("/foo", rc.get_url_path())
+
+    def test__update_request_2(self):
+        s = self.create_server("""
+            class Foo(Controller):
+                def GET_bar(self, *args): pass
+        """)
+
+        for url in ["/foo/bar/1/2/3/4", "/foo/bar", "/foo"]:
+            request = s.create_request(url, "GET")
+            s.application._update_request(request)
+            rc = request.controller_node.value["reflect_class"]
+            self.assertEqual("/foo", rc.get_url_path())
 

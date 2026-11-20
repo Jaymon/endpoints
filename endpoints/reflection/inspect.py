@@ -1,10 +1,12 @@
 import re
 import io
 from collections import defaultdict, Counter
-from collections.abc import Callable
+from collections.abc import Callable, Hashable
 import inspect
 from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
+    ForwardRef,
+    TYPE_CHECKING,
 )
 import functools
 import logging
@@ -21,6 +23,12 @@ from datatypes.reflection.inspect import ReflectArgument, ReflectObject
 from ..compat import *
 from ..utils import MimeType
 from ..config import environ
+
+
+if TYPE_CHECKING:
+    from ..call import Controller
+
+type ControllerType = ForwardRef("Controller")
 
 
 logger = logging.getLogger(__name__)
@@ -526,6 +534,14 @@ class ReflectMethod(ReflectCallable):
         """Returns True if http_verb accepts a body in the request"""
         return self.http_verb_has_body(self.http_verb)
 
+    def get_controller_method(
+        self,
+        controller: ControllerType,
+    ) -> Callable:
+        """This returns the controller instance method that will be called in
+        `Controller.handle` to actually handle the request (eg, `GET`)"""
+        return getattr(controller, self.name)
+
 
 class ReflectArgument(ReflectArgument):
     def __init__(self, *args, **kwargs):
@@ -876,4 +892,16 @@ class Pathfinder(MethodpathFinder):
     def normalize_key(self, key):
         """override parent to normalize key using .find_keys"""
         return self.find_keys.get(key, key)
+
+    def add_path_node(self, key: Hashable, key_value: Any, value: Any):
+        # for methods like `GET_foobar` we create a hybrid class and method
+        # value for the `foobar` key using self's class value and the passed
+        # in `GET_foobar` method value
+        if (key_value is None) and ("reflect_method" in value):
+            key_value = dict(self.value)
+            key_value["method_keys"] = [key]
+            key_value["keys"] = [*key_value["keys"], key]
+            key_value["method_name"] = value["method_name"]
+
+        super().add_path_node(key, key_value, value)
 

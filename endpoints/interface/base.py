@@ -489,15 +489,18 @@ class Application(object):
 
     def _update_request(self, request, **kwargs) -> None:
         logger.debug(
-            "Finding handler for: %s %s",
+            "Finding controller for: %s %s",
             request.method,
             request.path,
         )
 
         leftover_path_args = list(filter(None, request.path.split("/")))
         node = self.pathfinder
+        controller_node = None
 
         while node is not None:
+            controller_node = node
+
             if leftover_path_args:
                 try:
                     node = node.get_node(leftover_path_args[0] + "/")
@@ -510,43 +513,60 @@ class Application(object):
                 break
 
         request.path_positionals = leftover_path_args
+        request.controller_node = controller_node
 
-        # we need to find the http node
-        method_node = None
-        try:
-            method_node = node.get_node(request.method)
-
-        except KeyError:
-            try:
-                 method_node = node.get_node("ANY")
-
-            except KeyError:
-                if leftover_path_args:
-                    # if we have leftover path args and we don't have a
-                    # method to even answer the request it should be NOT
-                    # FOUND since the path is invalid
-                    raise CallError(
-                        404,
-                        f"{request.method} {request.path} not found",
-                    )
-
-                else:
-                    # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-                    # should be Not Implemented if the method is
-                    # unrecognized or not implemented by the origin server
-                    raise CallError(
-                        501,
-                        f"{request.method} {request.path} not implemented",
-                    )
-
-        request.pathfinder_node = method_node
+        # couldn't find a valid controller
+        if (controller_node is None) or not controller_node.value:
+            raise CallError(404, f"{request.path} not found")
 
         logger.debug(
-            "Found %s %s handler: %s",
+            "Found %s %s controller: %s",
             request.method,
             request.path,
-            method_node.value["reflect_method"].callpath,
+            controller_node.value["reflect_class"].classpath,
         )
+
+#         return
+# ###############################################################################
+# ###############################################################################
+# ###############################################################################
+# 
+#         # we need to find the http node
+#         method_node = None
+#         try:
+#             method_node = node.get_node(request.method)
+# 
+#         except KeyError:
+#             try:
+#                  method_node = node.get_node("ANY")
+# 
+#             except KeyError:
+#                 if leftover_path_args:
+#                     # if we have leftover path args and we don't have a
+#                     # method to even answer the request it should be NOT
+#                     # FOUND since the path is invalid
+#                     raise CallError(
+#                         404,
+#                         f"{request.method} {request.path} not found",
+#                     )
+# 
+#                 else:
+#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                     # should be Not Implemented if the method is
+#                     # unrecognized or not implemented by the origin server
+#                     raise CallError(
+#                         501,
+#                         f"{request.method} {request.path} not implemented",
+#                     )
+# 
+#         request.pathfinder_node = method_node
+# 
+#         logger.debug(
+#             "Found %s %s handler: %s",
+#             request.method,
+#             request.path,
+#             method_node.value["reflect_method"].callpath,
+#         )
 
     def find_modules(
         self,
@@ -596,8 +616,9 @@ class Application(object):
 
         else:
             self._update_request(request)
-            rm = request.pathfinder_value["reflect_method"]
-            controller_class = rm.get_class()
+            controller_class = request.controller_node.value["class"]
+#             rm = request.pathfinder_value["reflect_method"]
+#             controller_class = rm.get_class()
 
         controller = controller_class(
             request,
@@ -612,7 +633,7 @@ class Application(object):
         if "controller_class" not in kwargs:
             kwargs["controller_class"] = self.controller_class
 
-            node = request.pathfinder_node
+            node = request.controller_node
             while node is not None:
                 if v := node.value:
                     if "reflect_class" in v:
