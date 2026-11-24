@@ -1,7 +1,7 @@
 import re
 import io
 from collections import defaultdict, Counter
-from collections.abc import Callable, Hashable
+from collections.abc import Callable, Hashable, Sequence, Mapping
 import inspect
 from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
@@ -778,10 +778,10 @@ class Pathfinder(MethodpathFinder):
         super().__init__(prefixes, **kwargs)
         self.find_keys = {}
 
-    def _get_node_module_info(self, key, **kwargs):
+    def _get_node_module_item(self, key, **kwargs):
         """Handle normalizing each module key to kebabcase"""
         key = NamingConvention(key).kebabcase()
-        return super()._get_node_module_info(key, **kwargs)
+        return super()._get_node_module_item(key, **kwargs)
 
     def create_reflect_controller(self, target, **kwargs):
         return kwargs.get("reflect_controller_class", ReflectController)(
@@ -789,7 +789,7 @@ class Pathfinder(MethodpathFinder):
             **kwargs,
         )
 
-    def _get_node_class_info(self, key, **kwargs):
+    def _get_node_class_item(self, key, **kwargs):
         """Handle normalizing each class key. If it's the destination key
         then it will use the controller class's .get_name method for the
         key. If it's a waypoint key then it will normalize to kebab case
@@ -809,14 +809,14 @@ class Pathfinder(MethodpathFinder):
             rc = None
             key = NamingConvention(key).kebabcase()
 
-        key, value = super()._get_node_class_info(key, **kwargs)
+        key, value = super()._get_node_class_item(key, **kwargs)
 
         if rc:
             value["reflect_class"] = rc
 
         return key, value
 
-    def _get_node_method_info(
+    def _get_node_method_item(
         self,
         key: str,
         **kwargs,
@@ -834,7 +834,7 @@ class Pathfinder(MethodpathFinder):
                 kwargs["method_name"],
             )
 
-            key, value = super()._get_node_method_info(
+            key, value = super()._get_node_method_item(
                 rm.get_url_name(),
                 **kwargs,
             )
@@ -893,15 +893,36 @@ class Pathfinder(MethodpathFinder):
         """override parent to normalize key using .find_keys"""
         return self.find_keys.get(key, key)
 
-    def add_path_node(self, key: Hashable, key_value: Any, value: Any):
+    def normalize_path_value(self, key: str, value: Mapping) -> Any:
         # for methods like `GET_foobar` we create a hybrid class and method
         # value for the `foobar` key using self's class value and the passed
         # in `GET_foobar` method value
-        if (key_value is None) and ("reflect_method" in value):
-            key_value = dict(self.value)
-            key_value["method_keys"] = [key]
-            key_value["keys"] = [*key_value["keys"], key]
-            key_value["method_name"] = value["method_name"]
+        pv = {}
+        if "reflect_method" in value:
+            pv = dict(self.value)
+            pv["method_keys"] = [key]
+            pv["keys"] = [*pv["keys"], key]
+            pv["method_name"] = value["method_name"]
+            pv["node_type"] = "path_method"
 
-        super().add_path_node(key, key_value, value)
+        return pv
+
+#     def add_path_node(self, key: Hashable, key_value: Any, value: Any):
+#         # for methods like `GET_foobar` we create a hybrid class and method
+#         # value for the `foobar` key using self's class value and the passed
+#         # in `GET_foobar` method value
+#         if (key_value is None) and ("reflect_method" in value):
+#             key_value = dict(self.value)
+#             key_value["method_keys"] = [key]
+#             key_value["keys"] = [*key_value["keys"], key]
+#             key_value["method_name"] = value["method_name"]
+# 
+#         super().add_path_node(key, key_value, value)
+
+#     def get_class_items(self) -> tuple[Sequence[str], Mapping]:
+#         """Override parent to filter out out hybrid class/method nodes added
+#         with `.add_path_node`"""
+#         for keys, value in super().get_class_items():
+#             if "method_name" not in value:
+#                 yield keys, value
 

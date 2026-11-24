@@ -1348,3 +1348,16 @@ class PathfinderTest(TestCase):
         v = pf["POST"]
         self.assertTrue("method" in v)
 
+    def test_get_class_items(self):
+        s = self.create_server("""
+            class Foo(Controller):
+                def GET_1(self, bar, /):
+                    pass
+                def GET_2(self, che, /):
+                    pass
+        """)
+
+        pf = s.application.pathfinder
+        for keys, v in pf.get_class_items():
+            self.assertEqual("class", v["node_type"])
+
