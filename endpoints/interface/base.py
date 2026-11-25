@@ -9,7 +9,7 @@ import inspect
 import os
 import datetime
 from typing import Any
-from types import ModuleType, MappingProxyType
+from types import ModuleType
 from collections.abc import Iterable
 
 from datatypes import (
@@ -526,48 +526,6 @@ class Application(object):
             controller_node.value["reflect_class"].classpath,
         )
 
-#         return
-# ###############################################################################
-# ###############################################################################
-# ###############################################################################
-# 
-#         # we need to find the http node
-#         method_node = None
-#         try:
-#             method_node = node.get_node(request.method)
-# 
-#         except KeyError:
-#             try:
-#                  method_node = node.get_node("ANY")
-# 
-#             except KeyError:
-#                 if leftover_path_args:
-#                     # if we have leftover path args and we don't have a
-#                     # method to even answer the request it should be NOT
-#                     # FOUND since the path is invalid
-#                     raise CallError(
-#                         404,
-#                         f"{request.method} {request.path} not found",
-#                     )
-# 
-#                 else:
-#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                     # should be Not Implemented if the method is
-#                     # unrecognized or not implemented by the origin server
-#                     raise CallError(
-#                         501,
-#                         f"{request.method} {request.path} not implemented",
-#                     )
-# 
-#         request.pathfinder_node = method_node
-# 
-#         logger.debug(
-#             "Found %s %s handler: %s",
-#             request.method,
-#             request.path,
-#             method_node.value["reflect_method"].callpath,
-#         )
-
     def find_modules(
         self,
         controller_prefixes: list[str],
@@ -617,8 +575,6 @@ class Application(object):
         else:
             self._update_request(request)
             controller_class = request.controller_node.value["class"]
-#             rm = request.pathfinder_value["reflect_method"]
-#             controller_class = rm.get_class()
 
         controller = controller_class(
             request,

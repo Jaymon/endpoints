@@ -907,22 +907,3 @@ class Pathfinder(MethodpathFinder):
 
         return pv
 
-#     def add_path_node(self, key: Hashable, key_value: Any, value: Any):
-#         # for methods like `GET_foobar` we create a hybrid class and method
-#         # value for the `foobar` key using self's class value and the passed
-#         # in `GET_foobar` method value
-#         if (key_value is None) and ("reflect_method" in value):
-#             key_value = dict(self.value)
-#             key_value["method_keys"] = [key]
-#             key_value["keys"] = [*key_value["keys"], key]
-#             key_value["method_name"] = value["method_name"]
-# 
-#         super().add_path_node(key, key_value, value)
-
-#     def get_class_items(self) -> tuple[Sequence[str], Mapping]:
-#         """Override parent to filter out out hybrid class/method nodes added
-#         with `.add_path_node`"""
-#         for keys, value in super().get_class_items():
-#             if "method_name" not in value:
-#                 yield keys, value
-

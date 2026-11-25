@@ -5,7 +5,7 @@ import re
 import io
 from collections import defaultdict
 from collections.abc import AsyncGenerator
-from types import NoneType, MappingProxyType
+from types import NoneType
 from typing import Annotated, Any, Callable
 import json
 from functools import cached_property
@@ -660,54 +660,6 @@ class Controller(ETL):
         if request.body_keywords:
             request.keywords.update(request.body_keywords)
 
-
-        return
-
-#         self._update_request_handler()
-# 
-#     def _update_request_handler(self):
-#         # we need to find the http handler node
-# 
-#         request = self.request
-#         controller_node = self.request.controller_node
-# 
-#         method_node = None
-#         try:
-#             method_node = controller_node.get_node(request.method)
-# 
-#         except KeyError:
-#             try:
-#                  method_node = controller_node.get_node("ANY")
-# 
-#             except KeyError:
-#                 if request.path_positionals:
-#                     # if we have leftover path args and we don't have a
-#                     # method to even answer the request it should be NOT
-#                     # FOUND since the path is invalid
-#                     raise CallError(
-#                         404,
-#                         f"{request.method} {request.path} not found",
-#                     )
-# 
-#                 else:
-#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
-#                     # should be Not Implemented if the method is
-#                     # unrecognized or not implemented by the origin server
-#                     raise CallError(
-#                         501,
-#                         f"{request.method} {request.path} not implemented",
-#                     )
-# 
-#         # we have a method node now so we can update the request
-#         request.method_node = method_node
-
-#     def _get_handler_method(self) -> Callable:
-#         """Internal method. This returns the method that will be called in
-#         `.handle` to actually handle the request (eg, `GET`)"""
-#         if v := self.request.pathfinder_value:
-#             method = getattr(self, v["method_name"])
-#         return method
-
     async def handle(self):
         """handles the request and sets the response
 
@@ -1133,9 +1085,6 @@ class Request(Call):
     """Readonly. Holds the requested controller http method pathfinder node.
     Set in the controller"""
 
-#     pathfinder_node: Mapping|None = None
-    """Readonly. Holds the requested pathfinder node"""
-
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
 
@@ -1168,11 +1117,6 @@ class Request(Call):
     protocol: str|None = None
     """The HTTP protocol (eg, HTTP/1.1)"""
 
-#     @property
-#     def pathfinder_value(self) -> Mapping|None:
-#         if self.pathfinder_node is not None:
-#             return MappingProxyType(self.pathfinder_node.value)
-
     @property
     def reflect_method(self) -> ReflectABC|None:
         """The reflect method instance for the method that will
@@ -1181,14 +1125,6 @@ class Request(Call):
             if v := self.method_node.value:
                 return v["reflect_method"]
 
-#         if v := self.pathfinder_value:
-#             return v["reflect_method"]
-
-#     @property
-#     def method_callable(self) -> Callable|None:
-#         if rm := self.reflect_method:
-#             return rm.get_target()
-
     @property
     def reflect_class(self) -> ReflectABC|None:
         """The reflect class instance for the controller that is going to
@@ -1196,9 +1132,6 @@ class Request(Call):
         if self.controller_node is not None:
             if v := self.controller_node.value:
                 return v["reflect_class"]
-
-#         if v := self.pathfinder_value:
-#             return v["reflect_method"].reflect_class()
 
     @property
     def controller_class(self) -> Controller:
