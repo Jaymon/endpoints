@@ -360,7 +360,7 @@ class ApplicationTest(TestCase):
         a._update_request(req)
         self.assertTrue(
             "bar",
-            req.controller_node.value["reflect_class"].modpath,
+            req.reflect_class.modpath,
         )
 
         req = a.request_class()
@@ -369,7 +369,8 @@ class ApplicationTest(TestCase):
         a._update_request(req)
         self.assertTrue(
             "foo",
-            req.controller_node.value["reflect_class"].modpath,
+#             req.pathfinder_node.value["reflect_class"].modpath,
+            req.reflect_class.modpath,
         )
 
     def test_routing_1(self):
@@ -807,7 +808,7 @@ class RouterTest(TestCase):
         request = s.create_request("/foo/bar", "GET")
         s.application._update_request(request)
 
-        rc = request.controller_node.value["reflect_class"]
+        rc = request.pathfinder_value["reflect_class"]
         self.assertEqual("/foo", rc.get_url_path())
 
     def test__update_request_2(self):
@@ -819,6 +820,6 @@ class RouterTest(TestCase):
         for url in ["/foo/bar/1/2/3/4", "/foo/bar", "/foo"]:
             request = s.create_request(url, "GET")
             s.application._update_request(request)
-            rc = request.controller_node.value["reflect_class"]
+            rc = request.pathfinder_value["reflect_class"]
             self.assertEqual("/foo", rc.get_url_path())
 

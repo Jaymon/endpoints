@@ -541,7 +541,7 @@ class Controller(ETL):
         request = self.request
 
         # find the method node
-        controller_node = self.request.controller_node
+        controller_node = self.request.pathfinder_node
         method_node = None
         try:
             method_node = controller_node.get_node(request.method)
@@ -569,7 +569,9 @@ class Controller(ETL):
                         f"{request.method} {request.path} not implemented",
                     )
 
-        request.method_node = method_node
+#         request.method_node = method_node
+        request.pathfinder_node = method_node
+        request.pathfinder_value = method_node.value
 
         body_positionals = request.body_positionals or []
         body_keywords = request.body_keywords or {}
@@ -1077,13 +1079,25 @@ class Request(Call):
     method: str|None = None
     """the http method (GET, POST)"""
 
-    controller_node: Mapping|None = None
-    """Readonly. Holds the requested controller pathfinder node, set in the
-    application"""
+    pathfinder_node: Mapping|None = None
+    """Readonly. Holds the requested pathfinder node, set in the Application
+    and then updated in the Controller. See `_update_request`
+    """
 
-    method_node: Mapping|None = None
-    """Readonly. Holds the requested controller http method pathfinder node.
-    Set in the controller"""
+    pathfinder_value: Mapping|None = None
+    """Holds the pathfinder node value that will be used to actually
+    respond to the request. This is a separate value than just using
+    `.pathfinder_node.value` because custom behavior can change or customize
+    this value"""
+
+
+#     controller_node: Mapping|None = None
+#     """Readonly. Holds the requested controller pathfinder node, set in the
+#     application"""
+# 
+#     method_node: Mapping|None = None
+#     """Readonly. Holds the requested controller http method pathfinder node.
+#     Set in the controller"""
 
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
@@ -1121,17 +1135,37 @@ class Request(Call):
     def reflect_method(self) -> ReflectABC|None:
         """The reflect method instance for the method that will
         answer the request"""
-        if self.method_node is not None:
-            if v := self.method_node.value:
-                return v["reflect_method"]
+        if self.pathfinder_value is not None:
+            if "reflect_method" in self.pathfinder_value:
+                return self.pathfinder_value["reflect_method"]
 
     @property
     def reflect_class(self) -> ReflectABC|None:
         """The reflect class instance for the controller that is going to
         answer the request"""
-        if self.controller_node is not None:
-            if v := self.controller_node.value:
+        if self.pathfinder_value is not None:
+            v = self.pathfinder_value
+            if "reflect_class" in v:
                 return v["reflect_class"]
+
+            elif "reflect_method" in v:
+                return v["reflect_method"].reflect_class()
+
+#     @property
+#     def reflect_method(self) -> ReflectABC|None:
+#         """The reflect method instance for the method that will
+#         answer the request"""
+#         if self.method_node is not None:
+#             if v := self.method_node.value:
+#                 return v["reflect_method"]
+# 
+#     @property
+#     def reflect_class(self) -> ReflectABC|None:
+#         """The reflect class instance for the controller that is going to
+#         answer the request"""
+#         if self.controller_node is not None:
+#             if v := self.controller_node.value:
+#                 return v["reflect_class"]
 
     @property
     def controller_class(self) -> Controller:

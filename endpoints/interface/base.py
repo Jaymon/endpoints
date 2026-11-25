@@ -513,7 +513,9 @@ class Application(object):
                 break
 
         request.path_positionals = leftover_path_args
-        request.controller_node = controller_node
+#         request.controller_node = controller_node
+        request.pathfinder_node = controller_node
+        request.pathfinder_value = controller_node.value
 
         # couldn't find a valid controller
         if (controller_node is None) or not controller_node.value:
@@ -574,7 +576,7 @@ class Application(object):
 
         else:
             self._update_request(request)
-            controller_class = request.controller_node.value["class"]
+            controller_class = request.pathfinder_node.value["class"]
 
         controller = controller_class(
             request,
@@ -589,20 +591,31 @@ class Application(object):
         if "controller_class" not in kwargs:
             kwargs["controller_class"] = self.controller_class
 
-            node = request.controller_node
-            while node is not None:
-                if v := node.value:
-                    if "reflect_class" in v:
-                        controller_class = v["reflect_class"].get_class()
-                        kwargs["controller_class"] = controller_class
-                        break
+            while request.pathfinder_node is not None:
+                controller_class = request.controller_class
+                if controller_class is not None:
+                    kwargs["controller_class"] = controller_class
+                    break
 
-                    elif "reflect_method" in v:
-                        controller_class = v["reflect_method"].get_class()
-                        kwargs["controller_class"] = controller_class
-                        break
+                request.pathfinder_node = request.pathfinder_node.parent
+                request.pathfinder_value = None
+                if request.pathfinder_node is not None:
+                    request.pathfinder_value = request.pathfinder_node.value
 
-                node = node.parent
+#             node = request.pathfinder_node
+#             while node is not None:
+#                 if v := node.value:
+#                     if "reflect_class" in v:
+#                         controller_class = v["reflect_class"].get_class()
+#                         kwargs["controller_class"] = controller_class
+#                         break
+# 
+#                     elif "reflect_method" in v:
+#                         controller_class = v["reflect_method"].get_class()
+#                         kwargs["controller_class"] = controller_class
+#                         break
+# 
+#                 node = node.parent
 
         return self.create_controller(request, response, **kwargs)
 

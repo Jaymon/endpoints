@@ -100,23 +100,6 @@ class Server(object):
             **kwargs
         )
 
-    def get_request(self, path="", method="GET", **kwargs):
-        raise ValueError("This no longer works")
-        request = self.create_request(path, method, **kwargs)
-#         self.application._update_request(request)
-#         return request
-
-        application = self.application
-        controller = application.create_controller(request, None)
-        controller._update_request()
-        return request
-
-    def find(self, path="", method="GET", **kwargs):
-        raise ValueError("This no longer works")
-        request = self.get_request(path, method, **kwargs)
-        return request.method_node.value
-#         return request.pathfinder_value
-
 
 class TestCase(IsolatedAsyncioTestCase):
     server_class = Server
