@@ -474,7 +474,7 @@ class RouterTest(TestCase):
             cs = Application(paths=[modpath.basedir])
             self.assertTrue(
                 issubclass(
-                    cs.pathfinder["foo"]["class"],
+                    cs.pathfinder["foo"].value["class"],
                     Controller,
                 )
             )
@@ -495,9 +495,12 @@ class RouterTest(TestCase):
 
             cs = Application(paths=[modpath.basedir])
 
-            for k in ["foo", "bar", []]:
+            for ks in [["foo"], ["bar"], []]:
                 self.assertTrue(
-                    issubclass(cs.pathfinder[k]["class"], Controller),
+                    issubclass(
+                        cs.pathfinder.getpath(ks).value["class"],
+                        Controller,
+                    ),
                 )
 
     def test_pathfinder_1(self):
@@ -525,9 +528,12 @@ class RouterTest(TestCase):
         self.assertEqual(1, len(cs.controller_modules))
         self.assertTrue(modpath in cs.controller_modules)
 
-        for k in ["one", "two", []]:
+        for keys in [["one"], ["two"], []]:
             self.assertTrue(
-                issubclass(cs.pathfinder[k]["class"], Controller),
+                issubclass(
+                    cs.pathfinder.getpath(keys).value["class"],
+                    Controller,
+                ),
             )
 
     def test_pathfinder_2(self):
@@ -564,7 +570,7 @@ class RouterTest(TestCase):
 
         for path_args in controller_path_args:
             self.assertTrue(issubclass(
-                cs.pathfinder[path_args]["class"],
+                cs.pathfinder.getpath(path_args).value["class"],
                 Controller,
             ))
 
@@ -608,7 +614,7 @@ class RouterTest(TestCase):
 
         for path_args in controller_path_args:
             self.assertTrue(issubclass(
-                cs.pathfinder[path_args]["class"],
+                cs.pathfinder.getpath(path_args).value["class"],
                 Controller,
             ))
 

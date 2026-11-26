@@ -503,7 +503,7 @@ class Application(object):
 
             if leftover_path_args:
                 try:
-                    node = node.get_node(leftover_path_args[0] + "/")
+                    node = node[leftover_path_args[0] + "/"]
                     leftover_path_args = leftover_path_args[1:]
 
                 except KeyError:
@@ -513,7 +513,6 @@ class Application(object):
                 break
 
         request.path_positionals = leftover_path_args
-#         request.controller_node = controller_node
         request.pathfinder_node = controller_node
         request.pathfinder_value = controller_node.value
 

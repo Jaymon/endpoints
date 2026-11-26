@@ -1305,7 +1305,10 @@ class PathfinderTest(TestCase):
         self.assertTrue("GET" in pf)
         self.assertTrue("foo" in pf)
         self.assertTrue("bar" in pf)
-        self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
+        self.assertEqual(
+            "GET_bar",
+            pf.getpath(["bar/", "GET"]).value["method_name"],
+        )
 
     def test_method_2(self):
         s = self.create_server("""
@@ -1318,8 +1321,14 @@ class PathfinderTest(TestCase):
 
         self.assertTrue("GET" in pf)
         self.assertTrue("bar" in pf)
-        self.assertEqual("GET_bar", pf[["bar/", "GET"]]["method_name"])
-        self.assertEqual("GET_", pf["GET"]["unreachable"][0]["method_name"])
+        self.assertEqual(
+            "GET_bar",
+            pf.getpath(["bar/", "GET"]).value["method_name"],
+        )
+        self.assertEqual(
+            "GET_",
+            pf["GET"].value["unreachable"][0]["method_name"],
+        )
 
     def test_method_3(self):
         s = self.create_server("""
@@ -1329,7 +1338,7 @@ class PathfinderTest(TestCase):
         """)
         pf = s.application.pathfinder
 
-        v = pf[["foo", "bar"]]
+        v = pf.getpath(["foo", "bar"]).value
         self.assertTrue("reflect_class" in v)
         self.assertEqual(["bar"], v["method_keys"])
 
@@ -1342,10 +1351,10 @@ class PathfinderTest(TestCase):
         """)
         pf = s.application.pathfinder
 
-        v = pf["POST/"]
+        v = pf["POST/"].value
         self.assertTrue("class" in v)
 
-        v = pf["POST"]
+        v = pf["POST"].value
         self.assertTrue("method" in v)
 
     def test_get_class_items(self):

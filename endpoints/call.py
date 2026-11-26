@@ -540,15 +540,11 @@ class Controller(ETL):
 
         # find the method node
         controller_node = self.request.pathfinder_node
-        method_node = None
-        try:
-            method_node = controller_node.get_node(request.method)
 
-        except KeyError:
-            try:
-                 method_node = controller_node.get_node("ANY")
-
-            except KeyError:
+        method_node = controller_node.get(request.method, None)
+        if method_node is None:
+            method_node = controller_node.get("ANY", None)
+            if method_node is None:
                 if request.path_positionals:
                     # if we have leftover path args and we don't have a
                     # method to even answer the request it should be NOT
@@ -566,6 +562,33 @@ class Controller(ETL):
                         501,
                         f"{request.method} {request.path} not implemented",
                     )
+
+#         method_node = None
+#         try:
+#             method_node = controller_node[request.method]
+# 
+#         except KeyError:
+#             try:
+#                  method_node = controller_node["ANY"]
+# 
+#             except KeyError:
+#                 if request.path_positionals:
+#                     # if we have leftover path args and we don't have a
+#                     # method to even answer the request it should be NOT
+#                     # FOUND since the path is invalid
+#                     raise CallError(
+#                         404,
+#                         f"{request.method} {request.path} not found",
+#                     )
+# 
+#                 else:
+#                     # https://www.w3.org/Protocols/rfc2616/rfc2616-sec5.html#sec5.1
+#                     # should be Not Implemented if the method is
+#                     # unrecognized or not implemented by the origin server
+#                     raise CallError(
+#                         501,
+#                         f"{request.method} {request.path} not implemented",
+#                     )
 
         request.pathfinder_node = method_node
         request.pathfinder_value = method_node.value

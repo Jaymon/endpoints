@@ -7,6 +7,7 @@ from typing import (
     Any, # https://docs.python.org/3/library/typing.html#the-any-type
     ForwardRef,
     TYPE_CHECKING,
+    Self,
 )
 import functools
 import logging
@@ -847,15 +848,25 @@ class Pathfinder(MethodpathFinder):
 
         return None, None
 
-    def add_node(self, key, node, value):
+    def _add_node(self, key: str, node: Self, value: Mapping):
         """override parent to set find keys
 
         Whenever a new node is created this will be called, it populates
         the .find_keys used in .normalize_key
         """
-        super().add_node(key, node, value)
+        super()._add_node(key, node, value)
 
-        if (not value) or ("reflect_method" not in value):
+        if value and (value["node_type"] == "method"):
+            logger.info(
+                "Registering endpoint: %s %s -> %s",
+                value["reflect_method"].http_verb,
+                value["reflect_method"].get_url_path(),
+                value["reflect_method"].callpath,
+            )
+
+            self.find_keys[key] = key
+
+        else:
             if key not in self.find_keys:
                 self.find_keys[key + "/"] = key
 
@@ -863,18 +874,26 @@ class Pathfinder(MethodpathFinder):
                 for vk in nc.variations():
                     self.find_keys[vk + "/"] = key
 
-        else:
-            if value and "reflect_method" in value:
-                logger.info(
-                    "Registering endpoint: %s %s -> %s",
-                    value["reflect_method"].http_verb,
-                    value["reflect_method"].get_url_path(),
-                    value["reflect_method"].callpath,
-                )
+#         if (not value) or ("reflect_method" not in value):
+#             if key not in self.find_keys:
+#                 self.find_keys[key + "/"] = key
+# 
+#                 nc = NamingConvention(key)
+#                 for vk in nc.variations():
+#                     self.find_keys[vk + "/"] = key
+# 
+#         else:
+#             if value and "reflect_method" in value:
+#                 logger.info(
+#                     "Registering endpoint: %s %s -> %s",
+#                     value["reflect_method"].http_verb,
+#                     value["reflect_method"].get_url_path(),
+#                     value["reflect_method"].callpath,
+#                 )
+# 
+#             self.find_keys[key] = key
 
-            self.find_keys[key] = key
-
-    def update_node(self, key, node, value):
+    def _update_node(self, key: str, node: Self, value: Mapping):
         if "reflect_method" in value:
             logger.warning(
                 "Unreachable endpoint: %s %s -> %s",
@@ -887,13 +906,13 @@ class Pathfinder(MethodpathFinder):
             node.value["unreachable"].append(value)
 
         else:
-            super().update_node(key, node, value)
+            super()._update_node(key, node, value)
 
-    def normalize_key(self, key):
+    def _normalize_key(self, key: str):
         """override parent to normalize key using .find_keys"""
         return self.find_keys.get(key, key)
 
-    def normalize_path_value(self, key: str, value: Mapping) -> Any:
+    def _normalize_path_value(self, key: str, value: Mapping) -> Any:
         # for methods like `GET_foobar` we create a hybrid class and method
         # value for the `foobar` key using self's class value and the passed
         # in `GET_foobar` method value
