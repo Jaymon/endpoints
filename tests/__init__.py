@@ -160,18 +160,6 @@ class TestCase(IsolatedAsyncioTestCase):
                 contents[""].append(footer)
                 footer = ""
 
-
-#         if isinstance(contents, dict):
-#             if "" in contents:
-#                 if isinstance(contents[""], str):
-#                     contents[""] = [contents[""]]
-# 
-#             else:
-#                 contents.setdefault("", [])
-# 
-#             contents[""].append(footer)
-#             footer = ""
-
         controller_prefix = testdata.create_module(
             data=contents,
             modpath=controller_prefix,

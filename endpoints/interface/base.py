@@ -602,21 +602,6 @@ class Application(object):
                 if request.pathfinder_node is not None:
                     request.pathfinder_value = request.pathfinder_node.value
 
-#             node = request.pathfinder_node
-#             while node is not None:
-#                 if v := node.value:
-#                     if "reflect_class" in v:
-#                         controller_class = v["reflect_class"].get_class()
-#                         kwargs["controller_class"] = controller_class
-#                         break
-# 
-#                     elif "reflect_method" in v:
-#                         controller_class = v["reflect_method"].get_class()
-#                         kwargs["controller_class"] = controller_class
-#                         break
-# 
-#                 node = node.parent
-
         return self.create_controller(request, response, **kwargs)
 
     async def handle(self, request, response, **kwargs) -> Controller:

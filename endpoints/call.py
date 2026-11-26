@@ -260,8 +260,6 @@ class Controller(ETL):
 
         1. `.handle`
             a. `._update_request`
-            b. `.get_request_params`
-            c. `._get_handler_method`
             d. `.get_method_params`
             e. matching http request method (eg, `GET`)
             f. `.handle_error` (optional)
@@ -569,7 +567,6 @@ class Controller(ETL):
                         f"{request.method} {request.path} not implemented",
                     )
 
-#         request.method_node = method_node
         request.pathfinder_node = method_node
         request.pathfinder_value = method_node.value
 
@@ -1090,15 +1087,6 @@ class Request(Call):
     `.pathfinder_node.value` because custom behavior can change or customize
     this value"""
 
-
-#     controller_node: Mapping|None = None
-#     """Readonly. Holds the requested controller pathfinder node, set in the
-#     application"""
-# 
-#     method_node: Mapping|None = None
-#     """Readonly. Holds the requested controller http method pathfinder node.
-#     Set in the controller"""
-
     body: bytes|io.IOBase|None = None
     """Holds the raw body"""
 
@@ -1150,22 +1138,6 @@ class Request(Call):
 
             elif "reflect_method" in v:
                 return v["reflect_method"].reflect_class()
-
-#     @property
-#     def reflect_method(self) -> ReflectABC|None:
-#         """The reflect method instance for the method that will
-#         answer the request"""
-#         if self.method_node is not None:
-#             if v := self.method_node.value:
-#                 return v["reflect_method"]
-# 
-#     @property
-#     def reflect_class(self) -> ReflectABC|None:
-#         """The reflect class instance for the controller that is going to
-#         answer the request"""
-#         if self.controller_node is not None:
-#             if v := self.controller_node.value:
-#                 return v["reflect_class"]
 
     @property
     def controller_class(self) -> Controller:

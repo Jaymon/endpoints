@@ -369,7 +369,6 @@ class ApplicationTest(TestCase):
         a._update_request(req)
         self.assertTrue(
             "foo",
-#             req.pathfinder_node.value["reflect_class"].modpath,
             req.reflect_class.modpath,
         )
 
@@ -704,98 +703,33 @@ class RouterTest(TestCase):
         self.assertEqual("default.Default.ANY", r.body[0])
         self.assertEqual(tuple(), r.body[1])
 
-#         req = c.get_request("/default")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.default",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual([], req.path_positionals)
-
         r = c.get("/foo/baz")
         self.assertEqual("foo.baz.Default.GET", r.body[0])
         self.assertEqual(tuple(), r.body[1])
-
-#         req = c.get_request("/foo/baz")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.foo.baz",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual([], req.path_positionals)
-
 
         r = c.get("/foo/bar/happy/sad")
         self.assertEqual("foo.Bar.GET", r.body[0])
         self.assertEqual(("happy", "sad"), r.body[1])
 
-#         req = c.get_request("/foo/bar/happy/sad")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.foo",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Bar", req.reflect_class.name)
-#         self.assertEqual(["happy", "sad"], req.path_positionals)
-
         r = c.get("/")
         self.assertEqual("Default.GET", r.body[0])
         self.assertEqual(tuple(), r.body[1])
-
-#         req = c.get_request("/")
-#         self.assertEqual(
-#             c.controller_prefix,
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual([], req.path_positionals)
 
         r = c.get("/happy")
         self.assertEqual("Default.GET", r.body[0])
         self.assertEqual(("happy",), r.body[1])
 
-#         req = c.get_request("/happy")
-#         self.assertEqual(
-#             c.controller_prefix,
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual(["happy"], req.path_positionals)
-
         r = c.get("/foo/baz/che")
         self.assertEqual("foo.baz.Che.GET", r.body[0])
         self.assertEqual(tuple(), r.body[1])
-
-#         req = c.get_request("/foo/baz/che")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.foo.baz",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Che", req.reflect_class.name)
-#         self.assertEqual([], req.path_positionals)
 
         r = c.get("/foo/baz/happy")
         self.assertEqual("foo.baz.Default.GET", r.body[0])
         self.assertEqual(("happy",), r.body[1])
 
-#         req = c.get_request("/foo/baz/happy")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.foo.baz",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual(["happy"], req.path_positionals)
-
         r = c.get("/foo/happy")
         self.assertEqual("foo.Default.GET", r.body[0])
         self.assertEqual(("happy",), r.body[1])
-
-#         req = c.get_request("/foo/happy")
-#         self.assertEqual(
-#             f"{c.controller_prefix}.foo",
-#             req.reflect_class.reflect_module().name,
-#         )
-#         self.assertEqual("Default", req.reflect_class.name)
-#         self.assertEqual(["happy"], req.path_positionals)
 
     def test__update_request_1(self):
         s = self.create_server("""
