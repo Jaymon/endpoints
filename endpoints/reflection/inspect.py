@@ -874,25 +874,6 @@ class Pathfinder(MethodpathFinder):
                 for vk in nc.variations():
                     self.find_keys[vk + "/"] = key
 
-#         if (not value) or ("reflect_method" not in value):
-#             if key not in self.find_keys:
-#                 self.find_keys[key + "/"] = key
-# 
-#                 nc = NamingConvention(key)
-#                 for vk in nc.variations():
-#                     self.find_keys[vk + "/"] = key
-# 
-#         else:
-#             if value and "reflect_method" in value:
-#                 logger.info(
-#                     "Registering endpoint: %s %s -> %s",
-#                     value["reflect_method"].http_verb,
-#                     value["reflect_method"].get_url_path(),
-#                     value["reflect_method"].callpath,
-#                 )
-# 
-#             self.find_keys[key] = key
-
     def _update_node(self, key: str, node: Self, value: Mapping):
         if "reflect_method" in value:
             logger.warning(
